@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* TikTok dark theme design tokens */
+:root {
+  /* Brand colors */
+  --color-brand: #FE2C55;
+  --color-brand-hover: #FF4D6A;
+  --color-brand-subtle: rgba(254, 44, 85, 0.15);
+
+  /* Accent colors */
+  --color-accent: #25F4EE;
+
+  /* Surface colors */
+  --color-surface-primary: #000000;
+  --color-surface-secondary: #121212;
+  --color-surface-card: #1E1E1E;
+  --color-surface-elevated: #252525;
+  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text colors */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #C4C4C4;
+  --color-text-tertiary: #8A8A8A;
+
+  /* Semantic colors */
+  --color-success: #00D166;
+  --color-warning: #FFBA00;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-glow-brand: 0 0 12px rgba(254, 44, 85, 0.4);
+  --shadow-glow-accent: 0 0 12px rgba(37, 244, 238, 0.3);
+}
+
+/* shadcn/ui theme — TikTok dark palette */
+@layer base {
+  :root {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 348 100% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 77%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 54%;
+    --accent: 348 100% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 348 100% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 100% / 0.1;
+    --input: 0 0% 100% / 0.1;
+    --ring: 348 100% 58%;
+    --radius: 0.5rem;
+
+    /* Chart colors */
+    --chart-1: 348 100% 58%;
+    --chart-2: 180 90% 55%;
+    --chart-3: 140 100% 41%;
+    --chart-4: 45 100% 50%;
+    --chart-5: 260 80% 60%;
+  }
+}
