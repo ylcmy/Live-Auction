@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { authService } from '../services/auth.service.js';
+import { replySuccess } from '../lib/reply.js';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post(
@@ -20,9 +21,7 @@ export async function authRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const data = await authService.register(req.body as any);
-      return reply
-        .code(201)
-        .send({ code: 0, message: 'ok', data, timestamp: Date.now() });
+      return replySuccess(reply, data, 201);
     },
   );
 
@@ -43,12 +42,7 @@ export async function authRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { username, password } = req.body as any;
       const data = await authService.login(username, password);
-      return reply.send({
-        code: 0,
-        message: 'ok',
-        data,
-        timestamp: Date.now(),
-      });
+      return replySuccess(reply, data);
     },
   );
 
@@ -69,12 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
       const data = await authService.refresh(
         (req.body as any).refreshToken,
       );
-      return reply.send({
-        code: 0,
-        message: 'ok',
-        data,
-        timestamp: Date.now(),
-      });
+      return replySuccess(reply, data);
     },
   );
 }

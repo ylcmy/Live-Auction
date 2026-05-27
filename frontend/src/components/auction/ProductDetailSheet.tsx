@@ -11,7 +11,8 @@ import {
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import { formatPrice, getPriceLabel } from '../../lib/format';
-import type { RoomAuctionItem, AuctionStatus } from '../../types/api';
+import { AUCTION_STATUS_CONFIG } from '../../lib/statusConfig';
+import type { RoomAuctionItem } from '../../types/api';
 
 interface ProductDetailSheetProps {
   open: boolean;
@@ -19,14 +20,6 @@ interface ProductDetailSheetProps {
   item: RoomAuctionItem | null;
   onBid: (item: RoomAuctionItem) => void;
 }
-
-const STATUS_CONFIG: Record<AuctionStatus, { label: string; className: string }> = {
-  pending: { label: '待拍', className: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  active: { label: '竞拍中', className: 'bg-brand/20 text-brand border-brand/30' },
-  ended: { label: '已成交', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  unsold: { label: '流拍', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
-  cancelled: { label: '已取消', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
-};
 
 const sheetVariants = {
   hidden: { y: '100%' },
@@ -76,8 +69,8 @@ export default function ProductDetailSheet({
   }, [item]);
 
   const statusCfg = useMemo(() => {
-    if (!item) return STATUS_CONFIG.pending;
-    return STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending;
+    if (!item) return AUCTION_STATUS_CONFIG.pending;
+    return AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
   }, [item]);
 
   if (!item) return null;

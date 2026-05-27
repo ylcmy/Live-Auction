@@ -16,7 +16,6 @@ interface CartPanelProps {
   currentSessionId?: number;
   roomId: number;
   onSelectProduct: (item: RoomAuctionItem) => void;
-  onBid: (item: RoomAuctionItem) => void;
 }
 
 export default function CartPanel({
@@ -26,7 +25,6 @@ export default function CartPanel({
   currentSessionId,
   roomId,
   onSelectProduct,
-  onBid,
 }: CartPanelProps) {
   const myBids = useAuctionStore((s) => s.myBids);
   const [bidSheetItem, setBidSheetItem] = useState<RoomAuctionItem | null>(null);
@@ -57,15 +55,6 @@ export default function CartPanel({
       }, 150);
     },
     [handleCloseDetailSheet],
-  );
-
-  const handleBid = useCallback(
-    (item: RoomAuctionItem) => {
-      onBid(item);
-      setBidSheetItem(item);
-      setBidSheetOpen(true);
-    },
-    [onBid],
   );
 
   const handleCloseBidSheet = useCallback(() => {
@@ -113,7 +102,7 @@ export default function CartPanel({
                       isCurrent={item.sessionId === currentSessionId}
                       myLastBid={myBids[item.sessionId] ?? null}
                       onSelect={() => handleSelect(item)}
-                      onBid={() => handleBid(item)}
+                      onBid={() => { setBidSheetItem(item); setBidSheetOpen(true); }}
                     />
                   ))}
                 </div>

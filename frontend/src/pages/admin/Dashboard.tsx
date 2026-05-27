@@ -10,6 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import api from '../../services/api';
+import { PRODUCT_STATUS_STYLES, ORDER_STATUS_STYLES } from '../../lib/statusConfig';
 import type { Product, Order } from '../../types/api';
 
 interface MyRoom {
@@ -20,21 +21,6 @@ interface MyRoom {
   streamUrl: string | null;
   createdAt: string;
 }
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  draft: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '草稿' },
-  pending: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '待上架' },
-  active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
-  ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
-  cancelled: { bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', label: '已取消' },
-  unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
-};
-
-const ORDER_STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  pending_payment: { bg: 'bg-sky-50', text: 'text-sky-600', label: '待付款' },
-  paid: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: '已付款' },
-  cancelled: { bg: 'bg-slate-100', text: 'text-slate-500', label: '已取消' },
-};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -257,7 +243,7 @@ export default function Dashboard() {
           </div>
           <div className="divide-y divide-slate-100">
             {products.slice(0, 5).map((product) => {
-              const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.draft;
+              const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.draft;
               return (
                 <div
                   key={product.id}

@@ -217,11 +217,7 @@ export const bidService = {
             shouldEnd ? userId : undefined,
           );
         } catch (err) {
-          console.error(
-            'Async bid persistence failed:',
-            err,
-            { sessionId, userId, bidAmount },
-          );
+          logger.error({ err, sessionId, userId, bidAmount }, 'Async bid persistence failed');
         }
       });
 
@@ -321,7 +317,7 @@ export const bidService = {
   ): Promise<{ rank: number | null; amount: number | null }> {
     const lbKey = `auction:${sessionId}:leaderboard`;
     const rank = await cache.zrevrank(lbKey, String(userId));
-    const score = rank !== null ? await cache.zrank(lbKey, String(userId)) : null;
-    return { rank: rank !== null ? rank + 1 : null, amount: score };
+    const score = rank !== null ? await cache.zscore(lbKey, String(userId)) : null;
+    return { rank: rank !== null ? rank + 1 : null, amount: score !== null ? Number(score) : null };
   },
 };

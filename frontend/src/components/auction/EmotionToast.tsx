@@ -55,7 +55,7 @@ const titleText: Record<EmotionEvent['type'], string> = {
 
 export default function EmotionToast() {
   const emotionEvent = useAuctionStore((s) => s.emotionEvent);
-  const clearEmotion = () => useAuctionStore.setState({ emotionEvent: null });
+  const clearEmotion = useAuctionStore((s) => s.clearEmotion);
 
   useEffect(() => {
     if (emotionEvent) {

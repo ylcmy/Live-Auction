@@ -4,43 +4,13 @@ import { formatPrice, formatTime } from '../../lib/format';
 import { Card, CardContent } from '../../design-system/components/ui/card';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
-import { Trophy, XCircle, Clock, ChevronLeft, ChevronRight, Award, Calendar } from 'lucide-react';
+import { Trophy, XCircle, ChevronLeft, ChevronRight, Award, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { OrderStatus } from '../../types/api';
-
-const STATUS_CONFIG: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; icon: React.ReactNode; className: string }> = {
-  pending_payment: {
-    variant: 'default',
-    label: '待支付',
-    icon: <Clock className="w-3.5 h-3.5" />,
-    className: 'bg-brand-50 text-brand border-brand/20',
-  },
-  paid: {
-    variant: 'secondary',
-    label: '已支付',
-    icon: <Trophy className="w-3.5 h-3.5" />,
-    className: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-  },
-  cancelled: {
-    variant: 'outline',
-    label: '已取消',
-    icon: <XCircle className="w-3.5 h-3.5" />,
-    className: 'bg-red-50 text-red-500 border-red-200',
-  },
-};
-
-interface OrderItem {
-  id: number;
-  sessionId: number;
-  buyerId: number;
-  productId: number;
-  finalPrice: number;
-  status: OrderStatus;
-  createdAt: string;
-}
+import { ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
+import type { Order } from '../../types/api';
 
 export default function HistoryList() {
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -51,7 +21,7 @@ export default function HistoryList() {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get<{ data: { items: OrderItem[]; total: number } }>('/orders', { page, limit }) as any;
+      const response = await api.get<{ data: { items: Order[]; total: number } }>('/orders', { page, limit }) as any;
       const data = response.data;
       setOrders(data?.items || []);
       setTotal(data?.total || 0);
@@ -120,7 +90,7 @@ export default function HistoryList() {
           <>
             <div className="space-y-3">
               {orders.map((order, index) => {
-                const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending_payment;
+                const statusCfg = ORDER_STATUS_CONFIG[order.status] || ORDER_STATUS_CONFIG.pending_payment;
                 const isWin = order.status === 'pending_payment' || order.status === 'paid';
                 return (
                   <motion.div

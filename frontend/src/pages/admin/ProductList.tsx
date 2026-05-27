@@ -150,10 +150,12 @@ export default function ProductList() {
 
   const handleBatchShelf = async (up: boolean) => {
     const ok = await confirm({
-      title: up ? '批量上架商品' : '批量下架商品',
-      description: `确定要${up ? '上架' : '下架'}选中的 ${selectedIds.size} 个商品吗？`,
+      title: up ? '批量上架商品' : '批量取消商品',
+      description: up
+        ? `确定要上架选中的 ${selectedIds.size} 个商品吗？上架后商品将进入待竞拍状态。`
+        : `确定要取消选中的 ${selectedIds.size} 个商品吗？`,
       variant: up ? 'info' : 'warning',
-      confirmText: up ? '确认上架' : '确认下架',
+      confirmText: up ? '确认上架' : '确认取消',
     });
     if (!ok) return;
     try {
@@ -162,7 +164,7 @@ export default function ProductList() {
           api.put(`/products/${id}/status`, { status: up ? 'pending' : 'cancelled' })
         )
       );
-      toast({ title: '操作成功', description: `已${up ? '上架' : '下架'} ${selectedIds.size} 个商品`, variant: 'success' });
+      toast({ title: '操作成功', description: `已${up ? '上架' : '取消'} ${selectedIds.size} 个商品`, variant: 'success' });
       fetchProducts();
     } catch {
       toast({ title: '操作失败', description: '请稍后重试', variant: 'destructive' });
@@ -187,9 +189,37 @@ export default function ProductList() {
       }
       return;
     }
+    if (action === 'up') {
+      const ok = await confirm({
+        title: '上架商品',
+        description: '确定要将此商品上架吗？上架后商品将进入待竞拍状态。',
+        variant: 'info',
+        confirmText: '确认上架',
+      });
+      if (!ok) return;
+      try {
+        await api.put(`/products/${id}/status`, { status: 'pending' });
+        toast({ title: '上架成功', description: '商品已进入待竞拍状态', variant: 'success' });
+        fetchProducts();
+      } catch {
+        toast({ title: '上架失败', description: '请稍后重试', variant: 'destructive' });
+      }
+      return;
+    }
+    const product = products.find((p) => p.id === id);
+    const isActive = product?.status === 'active';
+    const ok = await confirm({
+      title: isActive ? '取消竞拍' : '取消上架',
+      description: isActive
+        ? '确定要取消此商品的竞拍吗？当前所有出价将被作废。'
+        : '确定要取消此商品的上架吗？商品将回到可重新上架的状态。',
+      variant: isActive ? 'warning' : 'warning',
+      confirmText: isActive ? '确认取消竞拍' : '确认取消上架',
+    });
+    if (!ok) return;
     try {
-      await api.put(`/products/${id}/status`, { status: action === 'up' ? 'pending' : 'cancelled' });
-      toast({ title: '操作成功', description: action === 'up' ? '商品已上架' : '商品已下架', variant: 'success' });
+      await api.put(`/products/${id}/status`, { status: 'cancelled' });
+      toast({ title: '操作成功', description: isActive ? '竞拍已取消' : '上架已取消', variant: 'success' });
       fetchProducts();
     } catch {
       toast({ title: '操作失败', description: '请稍后重试', variant: 'destructive' });
@@ -447,9 +477,17 @@ export default function ProductList() {
                         <button
                           onClick={() => handleSingleAction(product.id, 'down')}
                           className="p-1.5 text-text-tertiary hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-                          title="下架"
+                          title="取消上架"
                         >
                           <ArrowDown className="w-4 h-4" />
+                        </button>
+                      ) : product.status === 'active' ? (
+                        <button
+                          onClick={() => handleSingleAction(product.id, 'down')}
+                          className="p-1.5 text-text-tertiary hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="取消竞拍"
+                        >
+                          <Square className="w-4 h-4" />
                         </button>
                       ) : null}
                       <button

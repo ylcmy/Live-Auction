@@ -25,6 +25,7 @@ interface AuctionStore {
   setMyBid: (sessionId: number, amount: number) => void;
   setRoomAuctions: (auctions: RoomAuctionItem[]) => void;
   updateAuctionPrice: (sessionId: number, newPrice: number) => void;
+  clearEmotion: () => void;
   clearAuction: () => void;
 }
 
@@ -69,6 +70,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
           ? { ...state.currentAuction, currentPrice: newPrice }
           : state.currentAuction,
     })),
+  clearEmotion: () => set({ emotionEvent: null }),
   clearAuction: () =>
     set({
       currentAuction: null,

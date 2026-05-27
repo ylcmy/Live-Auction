@@ -1,4 +1,6 @@
 import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
+import { decodeJwtPayload } from '../lib/jwt';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -6,20 +8,14 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  const token = localStorage.getItem('accessToken');
+  const token = useAuthStore((s) => s.token);
 
   if (!token) {
     return <Navigate to="/login" replace />;
   }
 
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    if (requiredRole && payload.role !== requiredRole) {
-      return <Navigate to="/login" replace />;
-    }
-  } catch {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  const payload = decodeJwtPayload<{ role: string }>(token);
+  if (!payload || (requiredRole && payload.role !== requiredRole)) {
     return <Navigate to="/login" replace />;
   }
 

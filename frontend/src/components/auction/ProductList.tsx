@@ -3,46 +3,9 @@ import { Badge } from '../../design-system/components/ui/badge';
 import { ScrollArea } from '../../design-system/components/ui/scroll-area';
 import { Separator } from '../../design-system/components/ui/separator';
 import { motion } from 'framer-motion';
-import { Gavel, Eye, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Eye } from 'lucide-react';
+import { AUCTION_STATUS_CONFIG } from '../../lib/statusConfig';
 import type { RoomAuctionItem } from '../../types/api';
-
-const STATUS_CONFIG: Record<string, {
-  label: string;
-  className: string;
-  icon: React.ReactNode;
-  priceLabel: string;
-}> = {
-  pending: {
-    label: '即将开拍',
-    className: 'bg-amber-50 text-amber-600 border-amber-200',
-    icon: <Clock className="w-3 h-3" />,
-    priceLabel: '起拍价',
-  },
-  active: {
-    label: '竞拍中',
-    className: 'bg-brand-50 text-brand border-brand/20',
-    icon: <Gavel className="w-3 h-3" />,
-    priceLabel: '当前最高价',
-  },
-  ended: {
-    label: '已成交',
-    className: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-    icon: <CheckCircle2 className="w-3 h-3" />,
-    priceLabel: '落槌价',
-  },
-  unsold: {
-    label: '流拍',
-    className: 'bg-gray-50 text-gray-500 border-gray-200',
-    icon: <XCircle className="w-3 h-3" />,
-    priceLabel: '起拍价',
-  },
-  cancelled: {
-    label: '已取消',
-    className: 'bg-red-50 text-red-500 border-red-200',
-    icon: <AlertCircle className="w-3 h-3" />,
-    priceLabel: '起拍价',
-  },
-};
 
 interface ProductListProps {
   auctions: RoomAuctionItem[];
@@ -71,7 +34,7 @@ export default function ProductList({ auctions, currentSessionId, onSelectAuctio
         </div>
 
         {auctions.map((item, idx) => {
-          const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending;
+          const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
           const isCurrent = item.sessionId === currentSessionId;
           const isClickable = ['pending', 'active'].includes(item.status) && onSelectAuction;
           const priceInfo = getPriceLabel(item);

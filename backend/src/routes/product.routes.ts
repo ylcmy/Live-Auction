@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { productService } from '../services/product.service.js';
+import { replySuccess } from '../lib/reply.js';
 
 export async function productRoutes(app: FastifyInstance) {
-  // All routes require merchant auth
   app.addHook('onRequest', authMiddleware);
   app.addHook('onRequest', requireRole('merchant'));
 
@@ -42,9 +42,7 @@ export async function productRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const body = req.body as any;
       const data = await productService.createProduct(req.auth.userId, body);
-      return reply
-        .code(201)
-        .send({ code: 0, message: 'ok', data, timestamp: Date.now() });
+      return replySuccess(reply, data, 201);
     },
   );
 
@@ -55,24 +53,14 @@ export async function productRoutes(app: FastifyInstance) {
       page: parseInt(query.page) || 1,
       limit: parseInt(query.limit) || 20,
     });
-    return reply.send({
-      code: 0,
-      message: 'ok',
-      data,
-      timestamp: Date.now(),
-    });
+    return replySuccess(reply, data);
   });
 
   app.get('/api/products/:id', async (req, reply) => {
     const data = await productService.getProductById(
       Number((req.params as any).id),
     );
-    return reply.send({
-      code: 0,
-      message: 'ok',
-      data,
-      timestamp: Date.now(),
-    });
+    return replySuccess(reply, data);
   });
 
   app.put(
@@ -102,12 +90,7 @@ export async function productRoutes(app: FastifyInstance) {
         Number((req.params as any).id),
         body,
       );
-      return reply.send({
-        code: 0,
-        message: 'ok',
-        data,
-        timestamp: Date.now(),
-      });
+      return replySuccess(reply, data);
     },
   );
 }

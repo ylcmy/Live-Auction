@@ -6,6 +6,8 @@ import { orderRepo } from '../repositories/order.repo.js';
 import { cache } from '../infrastructure/cache/redis.js';
 import { bidService } from './bid.service.js';
 import { logger } from '../middleware/logger.js';
+import { AppError } from '../lib/app-error.js';
+import { cleanupAuctionCache } from '../lib/auction-cache.js';
 
 /** Map of sessionId -> setTimeout id for auction settlement timers */
 const auctionTimers = new Map<number, NodeJS.Timeout>();
@@ -33,19 +35,19 @@ function scheduleSettlement(sessionId: number, delayMs: number) {
 export const auctionService = {
   async startAuction(merchantId: number, productId: number, roomId: number) {
     const product = await productRepo.findById(productId);
-    if (!product) throw Object.assign(new Error('商品不存在'), { statusCode: 404 });
-    if (product.merchant_id !== merchantId) throw Object.assign(new Error('无权限'), { statusCode: 403 });
-    if (product.status !== 'pending' && product.status !== 'draft') throw Object.assign(new Error('该商品当前状态不可发起竞拍'), { statusCode: 409 });
+    if (!product) throw new AppError('商品不存在', 404);
+    if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
+    if (product.status !== 'pending' && product.status !== 'draft') throw new AppError('该商品当前状态不可发起竞拍', 409);
 
     const room = await liveRoomRepo.findById(roomId);
-    if (!room) throw Object.assign(new Error('直播间不存在'), { statusCode: 404 });
-    if (room.host_id !== merchantId) throw Object.assign(new Error('无权限'), { statusCode: 403 });
+    if (!room) throw new AppError('直播间不存在', 404);
+    if (room.host_id !== merchantId) throw new AppError('无权限', 403);
 
     const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
-    if (activeSession) throw Object.assign(new Error('当前直播间已有进行中的竞拍'), { statusCode: 409 });
+    if (activeSession) throw new AppError('当前直播间已有进行中的竞拍', 409);
 
     const rule = await auctionRuleRepo.findByProductId(productId);
-    if (!rule) throw Object.assign(new Error('请先配置竞拍规则'), { statusCode: 400 });
+    if (!rule) throw new AppError('请先配置竞拍规则', 400);
 
     const sessionId = await auctionSessionRepo.create({
       product_id: productId,
@@ -253,17 +255,7 @@ export const auctionService = {
       // Clear auction timers
       clearAuctionTimer(sessionId);
 
-      // Clean up Redis auction data (keep user caches)
-      const keys = [
-        `auction:${sessionId}:end_time`,
-        `auction:${sessionId}:status`,
-        `auction:${sessionId}:extensions`,
-        `auction:${sessionId}:product_id`,
-        `auction:${sessionId}:room_id`,
-        `auction:${sessionId}:top_bid`,
-        `room:${session.room_id}:active_session`,
-      ];
-      await Promise.all(keys.map((k) => cache.del(k)));
+      await cleanupAuctionCache(sessionId, session.room_id);
 
       logger.info({ event: 'auction_settle_done', sessionId, status: newStatus, winner: winner?.userId, orderId }, 'Auction settled');
 
@@ -278,14 +270,14 @@ export const auctionService = {
    */
   async cancelAuction(sessionId: number, merchantId: number): Promise<void> {
     const session = await auctionSessionRepo.findById(sessionId);
-    if (!session) throw Object.assign(new Error('竞拍不存在'), { statusCode: 404 });
+    if (!session) throw new AppError('竞拍不存在', 404);
 
     const product = await productRepo.findById(session.product_id);
-    if (!product) throw Object.assign(new Error('商品不存在'), { statusCode: 404 });
-    if (product.merchant_id !== merchantId) throw Object.assign(new Error('无权限'), { statusCode: 403 });
+    if (!product) throw new AppError('商品不存在', 404);
+    if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
 
     if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
-      throw Object.assign(new Error('该竞拍已结束'), { statusCode: 409 });
+      throw new AppError('该竞拍已结束', 409);
     }
 
     await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: new Date().toISOString() });
@@ -294,17 +286,7 @@ export const auctionService = {
 
     clearAuctionTimer(sessionId);
 
-    // Clean up Redis
-    const keys = [
-      `auction:${sessionId}:end_time`,
-      `auction:${sessionId}:status`,
-      `auction:${sessionId}:extensions`,
-      `auction:${sessionId}:product_id`,
-      `auction:${sessionId}:room_id`,
-      `auction:${sessionId}:top_bid`,
-      `room:${session.room_id}:active_session`,
-    ];
-    await Promise.all(keys.map((k) => cache.del(k)));
+    await cleanupAuctionCache(sessionId, session.room_id);
 
     logger.info({ event: 'auction_cancelled', sessionId, merchantId }, 'Auction cancelled');
   },

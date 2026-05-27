@@ -7,7 +7,8 @@ import { Badge } from '../../design-system/components/ui/badge';
 import { Crown, Medal, Award } from 'lucide-react';
 
 export default function Leaderboard() {
-  const { leaderboard, myRank } = useAuctionStore();
+  const leaderboard = useAuctionStore((s) => s.leaderboard);
+  const myRank = useAuctionStore((s) => s.myRank);
 
   if (leaderboard.length === 0) {
     return (

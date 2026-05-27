@@ -22,7 +22,6 @@ export const auctionSessionRepo = {
   async updatePrice(id: number, price: number, winnerId?: number) {
     const update: any = { current_price: price, updated_at: db.fn.now() };
     if (winnerId) update.winner_id = winnerId;
-    // Optimistic locking: increment version
     return db('auction_sessions').where({ id }).update(update).increment('version', 1);
   },
   async findAll(filters: { room_id?: number; status?: string; page?: number; limit?: number } = {}) {
@@ -33,8 +32,5 @@ export const auctionSessionRepo = {
     const total = await query.clone().count('* as count').first();
     const items = await query.orderBy('created_at', 'desc').offset((page - 1) * limit).limit(limit);
     return { items, total: Number((total as any)?.count || 0), page, limit };
-  },
-  async findByProductAndRoom(productId: number, roomId: number) {
-    return db('auction_sessions').where({ product_id: productId, room_id: roomId }).whereIn('status', ['pending', 'active']).first();
   },
 };

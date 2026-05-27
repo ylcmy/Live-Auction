@@ -12,7 +12,8 @@ import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
 import { formatPrice, formatTime } from '../../lib/format';
-import type { OrderStatus } from '../../types/api';
+import { ORDER_STATUS_STYLES } from '../../lib/statusConfig';
+import type { Order, OrderStatus } from '../../types/api';
 
 type StatusFilter = 'all' | 'pending_payment' | 'paid' | 'cancelled';
 
@@ -23,25 +24,9 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'cancelled', label: '已取消' },
 ];
 
-const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  pending_payment: { bg: 'bg-sky-50', text: 'text-sky-600', label: '待支付' },
-  paid: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: '已支付' },
-  cancelled: { bg: 'bg-slate-100', text: 'text-slate-500', label: '已取消' },
-};
-
-interface OrderItem {
-  id: number;
-  sessionId: number;
-  buyerId: number;
-  productId: number;
-  finalPrice: number;
-  status: OrderStatus;
-  createdAt: string;
-}
-
 export default function OrderList() {
   const { confirm } = useConfirm();
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -56,7 +41,7 @@ export default function OrderList() {
       if (statusFilter !== 'all') {
         params.status = statusFilter;
       }
-      const response = (await api.get<{ data: { items: OrderItem[]; total: number } }>('/orders', params)) as any;
+      const response = (await api.get<{ data: { items: Order[]; total: number } }>('/orders', params)) as any;
       const data = response.data;
       setOrders(data?.items || []);
       setTotal(data?.total || 0);
@@ -201,7 +186,7 @@ export default function OrderList() {
             {/* Table Body */}
             <div className="divide-y divide-slate-100">
               {orders.map((order) => {
-                const status = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending_payment;
+                const status = ORDER_STATUS_STYLES[order.status] ?? ORDER_STATUS_STYLES.pending_payment;
                 const isLoading = actionLoading[order.id];
                 return (
                   <div

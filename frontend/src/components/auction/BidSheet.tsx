@@ -35,7 +35,7 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
   const endedTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const setMyBid = useAuctionStore((s) => s.setMyBid);
   const updateAuctionPrice = useAuctionStore((s) => s.updateAuctionPrice);
-  const { subscribe } = useWebSocket(roomId);
+  const { subscribe, isConnected } = useWebSocket(roomId);
 
   const currentPrice = item?.currentPrice ?? 0;
   const bidIncrement = item?.rule?.bidIncrement ?? 1;
@@ -80,7 +80,7 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
       unsub();
       clearTimeout(successTimerRef.current);
     };
-  }, [open, item, subscribe, setMyBid, updateAuctionPrice]);
+  }, [open, item, subscribe, setMyBid, updateAuctionPrice, isConnected]);
 
   // Subscribe to bid:new for real-time price updates and outbid detection
   useEffect(() => {
@@ -105,7 +105,7 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
     );
 
     return unsub;
-  }, [open, item, subscribe, updateAuctionPrice, snapToMin, myLastBid]);
+  }, [open, item, subscribe, updateAuctionPrice, snapToMin, myLastBid, isConnected]);
 
   const handleClose = useCallback(() => {
     setBidSuccess(false);
@@ -134,13 +134,13 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
       unsub();
       clearTimeout(endedTimerRef.current);
     };
-  }, [open, item, subscribe, handleClose]);
+  }, [open, item, subscribe, handleClose, isConnected]);
 
   const handleSubmit = useCallback(() => {
     if (!item || isSubmitting) return;
     setIsSubmitting(true);
-    submitBid();
-  }, [item, isSubmitting, submitBid]);
+    submitBid(bidAmount);
+  }, [item, isSubmitting, submitBid, bidAmount]);
 
   if (!item) return null;
 

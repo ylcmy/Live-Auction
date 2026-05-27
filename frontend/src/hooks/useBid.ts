@@ -5,7 +5,7 @@ import { generateIdempotencyKey } from '../lib/idempotency';
 export function useBid(sessionId: number | null) {
   const debounceRef = useRef(false);
 
-  const submitBid = useCallback(() => {
+  const submitBid = useCallback((amount?: number) => {
     if (!sessionId || debounceRef.current) return;
     debounceRef.current = true;
 
@@ -13,9 +13,8 @@ export function useBid(sessionId: number | null) {
     if (!socket) return;
     const key = generateIdempotencyKey();
 
-    socket.emit('bid:submit', { sessionId, idempotencyKey: key });
+    socket.emit('bid:submit', { sessionId, amount, idempotencyKey: key });
 
-    // Reset debounce after 300ms
     setTimeout(() => { debounceRef.current = false; }, 300);
   }, [sessionId]);
 

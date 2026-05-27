@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
+import { decodeJwtPayload } from '../lib/jwt';
 import type { User } from '../types/api';
 
 interface AuthState {
@@ -28,7 +29,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
       // Decode user from token
-      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+      const payload = decodeJwtPayload<{ userId: number; role: string; nickname: string }>(accessToken);
+      if (!payload) throw new Error('Invalid token');
       set({
         user: {
           id: payload.userId,

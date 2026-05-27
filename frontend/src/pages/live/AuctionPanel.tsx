@@ -14,13 +14,11 @@ import { Users, Flame, Clock, Gavel, Crown, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function AuctionPanel() {
-  const {
-    currentAuction,
-    onlineCount,
-    participantCount,
-    countdown: countdownSync,
-    extendMs,
-  } = useAuctionStore();
+  const currentAuction = useAuctionStore((s) => s.currentAuction);
+  const onlineCount = useAuctionStore((s) => s.onlineCount);
+  const participantCount = useAuctionStore((s) => s.participantCount);
+  const countdownSync = useAuctionStore((s) => s.countdown);
+  const extendMs = useAuctionStore((s) => s.extendMs);
   const { remainingMs, isUrgent, sync, extend } = useCountdown();
 
   useEffect(() => {

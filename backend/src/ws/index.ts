@@ -2,7 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { removeClient, joinRoom, leaveRoom, getOnlineCount, broadcastToRoom } from './rooms.js';
+import { joinRoom, leaveRoom, getOnlineCount, broadcastToRoom } from './rooms.js';
 import { registerBidHandlers } from './handlers/bid.js';
 import { registerAuctionHandlers } from './handlers/auction.js';
 import { auctionService } from '../services/auction.service.js';
@@ -39,7 +39,7 @@ export function initWebSocket(httpServer: HttpServer) {
       joinRoom(socket, rid);
       await cache.sadd(`room:${rid}:online`, String(userId));
 
-      const onlineCount = getOnlineCount(rid);
+      const onlineCount = getOnlineCount(io, rid);
       const participantCount = (await cache.scard(`room:${rid}:participants`)) || 0;
 
       broadcastToRoom(io, rid, 'room:count', {
@@ -61,7 +61,7 @@ export function initWebSocket(httpServer: HttpServer) {
       const rid = String(roomId);
       leaveRoom(socket, rid);
       await cache.srem(`room:${rid}:online`, String(userId));
-      const onlineCount = getOnlineCount(rid);
+      const onlineCount = getOnlineCount(io, rid);
       broadcastToRoom(io, rid, 'room:count', {
         roomId,
         onlineCount,
@@ -70,10 +70,11 @@ export function initWebSocket(httpServer: HttpServer) {
     });
 
     socket.on('disconnect', async () => {
-      const roomId = removeClient(socket.id);
-      if (roomId) {
+      const rooms = [...socket.rooms];
+      for (const roomId of rooms) {
+        if (roomId === socket.id) continue;
         await cache.srem(`room:${roomId}:online`, String(userId));
-        const onlineCount = getOnlineCount(roomId);
+        const onlineCount = getOnlineCount(io, roomId);
         broadcastToRoom(io, roomId, 'room:count', {
           roomId: Number(roomId),
           onlineCount,
@@ -98,7 +99,6 @@ export async function broadcastAuctionState(roomId: number, sessionId: number) {
   if (!io) return;
   const roomClients = io.sockets.adapter.rooms.get(String(roomId));
   if (!roomClients) return;
-  // Snapshot the Set to avoid mutation during async iteration
   const socketIds = [...roomClients];
   for (const socketId of socketIds) {
     const socket = io.sockets.sockets.get(socketId);

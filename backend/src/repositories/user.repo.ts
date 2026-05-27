@@ -16,10 +16,6 @@ export const userRepo = {
     return db('users').where({ username }).first();
   },
 
-  async findById(id: number): Promise<UserRow | undefined> {
-    return db('users').where({ id }).first();
-  },
-
   async create(data: {
     username: string;
     password_hash: string;

@@ -2,8 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 
 interface UseBidAmountReturn {
   bidAmount: number;
-  increment: () => void;
-  decrement: () => void;
   setValue: (value: number) => void;
   reset: () => void;
   snapToMin: (newPrice: number) => void;
@@ -12,22 +10,12 @@ interface UseBidAmountReturn {
 
 export function useBidAmount(currentPrice: number, bidIncrement: number): UseBidAmountReturn {
   const minBid = currentPrice + bidIncrement;
-
   const [bidAmount, setBidAmount] = useState(minBid);
 
-  // When currentPrice changes (outbid scenario), snap bidAmount up if needed
   useEffect(() => {
     const newMin = currentPrice + bidIncrement;
     setBidAmount((prev) => (prev < newMin ? newMin : prev));
   }, [currentPrice, bidIncrement]);
-
-  const increment = useCallback(() => {
-    setBidAmount((prev) => prev + bidIncrement);
-  }, [bidIncrement]);
-
-  const decrement = useCallback(() => {
-    setBidAmount((prev) => Math.max(prev - bidIncrement, currentPrice + bidIncrement));
-  }, [bidIncrement, currentPrice]);
 
   const reset = useCallback(() => {
     setBidAmount(currentPrice + bidIncrement);
@@ -52,5 +40,5 @@ export function useBidAmount(currentPrice: number, bidIncrement: number): UseBid
 
   const isAtMin = bidAmount === currentPrice + bidIncrement;
 
-  return { bidAmount, increment, decrement, setValue, reset, snapToMin, isAtMin };
+  return { bidAmount, setValue, reset, snapToMin, isAtMin };
 }

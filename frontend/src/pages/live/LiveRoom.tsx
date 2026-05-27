@@ -47,7 +47,6 @@ export default function LiveRoom() {
     onlineCount,
     roomAuctions,
   } = useAuctionStore();
-  const [, setRoom] = useState<LiveRoomData | null>(null);
   const [sideTab, setSideTab] = useState<SideTab>('auction');
   const [wasReconnected, setWasReconnected] = useState(false);
   const [roomStatus, setRoomStatus] = useState<string>('live');
@@ -61,7 +60,6 @@ export default function LiveRoom() {
     api.get<{ data: LiveRoomData }>(`/rooms/${id}`)
       .then((res) => {
         const data = (res as any).data ?? res;
-        setRoom(data as LiveRoomData);
         setRoomStatus(data.status || 'offline');
         if (data.auctions) {
           setRoomAuctions(data.auctions);
@@ -369,7 +367,6 @@ export default function LiveRoom() {
         currentSessionId={currentAuction?.sessionId}
         roomId={id}
         onSelectProduct={handleSelectAuction}
-        onBid={() => {}}
       />
     </div>
   );

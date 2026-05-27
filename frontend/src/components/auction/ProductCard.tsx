@@ -2,15 +2,8 @@ import { motion } from 'framer-motion';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import { formatPrice, getPriceLabel } from '../../lib/format';
-import type { RoomAuctionItem, AuctionStatus } from '../../types/api';
-
-const STATUS_CONFIG: Record<AuctionStatus, { label: string; className: string }> = {
-  pending: { label: '待拍', className: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  active: { label: '竞拍中', className: 'bg-brand/20 text-brand border-brand/30' },
-  ended: { label: '已成交', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  unsold: { label: '流拍', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
-  cancelled: { label: '已取消', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
-};
+import { AUCTION_STATUS_CONFIG } from '../../lib/statusConfig';
+import type { RoomAuctionItem } from '../../types/api';
 
 interface ProductCardProps {
   item: RoomAuctionItem;
@@ -21,7 +14,7 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ item, isCurrent, myLastBid, onSelect, onBid }: ProductCardProps) {
-  const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending;
+  const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
   const { label: priceLabel, price: displayPrice } = getPriceLabel(item);
   const isActive = item.status === 'active';
   const isClickable = ['pending', 'active'].includes(item.status);

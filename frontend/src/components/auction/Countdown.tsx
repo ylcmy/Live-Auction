@@ -8,7 +8,27 @@ interface Props {
 }
 
 export default function Countdown({ isUrgent, remainingMs }: Props) {
-  const display = remainingMs > 0 ? formatMs(remainingMs) : '竞拍结束';
+  if (remainingMs <= 0) {
+    return (
+      <div className="text-center">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Timer className="w-4 h-4 text-gray-400" />
+          <span className="text-text-tertiary text-xs">竞拍结束</span>
+        </div>
+        <div className="font-mono text-4xl font-bold tracking-wider text-gray-400">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center justify-center w-10 h-12 rounded-lg bg-gray-50">00</span>
+            <span className="text-text-tertiary">:</span>
+            <span className="inline-flex items-center justify-center w-10 h-12 rounded-lg bg-gray-50">00</span>
+            <span className="text-text-tertiary">.</span>
+            <span className="inline-flex items-center justify-center w-12 h-12 rounded-lg text-2xl bg-gray-50">000</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const display = formatMs(remainingMs);
   const [minutes, rest] = display.split(':');
   const [seconds, millis] = (rest || '00.000').split('.');
 
