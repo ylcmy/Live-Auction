@@ -110,7 +110,31 @@ export interface LiveRoom {
   status: 'offline' | 'live';
   streamUrl: string | null;
   currentAuction?: AuctionSession | null;
+  auctions?: RoomAuctionItem[];
   onlineCount: number;
+}
+
+export interface RoomAuctionItem {
+  sessionId: number;
+  status: AuctionStatus;
+  currentPrice: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  extensionCount: number;
+  product: {
+    id: number;
+    name: string;
+    description: string | null;
+    imageUrl: string | null;
+  } | null;
+  rule: {
+    startPrice: number;
+    bidIncrement: number;
+    ceilingPrice: number | null;
+    durationSeconds: number;
+    extendSeconds: number;
+    maxExtensions: number;
+  };
 }
 
 export interface PaginatedData<T> {

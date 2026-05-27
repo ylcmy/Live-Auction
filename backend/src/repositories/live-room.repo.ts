@@ -9,7 +9,7 @@ export const liveRoomRepo = {
     return db('live_rooms').where({ id }).first();
   },
   async findByHost(hostId: number) {
-    return db('live_rooms').where({ host_id: hostId }).orderBy('created_at', 'desc');
+    return db('live_rooms').where({ host_id: hostId }).first();
   },
   async findAll(filters: { host_id?: number; status?: string; page?: number; limit?: number } = {}) {
     const { host_id, status, page = 1, limit = 20 } = filters;
@@ -22,5 +22,8 @@ export const liveRoomRepo = {
   },
   async updateStatus(id: number, status: 'offline' | 'live') {
     return db('live_rooms').where({ id }).update({ status });
+  },
+  async update(id: number, data: { title?: string; stream_url?: string }) {
+    return db('live_rooms').where({ id }).update({ ...data, updated_at: db.fn.now() });
   },
 };

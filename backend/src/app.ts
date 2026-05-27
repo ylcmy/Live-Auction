@@ -8,6 +8,7 @@ import { productRoutes } from './routes/product.routes.js';
 import { roomRoutes } from './routes/room.routes.js';
 import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
+import { toCamelCase } from './lib/case-transform.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -16,6 +17,14 @@ export async function buildApp() {
   });
 
   await app.register(cors, { origin: true, credentials: true });
+
+  // Transform snake_case DB fields to camelCase for frontend
+  app.addHook('preSerialization', async (_req, _reply, payload) => {
+    if (payload && typeof payload === 'object' && 'data' in payload) {
+      (payload as Record<string, unknown>).data = toCamelCase((payload as Record<string, unknown>).data);
+    }
+    return payload;
+  });
 
   // Request logging
   app.addHook('onResponse', logRequest);

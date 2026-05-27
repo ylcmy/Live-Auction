@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { CountdownSync } from '../types/ws';
 
 export function useCountdown(initialMs?: number) {
@@ -6,31 +6,35 @@ export function useCountdown(initialMs?: number) {
   const [isUrgent, setIsUrgent] = useState(false);
   const endTimeRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
-  const [synced, setSynced] = useState(false);
+  const [syncCounter, setSyncCounter] = useState(0);
 
   useEffect(() => {
     if (endTimeRef.current === null) return;
+
     const tick = () => {
       const remaining = Math.max(0, endTimeRef.current! - Date.now());
       setRemainingMs(remaining);
       setIsUrgent(remaining < 10000);
-      if (remaining > 0) rafRef.current = requestAnimationFrame(tick);
+      if (remaining > 0) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     };
+
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [synced]);
+  }, [syncCounter]);
 
-  const sync = (cs: CountdownSync) => {
+  const sync = useCallback((cs: CountdownSync) => {
     endTimeRef.current = cs.serverTime + cs.remainingMs;
-    setSynced((s) => !s);
-  };
+    setSyncCounter((c) => c + 1);
+  }, []);
 
-  const extend = (newRemainingMs: number) => {
+  const extend = useCallback((newRemainingMs: number) => {
     endTimeRef.current = Date.now() + newRemainingMs;
-    setSynced((s) => !s);
-  };
+    setSyncCounter((c) => c + 1);
+  }, []);
 
   return { remainingMs, isUrgent, sync, extend };
 }

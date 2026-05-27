@@ -19,6 +19,7 @@ import { cache, redis } from '../infrastructure/cache/redis.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
+import { userRepo } from '../repositories/user.repo.js';
 import { validateBid } from '../domain/bid.js';
 import { logger } from '../middleware/logger.js';
 
@@ -31,6 +32,49 @@ export interface BidProcessResult {
   gapToLeader?: number;
   error?: { code: number; message: string };
   shouldEnd?: boolean; // Triggers ceiling price -> auction end
+  extensionApplied?: boolean; // Whether auction was extended due to last-second bid
+  newEndTime?: number; // Updated end time if extended
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: number;
+  userNickname: string;
+  avatarUrl: string | null;
+  amount: number;
+  timestamp: string;
+}
+
+/**
+ * Resolve user profiles with Redis cache read-through.
+ * Returns a Map of userId -> { nickname, avatarUrl }.
+ */
+async function resolveUserProfiles(
+  userIds: number[],
+): Promise<Map<number, { nickname: string; avatarUrl: string | null }>> {
+  const result = new Map<number, { nickname: string; avatarUrl: string | null }>();
+  if (userIds.length === 0) return result;
+  const uncached: number[] = [];
+
+  for (const uid of [...new Set(userIds)]) {
+    const cached = await cache.get(`user:profile:${uid}`);
+    if (cached) {
+      result.set(uid, JSON.parse(cached));
+    } else {
+      uncached.push(uid);
+    }
+  }
+
+  if (uncached.length > 0) {
+    const users = await userRepo.findByIds(uncached);
+    for (const u of users) {
+      const profile = { nickname: u.nickname, avatarUrl: u.avatar_url };
+      result.set(u.id, profile);
+      await cache.set(`user:profile:${u.id}`, JSON.stringify(profile), 300);
+    }
+  }
+
+  return result;
 }
 
 export const bidService = {
@@ -217,15 +261,55 @@ export const bidService = {
   },
 
   /**
-   * Get the leaderboard for a session, ordered by bid amount descending.
-   * Returns alternating [member, score, member, score, ...] array.
+   * Get the raw leaderboard from Redis (alternating userId, score).
+   */
+  async getLeaderboardRaw(sessionId: number, limit = 20): Promise<string[]> {
+    const lbKey = `auction:${sessionId}:leaderboard`;
+    return cache.zrevrange(lbKey, 0, limit - 1);
+  },
+
+  /**
+   * Get full leaderboard with resolved user nicknames and avatars.
    */
   async getLeaderboard(
     sessionId: number,
+    currentUserId: number,
     limit = 20,
-  ): Promise<string[]> {
+  ): Promise<LeaderboardEntry[]> {
     const lbKey = `auction:${sessionId}:leaderboard`;
-    return cache.zrevrange(lbKey, 0, limit - 1);
+    const raw = await cache.zrevrange(lbKey, 0, limit - 1);
+
+    const userIds: number[] = [];
+    const entries: LeaderboardEntry[] = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const uid = Number(raw[i]);
+      userIds.push(uid);
+      entries.push({
+        rank: Math.floor(i / 2) + 1,
+        userId: uid,
+        userNickname: '',
+        avatarUrl: null,
+        amount: Number(raw[i + 1]),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const profiles = await resolveUserProfiles(userIds);
+    for (const entry of entries) {
+      const profile = profiles.get(entry.userId);
+      entry.userNickname = profile?.nickname || `用户${entry.userId}`;
+      entry.avatarUrl = profile?.avatarUrl || null;
+    }
+
+    return entries;
+  },
+
+  /**
+   * Get a single user's nickname (with cache read-through).
+   */
+  async getUserNickname(userId: number): Promise<string> {
+    const profiles = await resolveUserProfiles([userId]);
+    return profiles.get(userId)?.nickname || `用户${userId}`;
   },
 
   /**

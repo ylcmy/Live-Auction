@@ -29,4 +29,9 @@ export const userRepo = {
     const [id] = await db('users').insert(data);
     return id;
   },
+
+  async findByIds(ids: number[]): Promise<Pick<UserRow, 'id' | 'nickname' | 'avatar_url'>[]> {
+    if (ids.length === 0) return [];
+    return db('users').whereIn('id', ids).select('id', 'nickname', 'avatar_url');
+  },
 };

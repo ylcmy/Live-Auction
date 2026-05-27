@@ -14,12 +14,12 @@ const STATUS_CONFIG: Record<string, { variant: 'default' | 'secondary' | 'destru
 
 interface OrderItem {
   id: number;
-  session_id: number;
-  buyer_id: number;
-  product_id: number;
-  final_price: number;
+  sessionId: number;
+  buyerId: number;
+  productId: number;
+  finalPrice: number;
   status: OrderStatus;
-  created_at: string;
+  createdAt: string;
 }
 
 export default function HistoryList() {
@@ -121,7 +121,7 @@ export default function HistoryList() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-white truncate">
-                              商品 #{order.product_id}
+                              商品 #{order.productId}
                             </span>
                             <Badge variant={isWin ? 'default' : 'outline'} className={`text-[10px] ${
                               isWin ? 'bg-brand/20 text-brand border-brand/30' : 'text-text-tertiary border-white/10'
@@ -133,12 +133,12 @@ export default function HistoryList() {
                             <Badge variant={statusCfg.variant} className="text-[10px]">
                               {statusCfg.label}
                             </Badge>
-                            <span className="text-xs text-text-tertiary">{formatTime(order.created_at)}</span>
+                            <span className="text-xs text-text-tertiary">{formatTime(order.createdAt)}</span>
                           </div>
                         </div>
 
                         <div className="text-right flex-shrink-0">
-                          <p className="text-brand font-bold text-lg">{formatPrice(order.final_price)}</p>
+                          <p className="text-brand font-bold text-lg">{formatPrice(order.finalPrice)}</p>
                           <p className="text-[10px] text-text-tertiary">成交价</p>
                         </div>
                       </div>

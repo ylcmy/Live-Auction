@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -17,11 +17,22 @@ const fadeUp = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
 };
 
+const DEMO_ACCOUNTS: Record<'merchant' | 'user', { username: string; password: string }> = {
+  merchant: { username: 'merchant_1', password: 'pass1234' },
+  user: { username: 'user_1', password: 'pass1234' },
+};
+
 export default function Login() {
   const { login, isLoading, error, clearError } = useAuthStore();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState(DEMO_ACCOUNTS.merchant.username);
+  const [password, setPassword] = useState(DEMO_ACCOUNTS.merchant.password);
   const [role, setRole] = useState<'merchant' | 'user'>('merchant');
+
+  useEffect(() => {
+    const demo = DEMO_ACCOUNTS[role];
+    setUsername(demo.username);
+    setPassword(demo.password);
+  }, [role]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

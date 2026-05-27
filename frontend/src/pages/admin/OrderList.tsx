@@ -22,12 +22,12 @@ const STATUS_MAP: Record<string, { color: string; label: string }> = {
 
 interface OrderItem {
   id: number;
-  session_id: number;
-  buyer_id: number;
-  product_id: number;
-  final_price: number;
+  sessionId: number;
+  buyerId: number;
+  productId: number;
+  finalPrice: number;
   status: OrderStatus;
-  created_at: string;
+  createdAt: string;
 }
 
 export default function OrderList() {
@@ -82,22 +82,22 @@ export default function OrderList() {
     },
     {
       title: '商品',
-      dataIndex: 'product_id',
-      key: 'product_id',
+      dataIndex: 'productId',
+      key: 'productId',
       width: 100,
       render: (id: number) => `商品 #${id}`,
     },
     {
       title: '买家',
-      dataIndex: 'buyer_id',
-      key: 'buyer_id',
+      dataIndex: 'buyerId',
+      key: 'buyerId',
       width: 100,
       render: (id: number) => `用户 #${id}`,
     },
     {
       title: '成交价',
-      dataIndex: 'final_price',
-      key: 'final_price',
+      dataIndex: 'finalPrice',
+      key: 'finalPrice',
       width: 120,
       render: (price: number) => (
         <span style={{ color: '#1677ff', fontWeight: 600 }}>{formatPrice(price)}</span>
@@ -115,8 +115,8 @@ export default function OrderList() {
     },
     {
       title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 160,
       render: (time: string) => formatTime(time),
     },

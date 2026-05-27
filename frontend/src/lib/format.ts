@@ -1,5 +1,5 @@
-export function formatPrice(price: number): string {
-  return `¥${price.toFixed(2)}`;
+export function formatPrice(price: number | string): string {
+  return `¥${Number(price).toFixed(2)}`;
 }
 
 export function formatMs(ms: number): string {

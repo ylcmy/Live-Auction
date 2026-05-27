@@ -8,6 +8,8 @@ import Register from './pages/auth/Register';
 import AdminLayout from './pages/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import ProductCreate from './pages/admin/ProductCreate';
+import ProductDetail from './pages/admin/ProductDetail';
+import ProductEdit from './pages/admin/ProductEdit';
 import ProductList from './pages/admin/ProductList';
 import OrderList from './pages/admin/OrderList';
 import LiveRoom from './pages/live/LiveRoom';
@@ -48,6 +50,8 @@ export default function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="products" element={<ProductList />} />
                 <Route path="products/create" element={<ProductCreate />} />
+                <Route path="products/:id" element={<ProductDetail />} />
+                <Route path="products/:id/edit" element={<ProductEdit />} />
                 <Route path="orders" element={<OrderList />} />
                 <Route path="auction" element={<AuctionManage />} />
               </Route>

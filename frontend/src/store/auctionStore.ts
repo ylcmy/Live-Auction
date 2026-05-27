@@ -5,6 +5,7 @@ interface AuctionStore {
   currentAuction: AuctionState | null;
   leaderboard: LeaderboardEntry[];
   countdown: CountdownSync | null;
+  extendMs: number | null;
   myRank: number | null;
   emotionEvent: EmotionEvent | null;
   participantCount: number;
@@ -13,6 +14,7 @@ interface AuctionStore {
   setAuction: (auction: AuctionState) => void;
   setLeaderboard: (lb: LeaderboardEntry[]) => void;
   setCountdown: (cd: CountdownSync) => void;
+  triggerExtend: (ms: number) => void;
   setBidResult: (result: BidResult) => void;
   setEmotion: (event: EmotionEvent) => void;
   setParticipantCount: (n: number) => void;
@@ -24,6 +26,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   currentAuction: null,
   leaderboard: [],
   countdown: null,
+  extendMs: null,
   myRank: null,
   emotionEvent: null,
   participantCount: 0,
@@ -34,9 +37,13 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
       currentAuction: auction,
       leaderboard: auction.leaderboard,
       participantCount: auction.participantCount,
+      countdown: auction.remainingMs != null
+        ? { sessionId: auction.sessionId, remainingMs: auction.remainingMs, serverTime: Date.now() }
+        : null,
     }),
   setLeaderboard: (leaderboard) => set({ leaderboard }),
   setCountdown: (countdown) => set({ countdown }),
+  triggerExtend: (extendMs) => set({ extendMs }),
   setBidResult: (result) => set({ myRank: result.rank }),
   setEmotion: (emotionEvent) => set({ emotionEvent }),
   setParticipantCount: (participantCount) => set({ participantCount }),
@@ -46,6 +53,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
       currentAuction: null,
       leaderboard: [],
       countdown: null,
+      extendMs: null,
       myRank: null,
       emotionEvent: null,
       participantCount: 0,

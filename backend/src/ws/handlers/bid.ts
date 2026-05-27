@@ -7,6 +7,8 @@
  * - Broadcasts `bid:new` and `rank:update` to the room
  * - Emits `emotion:lead` / `emotion:overtaken` for emotional feedback
  * - Triggers `auction:ended` if ceiling price is hit
+ * - Checks for auction extension (last-second bid)
+ * - Sends `countdown:sync` after each bid
  */
 
 import type { Server, Socket } from 'socket.io';
@@ -14,6 +16,7 @@ import {
   bidService,
   type BidProcessResult,
 } from '../../services/bid.service.js';
+import { auctionService } from '../../services/auction.service.js';
 import { auctionSessionRepo } from '../../repositories/auction-session.repo.js';
 import { broadcastToRoom } from '../rooms.js';
 
@@ -38,46 +41,40 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       return;
     }
 
+    // Get session for room identification
+    const session = await auctionSessionRepo.findById(sessionId);
+    if (!session) return;
+    const roomId = String(session.room_id);
+
+    // Resolve user nickname
+    const userNickname = await bidService.getUserNickname(userId);
+
     // ---- Notify the bidder of acceptance ----
     socket.emit('bid:accepted', {
       sessionId,
-      bidId: 0, // bidId from async MySQL write not available yet
+      bidId: 0,
       amount: result.amount,
       rank: result.rank,
       isLeading: result.isLeading,
       gapToLeader: result.gapToLeader,
     });
 
-    // ---- Get session for room broadcast ----
-    const session = await auctionSessionRepo.findById(sessionId);
-    if (!session) return;
-    const roomId = String(session.room_id);
-
     // ---- Broadcast new bid to all room members ----
     broadcastToRoom(io, roomId, 'bid:new', {
       sessionId,
       userId,
-      userNickname: 'user', // placeholder — resolve from user cache in future
+      userNickname,
       amount: result.amount,
       timestamp: new Date().toISOString(),
       newTopBid: result.isLeading,
     });
 
-    // ---- Broadcast updated leaderboard ----
-    const rawLb = await bidService.getLeaderboard(sessionId);
-    const leaderboard = [];
-    for (let i = 0; i < rawLb.length; i += 2) {
-      leaderboard.push({
-        rank: Math.floor(i / 2) + 1,
-        userId: Number(rawLb[i]),
-        userNickname: 'user', // placeholder — should be resolved from user cache
-        avatarUrl: null,
-        amount: Number(rawLb[i + 1]),
-        timestamp: new Date().toISOString(),
-        isCurrentUser: Number(rawLb[i]) === userId,
-      });
-    }
-    broadcastToRoom(io, roomId, 'rank:update', leaderboard);
+    // ---- Broadcast updated leaderboard with real nicknames ----
+    const leaderboard = await bidService.getLeaderboard(sessionId, userId);
+    broadcastToRoom(io, roomId, 'rank:update', leaderboard.map((entry) => ({
+      ...entry,
+      isCurrentUser: entry.userId === userId,
+    })));
 
     // ---- Emotion events ----
     if (result.isLeading) {
@@ -94,19 +91,35 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       });
     }
 
-    // ---- Ceiling price triggered — end the auction ----
+    // ---- Check for auction extension ----
+    const extension = await auctionService.extendAuction(sessionId);
+    if (extension) {
+      broadcastToRoom(io, roomId, 'countdown:extend', {
+        sessionId,
+        extendSeconds: Math.round(extension.remainingMs / 1000),
+        remainingExtensions: extension.extensionCount,
+      });
+    }
+
+    // ---- Send countdown sync to all ----
+    const timer = await auctionService.getAuctionTimer(sessionId);
+    if (timer) {
+      broadcastToRoom(io, roomId, 'countdown:sync', {
+        sessionId,
+        remainingMs: timer.remainingMs,
+        serverTime: timer.serverTime,
+      });
+    }
+
+    // ---- Ceiling price triggered — settle the auction ----
     if (result.shouldEnd) {
-      // Will be connected to auctionService.settleAuction in US5
+      const settlement = await auctionService.settleAuction(sessionId);
       broadcastToRoom(io, roomId, 'auction:ended', {
         sessionId,
-        status: 'ended',
-        winner: {
-          userId,
-          userNickname: 'user', // placeholder
-          finalPrice: result.amount!,
-        },
-        leaderboard,
-        orderId: null,
+        status: settlement.winner ? 'ended' : 'unsold',
+        winner: settlement.winner,
+        leaderboard: settlement.leaderboard,
+        orderId: settlement.orderId,
       });
     }
   });

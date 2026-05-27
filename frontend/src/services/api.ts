@@ -1,16 +1,65 @@
 const API_BASE = '/api';
 const TIMEOUT_MS = 10000;
 
+let refreshPromise: Promise<string | null> | null = null;
+
 interface RequestConfig extends Omit<RequestInit, 'body'> {
   body?: unknown;
   params?: Record<string, string | number | undefined>;
   timeout?: number;
 }
 
+function clearTokens() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  window.location.href = '/login';
+}
+
+async function getNewToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (!refreshToken) {
+        clearTokens();
+        return null;
+      }
+
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) {
+        clearTokens();
+        return null;
+      }
+
+      const json = await response.json();
+      const newToken = json.data?.accessToken;
+      if (newToken) {
+        localStorage.setItem('accessToken', newToken);
+        return newToken;
+      }
+
+      clearTokens();
+      return null;
+    } catch {
+      clearTokens();
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 async function request<T>(endpoint: string, config: RequestConfig = {}): Promise<T> {
   const { body, params, timeout = TIMEOUT_MS, ...rest } = config;
 
-  // Build URL with query params
   let url = `${API_BASE}${endpoint}`;
   if (params) {
     const query = Object.entries(params)
@@ -20,7 +69,6 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
     if (query) url += `?${query}`;
   }
 
-  // Build headers
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -29,7 +77,6 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // AbortController for timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -43,10 +90,18 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
 
     clearTimeout(timeoutId);
 
-    // Handle 401 - attempt token refresh
     if (response.status === 401) {
-      const refreshed = await attemptTokenRefresh(endpoint, config);
-      if (refreshed) return refreshed as T;
+      const newToken = await getNewToken();
+      if (newToken) {
+        return request<T>(endpoint, {
+          ...config,
+          headers: {
+            ...(config.headers as Record<string, string>),
+            Authorization: `Bearer ${newToken}`,
+          },
+        });
+      }
+      throw new Error('登录已过期，请重新登录');
     }
 
     const json = await response.json();
@@ -68,56 +123,6 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
   }
 }
 
-async function attemptTokenRefresh(
-  originalEndpoint: string,
-  originalConfig: RequestConfig,
-): Promise<unknown | null> {
-  try {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
-      return null;
-    }
-
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!response.ok) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
-      return null;
-    }
-
-    const json = await response.json();
-    const newToken = json.data?.accessToken;
-    if (newToken) {
-      localStorage.setItem('accessToken', newToken);
-      // Retry the original request with the new token
-      return request(originalEndpoint, {
-        ...originalConfig,
-        headers: {
-          ...originalConfig.headers,
-          Authorization: `Bearer ${newToken}`,
-        },
-      } as any);
-    }
-
-    return null;
-  } catch {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    window.location.href = '/login';
-    return null;
-  }
-}
-
-// Convenience methods
 export const api = {
   get: <T>(endpoint: string, params?: Record<string, string | number | undefined>) =>
     request<T>(endpoint, { method: 'GET', params }),

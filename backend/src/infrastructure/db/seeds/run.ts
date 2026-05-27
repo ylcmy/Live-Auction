@@ -19,7 +19,7 @@ export async function seed(): Promise<void> {
     product_id: 1, start_price: 0.00, bid_increment: 10.00, ceiling_price: 500.00, duration_seconds: 60, extend_seconds: 20, max_extensions: 10, created_at: now, updated_at: now,
   });
   await db('live_rooms').insert({
-    host_id: 1, title: '李老板的竞拍直播间', status: 'offline', stream_url: 'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4', created_at: now,
+    host_id: 1, title: '李老板的竞拍直播间', status: 'offline', stream_url: null, created_at: now,
   });
 
   console.log('Seed data inserted.');

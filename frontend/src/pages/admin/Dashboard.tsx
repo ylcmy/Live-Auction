@@ -1,15 +1,38 @@
-import { useEffect, useState } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Spin } from 'antd';
-import { ShopOutlined, PlayCircleOutlined, ShoppingCartOutlined, DollarOutlined } from '@ant-design/icons';
+import { useEffect, useState, useCallback } from 'react';
+import { Row, Col, Card, Statistic, Table, Tag, Spin, Switch, message, Button } from 'antd';
+import { ShopOutlined, PlayCircleOutlined, ShoppingCartOutlined, DollarOutlined, VideoCameraOutlined, EyeOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import type { Product, Order } from '../../types/api';
 
+interface MyRoom {
+  id: number;
+  hostId: number;
+  title: string;
+  status: 'offline' | 'live';
+  streamUrl: string | null;
+  createdAt: string;
+}
+
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState({ totalProducts: 0, activeProducts: 0, totalOrders: 0, revenue: 0 });
+  const [myRoom, setMyRoom] = useState<MyRoom | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const fetchRoom = useCallback(async () => {
+    try {
+      const res = await api.get<{ data: MyRoom }>('/rooms/my-room');
+      const data = (res as any).data ?? res;
+      setMyRoom(data as MyRoom);
+    } catch {
+      setMyRoom(null);
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -35,7 +58,23 @@ export default function Dashboard() {
       }
     }
     fetchData();
-  }, []);
+    fetchRoom();
+  }, [fetchRoom]);
+
+  const handleStatusToggle = async (checked: boolean) => {
+    if (!myRoom) return;
+    const newStatus = checked ? 'live' : 'offline';
+    setStatusLoading(true);
+    try {
+      await api.put(`/rooms/${myRoom.id}/status`, { status: newStatus });
+      setMyRoom({ ...myRoom, status: newStatus });
+      message.success(newStatus === 'live' ? '已开播' : '已下播');
+    } catch (err: any) {
+      message.error(err?.data?.message || err?.message || '状态切换失败');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   const statusMap: Record<string, { color: string; label: string }> = {
     draft: { color: 'default', label: '草稿' },
@@ -122,6 +161,64 @@ export default function Dashboard() {
               precision={0}
               valueStyle={{ color: '#722ed1' }}
             />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 直播间状态管理卡片 */}
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Col xs={24}>
+          <Card
+            title={
+              <span>
+                <VideoCameraOutlined style={{ marginRight: 8 }} />
+                我的直播间
+              </span>
+            }
+            extra={
+              myRoom && (
+                <Button
+                  type="link"
+                  icon={<EyeOutlined />}
+                  onClick={() => navigate(`/live/${myRoom.id}`)}
+                >
+                  预览
+                </Button>
+              )
+            }
+          >
+            {myRoom ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{myRoom.title}</div>
+                  <div style={{ color: '#999', fontSize: 13 }}>
+                    直播间 ID: {myRoom.id}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <Tag color={myRoom.status === 'live' ? 'success' : 'default'} style={{ fontSize: 14, padding: '4px 12px' }}>
+                    {myRoom.status === 'live' ? '🟢 在线' : '⚫ 离线'}
+                  </Tag>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: myRoom.status === 'live' ? '#52c41a' : '#999', fontWeight: 500 }}>
+                      {myRoom.status === 'live' ? '直播中' : '未开播'}
+                    </span>
+                    <Switch
+                      checked={myRoom.status === 'live'}
+                      onChange={handleStatusToggle}
+                      loading={statusLoading}
+                      checkedChildren="在线"
+                      unCheckedChildren="离线"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#999' }}>
+                <VideoCameraOutlined style={{ fontSize: 32, marginBottom: 8, display: 'block' }} />
+                <p>暂无直播间</p>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>

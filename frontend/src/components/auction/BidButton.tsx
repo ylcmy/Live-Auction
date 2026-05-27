@@ -12,7 +12,7 @@ export default function BidButton({ sessionId }: Props) {
   const currentAuction = useAuctionStore((s) => s.currentAuction);
   const [isPressed, setIsPressed] = useState(false);
 
-  if (!currentAuction) return null;
+  if (!currentAuction || !currentAuction.rule) return null;
 
   const nextBid = currentAuction.currentPrice + currentAuction.rule.bidIncrement;
   const overCeiling = currentAuction.rule.ceilingPrice && nextBid > currentAuction.rule.ceilingPrice;
