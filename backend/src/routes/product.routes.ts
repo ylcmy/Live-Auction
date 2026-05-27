@@ -21,8 +21,9 @@ export async function productRoutes(app: FastifyInstance) {
             category: { type: 'string' },
             rule: {
               type: 'object',
-              required: ['bidIncrement', 'durationSeconds', 'extendSeconds'],
+              required: ['startPrice', 'bidIncrement', 'durationSeconds', 'extendSeconds'],
               properties: {
+                startPrice: { type: 'number', minimum: 0.01 },
                 bidIncrement: { type: 'number', minimum: 0.01 },
                 ceilingPrice: { type: 'number' },
                 durationSeconds: { type: 'integer', minimum: 1 },

@@ -10,6 +10,7 @@ export const productService = {
       imageUrl?: string;
       category?: string;
       rule: {
+        startPrice: number;
         bidIncrement: number;
         ceilingPrice?: number | null;
         durationSeconds: number;
@@ -49,6 +50,7 @@ export const productService = {
 
     const ruleId = await auctionRuleRepo.create({
       product_id: productId,
+      start_price: data.rule.startPrice,
       bid_increment: data.rule.bidIncrement,
       ceiling_price: data.rule.ceilingPrice ?? null,
       duration_seconds: data.rule.durationSeconds,
@@ -109,7 +111,13 @@ export const productService = {
       });
     }
 
-    await auctionRuleRepo.update(productId, data);
+    await auctionRuleRepo.update(productId, {
+      bid_increment: data.bidIncrement,
+      ceiling_price: data.ceilingPrice,
+      duration_seconds: data.durationSeconds,
+      extend_seconds: data.extendSeconds,
+      max_extensions: data.maxExtensions,
+    });
     return { ruleId: productId };
   },
 };

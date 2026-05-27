@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useBid } from '../../hooks/useBid';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatPrice } from '../../lib/format';
-import { Button } from '../../design-system/components/ui/button';
+import { Gavel, Zap } from 'lucide-react';
 
 interface Props { sessionId: number | null; }
 
@@ -31,17 +31,27 @@ export default function BidButton({ sessionId }: Props) {
       animate={isPressed ? { scale: [1, 0.95, 1.05, 1] } : {}}
       transition={{ duration: 0.3 }}
     >
-      <Button
+      <button
         onClick={handleClick}
         disabled={disabled}
-        size="lg"
-        className="relative w-full h-auto py-4 rounded-full bg-gradient-to-r from-brand to-brand-hover hover:from-brand-hover hover:to-brand text-white font-bold text-lg shadow-[0_4px_20px_rgba(254,44,85,0.35)] hover:shadow-[0_6px_28px_rgba(254,44,85,0.5)] disabled:opacity-40 disabled:cursor-not-allowed border-0"
+        className="relative w-full h-auto py-4 rounded-2xl bg-gradient-to-r from-brand via-brand-hover to-brand text-white font-bold text-lg shadow-glow-brand hover:shadow-glow-brand-lg disabled:opacity-40 disabled:cursor-not-allowed border-0 overflow-hidden group"
       >
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-xs opacity-80">加价幅度 {formatPrice(currentAuction.rule.bidIncrement)}</span>
-          <span className="text-xl">🔥 出价 {formatPrice(nextBid)}</span>
+        {/* Shimmer effect */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+
+        <div className="relative flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            <span className="text-xs opacity-90 font-medium tracking-wide">
+              加价幅度 {formatPrice(currentAuction.rule.bidIncrement)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Gavel className="w-5 h-5" />
+            <span className="text-xl font-bold">出价 {formatPrice(nextBid)}</span>
+          </div>
         </div>
-      </Button>
+      </button>
     </motion.div>
   );
 }

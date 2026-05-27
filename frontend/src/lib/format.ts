@@ -12,3 +12,22 @@ export function formatMs(ms: number): string {
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN');
 }
+
+export function getPriceLabel(item: { status: string; currentPrice: number; rule: { startPrice: number } }): { label: string; price: number } {
+  switch (item.status) {
+    case 'pending':
+      return { label: '起拍价', price: item.rule.startPrice };
+    case 'active':
+      return item.currentPrice > item.rule.startPrice
+        ? { label: '当前最高价', price: item.currentPrice }
+        : { label: '起拍价', price: item.rule.startPrice };
+    case 'ended':
+      return { label: '落槌价', price: item.currentPrice };
+    case 'unsold':
+      return { label: '起拍价', price: item.rule.startPrice };
+    case 'cancelled':
+      return { label: '起拍价', price: item.rule.startPrice };
+    default:
+      return { label: '起拍价', price: item.rule.startPrice };
+  }
+}

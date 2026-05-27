@@ -2,31 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-/* TikTok dark theme design tokens */
+/* Light Theme - Clean & Modern */
 :root {
-  /* Brand colors */
+  /* Brand colors - vibrant red */
   --color-brand: #FE2C55;
-  --color-brand-hover: #FF4D6A;
-  --color-brand-subtle: rgba(254, 44, 85, 0.15);
+  --color-brand-hover: #FF4D6D;
+  --color-brand-subtle: rgba(254, 44, 85, 0.08);
 
   /* Accent colors */
   --color-accent: #25F4EE;
 
-  /* Surface colors */
-  --color-surface-primary: #000000;
-  --color-surface-secondary: #121212;
-  --color-surface-card: #1E1E1E;
-  --color-surface-elevated: #252525;
-  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+  /* Surface colors - light clean */
+  --color-surface-primary: #FFFFFF;
+  --color-surface-secondary: #F8F9FA;
+  --color-surface-card: #FFFFFF;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-overlay: rgba(0, 0, 0, 0.5);
 
   /* Text colors */
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #C4C4C4;
-  --color-text-tertiary: #8A8A8A;
+  --color-text-primary: #1F2937;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
 
   /* Semantic colors */
-  --color-success: #00D166;
-  --color-warning: #FFBA00;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
 
   /* Border radius */
   --radius-sm: 6px;
@@ -35,39 +36,95 @@
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-glow-brand: 0 0 12px rgba(254, 44, 85, 0.4);
-  --shadow-glow-accent: 0 0 12px rgba(37, 244, 238, 0.3);
+  --shadow-glow-brand: 0 0 20px rgba(254, 44, 85, 0.25);
+  --shadow-glow-accent: 0 0 20px rgba(37, 244, 238, 0.2);
 }
 
-/* shadcn/ui theme — TikTok dark palette */
+/* shadcn/ui theme — Light palette */
 @layer base {
   :root {
-    --background: 0 0% 0%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 12%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 348 100% 58%;
+    --background: 0 0% 100%;
+    --foreground: 220 13% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 13% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 18%;
+    --primary: 349 99% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 77%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 54%;
-    --accent: 348 100% 58%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 13% 18%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 349 99% 58%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 348 100% 58%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 100% / 0.1;
-    --input: 0 0% 100% / 0.1;
-    --ring: 348 100% 58%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 349 99% 58%;
     --radius: 0.5rem;
 
     /* Chart colors */
-    --chart-1: 348 100% 58%;
-    --chart-2: 180 90% 55%;
-    --chart-3: 140 100% 41%;
-    --chart-4: 45 100% 50%;
-    --chart-5: 260 80% 60%;
+    --chart-1: 349 99% 58%;
+    --chart-2: 174 96% 55%;
+    --chart-3: 160 84% 39%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 262 83% 58%;
+  }
+}
+
+/* Custom scrollbar for light theme */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(254, 44, 85, 0.2);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(254, 44, 85, 0.4);
+  }
+}
+
+/* Brand text effects */
+@layer utilities {
+  .text-brand-gradient {
+    background: linear-gradient(135deg, #FE2C55 0%, #FF4D6D 50%, #FE2C55 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .text-brand-shimmer {
+    background: linear-gradient(
+      90deg,
+      #FE2C55 0%,
+      #FF6B8A 25%,
+      #FF8DA3 50%,
+      #FF6B8A 75%,
+      #FE2C55 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s linear infinite;
+  }
+  
+  .border-brand-light {
+    border-color: rgba(254, 44, 85, 0.15);
+  }
+  
+  .bg-brand-subtle {
+    background-color: rgba(254, 44, 85, 0.08);
+  }
+  
+  .bg-glow-brand {
+    box-shadow: 0 0 30px rgba(254, 44, 85, 0.15);
   }
 }

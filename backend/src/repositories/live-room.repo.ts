@@ -3,7 +3,7 @@ import { db } from '../infrastructure/db/knex.js';
 export const liveRoomRepo = {
   async create(data: { host_id: number; title: string; stream_url?: string }): Promise<number> {
     const [id] = await db('live_rooms').insert({ ...data, status: 'offline' });
-    return id;
+    return Number(id);
   },
   async findById(id: number) {
     return db('live_rooms').where({ id }).first();

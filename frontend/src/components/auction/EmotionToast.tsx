@@ -2,51 +2,46 @@ import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatPrice } from '../../lib/format';
+import { Crown, Zap, Timer, Trophy, XCircle } from 'lucide-react';
 import type { EmotionEvent } from '../../types/ws';
 
 interface TypeStyle {
-  icon: string;
-  iconAnim: Record<string, number | number[]>;
-  iconAnimOpts: { repeat: number; duration: number };
+  icon: React.ReactNode;
   containerClass: string;
   textClass: string;
+  borderClass: string;
 }
 
 const typeStyles: Record<EmotionEvent['type'], TypeStyle> = {
   lead: {
-    icon: '🎉',
-    iconAnim: { scale: [1, 1.2, 1] },
-    iconAnimOpts: { repeat: 2, duration: 0.5 },
-    containerClass: 'bg-surface-elevated/95 backdrop-blur-sm border-brand/30 shadow-[0_0_20px_rgba(254,44,85,0.15)]',
+    icon: <Crown className="w-6 h-6" />,
+    containerClass: 'bg-white/95 backdrop-blur-md border-brand/40 shadow-lg',
     textClass: 'text-brand',
+    borderClass: 'border-brand/30',
   },
   overtaken: {
-    icon: '⚡',
-    iconAnim: { rotate: [0, -15, 15, -15, 0] },
-    iconAnimOpts: { repeat: 2, duration: 0.5 },
-    containerClass: 'bg-surface-elevated/95 backdrop-blur-sm border-accent/30 shadow-[0_0_20px_rgba(37,244,238,0.15)]',
-    textClass: 'text-accent',
+    icon: <Zap className="w-6 h-6" />,
+    containerClass: 'bg-white/95 backdrop-blur-md border-amber-500/40 shadow-lg',
+    textClass: 'text-amber-500',
+    borderClass: 'border-amber-500/30',
   },
   extended: {
-    icon: '⏱',
-    iconAnim: { rotate: [0, -10, 10, -10, 0] },
-    iconAnimOpts: { repeat: 2, duration: 0.5 },
-    containerClass: 'bg-surface-elevated/95 backdrop-blur-sm border-accent/30',
-    textClass: 'text-accent',
+    icon: <Timer className="w-6 h-6" />,
+    containerClass: 'bg-white/95 backdrop-blur-md border-blue-500/40 shadow-lg',
+    textClass: 'text-blue-500',
+    borderClass: 'border-blue-500/30',
   },
   ended: {
-    icon: '🏆',
-    iconAnim: { scale: [1, 1.2, 1] },
-    iconAnimOpts: { repeat: 2, duration: 0.5 },
-    containerClass: 'bg-surface-elevated/95 backdrop-blur-sm border-success/30 shadow-[0_0_20px_rgba(0,209,102,0.15)]',
-    textClass: 'text-success',
+    icon: <Trophy className="w-6 h-6" />,
+    containerClass: 'bg-white/95 backdrop-blur-md border-emerald-500/40 shadow-lg',
+    textClass: 'text-emerald-500',
+    borderClass: 'border-emerald-500/30',
   },
   cancelled: {
-    icon: '❌',
-    iconAnim: { rotate: [0, -15, 15, -15, 0] },
-    iconAnimOpts: { repeat: 2, duration: 0.5 },
-    containerClass: 'bg-surface-elevated/95 backdrop-blur-sm border-brand/30',
-    textClass: 'text-brand',
+    icon: <XCircle className="w-6 h-6" />,
+    containerClass: 'bg-white/95 backdrop-blur-md border-red-500/40 shadow-lg',
+    textClass: 'text-red-500',
+    borderClass: 'border-red-500/30',
   },
 };
 
@@ -82,15 +77,15 @@ export default function EmotionToast() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.8, y: 10 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-          className={`flex items-center gap-3 px-5 py-3 rounded-xl border ${style.containerClass}`}
+          className={`flex items-center gap-3 px-6 py-4 rounded-2xl border ${style.containerClass}`}
         >
-          <motion.span
-            animate={style.iconAnim}
-            transition={style.iconAnimOpts}
-            className="text-2xl"
+          <motion.div
+            animate={{ rotate: [0, -10, 10, -10, 0], scale: [1, 1.2, 1] }}
+            transition={{ repeat: 2, duration: 0.5 }}
+            className={style.textClass}
           >
             {style.icon}
-          </motion.span>
+          </motion.div>
           <div>
             {emotionEvent.type === 'extended' ? (
               <>

@@ -1,37 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { ProLayout, PageContainer } from '@ant-design/pro-components';
 import {
-  ShopOutlined,
-  OrderedListOutlined,
-  ExperimentOutlined,
-  LogoutOutlined,
-  UserOutlined,
-  DashboardOutlined,
-} from '@ant-design/icons';
-import { Dropdown } from 'antd';
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  Gavel,
+  LogOut,
+  User,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  X,
+} from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-const menuData = [
+interface MenuItem {
+  path: string;
+  name: string;
+  icon: React.ReactNode;
+}
+
+const menuData: MenuItem[] = [
   {
     path: '/admin',
     name: '数据看板',
-    icon: <DashboardOutlined />,
+    icon: <LayoutDashboard className="w-5 h-5" />,
   },
   {
     path: '/admin/products',
     name: '商品管理',
-    icon: <ShopOutlined />,
+    icon: <Package className="w-5 h-5" />,
   },
   {
     path: '/admin/orders',
     name: '订单管理',
-    icon: <OrderedListOutlined />,
+    icon: <ShoppingCart className="w-5 h-5" />,
   },
   {
     path: '/admin/auction',
     name: '拍卖管理',
-    icon: <ExperimentOutlined />,
+    icon: <Gavel className="w-5 h-5" />,
   },
 ];
 
@@ -40,105 +48,151 @@ export default function AdminLayout() {
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const userMenuItems = [
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: handleLogout,
-    },
-  ];
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const isActive = (path: string) => {
+    if (path === '/admin') {
+      return location.pathname === '/admin';
+    }
+    return location.pathname.startsWith(path);
+  };
 
   return (
-    <ProLayout
-      title="竞拍管理"
-      logo={
+    <div className="min-h-screen bg-surface-primary flex">
+      {/* Mobile Overlay */}
+      {mobileOpen && (
         <div
-          style={{
-            width: 28,
-            height: 28,
-            background: 'linear-gradient(135deg, #1677ff, #0958d9)',
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 700,
-          }}
-        >
-          拍
-        </div>
-      }
-      route={{ routes: menuData }}
-      location={location}
-      collapsed={collapsed}
-      onCollapse={setCollapsed}
-      menuItemRender={(item, dom) => (
-        <div onClick={() => item.path && navigate(item.path)} style={{ cursor: 'pointer' }}>
-          {dom}
-        </div>
+          className="fixed inset-0 bg-black/30 z-40 lg:hidden backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
-      avatarProps={{
-        icon: <UserOutlined />,
-        title: user?.nickname || user?.username || '商家用户',
-        size: 'small',
-        render: (_props, dom) => (
-          <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
-            {dom}
-          </Dropdown>
-        ),
-      }}
-      menuFooterRender={(props) => {
-        if (props?.collapsed) return undefined;
-        return (
-          <div
-            style={{
-              textAlign: 'center',
-              paddingBlockStart: 12,
-              color: 'rgba(255,255,255,0.45)',
-              fontSize: 12,
-            }}
-          >
-            Live Auction v1.0
-          </div>
-        );
-      }}
-      token={{
-        header: {
-          colorBgHeader: '#fff',
-          colorHeaderTitle: '#141414',
-          colorTextMenu: '#141414',
-          colorTextMenuSelected: '#1677ff',
-        },
-        sider: {
-          colorMenuBackground: '#001529',
-          colorTextMenu: 'rgba(255,255,255,0.65)',
-          colorTextMenuSelected: '#fff',
-          colorTextMenuItemHover: '#fff',
-          colorBgMenuItemHover: 'rgba(255,255,255,0.08)',
-          colorBgMenuItemSelected: '#1677ff',
-        },
-        pageContainer: {
-          paddingBlockPageContainerContent: 24,
-          paddingInlinePageContainerContent: 24,
-        },
-      }}
-    >
-      <PageContainer
-        header={{
-          title: undefined,
-          breadcrumb: {},
-        }}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-50 flex flex-col bg-surface-card border-r border-slate-200 transition-all duration-300 ${
+          collapsed ? 'w-20' : 'w-64'
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        <Outlet />
-      </PageContainer>
-    </ProLayout>
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 h-16 border-b border-slate-200 flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center flex-shrink-0 shadow-glow-brand">
+            <Gavel className="w-4 h-4 text-white" />
+          </div>
+          {!collapsed && (
+            <span className="text-text-primary font-bold text-lg tracking-tight">竞拍管理</span>
+          )}
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="ml-auto lg:hidden text-text-tertiary hover:text-text-primary"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+          {menuData.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <button
+                key={item.path}
+                onClick={() => {
+                  navigate(item.path);
+                  setMobileOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  active
+                    ? 'bg-brand text-white shadow-glow-brand'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-secondary'
+                }`}
+              >
+                <span className="flex-shrink-0">{item.icon}</span>
+                {!collapsed && <span className="truncate">{item.name}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Bottom Section */}
+        <div className="p-3 border-t border-slate-200 flex-shrink-0 space-y-2">
+          {/* Collapse Toggle - Desktop only */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-text-tertiary hover:text-text-primary hover:bg-surface-secondary transition-all text-sm"
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            {!collapsed && <span>收起侧边栏</span>}
+          </button>
+
+          {/* User Menu */}
+          <div className="relative" ref={userMenuRef}>
+            <button
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-secondary transition-all"
+            >
+              <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center flex-shrink-0">
+                <User className="w-4 h-4 text-brand" />
+              </div>
+              {!collapsed && (
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-text-primary text-sm font-medium truncate">
+                    {user?.nickname || user?.username || '商家用户'}
+                  </p>
+                  <p className="text-text-tertiary text-xs">商家</p>
+                </div>
+              )}
+            </button>
+
+            {userMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-card border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-text-secondary hover:text-brand hover:bg-brand/5 transition-colors text-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  退出登录
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header - Mobile */}
+        <header className="lg:hidden flex items-center gap-3 px-4 h-14 bg-surface-card border-b border-slate-200 flex-shrink-0">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 rounded-lg text-text-secondary hover:bg-surface-secondary transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="text-text-primary font-semibold">竞拍管理</span>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 }

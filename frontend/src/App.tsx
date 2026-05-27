@@ -16,6 +16,7 @@ import LiveRoom from './pages/live/LiveRoom';
 import AuctionManage from './pages/admin/AuctionManage';
 import HistoryList from './pages/live/HistoryList';
 import { Toaster } from './design-system/components/ui/toaster';
+import { ConfirmProvider } from './components/admin/ConfirmDialog';
 
 const antdTheme = {
   token: {
@@ -36,7 +37,8 @@ export default function App() {
       <AntApp>
         <BrowserRouter>
           <ErrorBoundary>
-            <Routes>
+            <ConfirmProvider>
+              <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route
@@ -75,6 +77,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
             <Toaster />
+            </ConfirmProvider>
           </ErrorBoundary>
         </BrowserRouter>
       </AntApp>

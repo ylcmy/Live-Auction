@@ -94,4 +94,23 @@ export function broadcastRoomStatus(roomId: number, status: string) {
   broadcastToRoom(io, String(roomId), 'room:status', { roomId, status });
 }
 
+export async function broadcastAuctionState(roomId: number, sessionId: number) {
+  if (!io) return;
+  const roomClients = io.sockets.adapter.rooms.get(String(roomId));
+  if (!roomClients) return;
+  // Snapshot the Set to avoid mutation during async iteration
+  const socketIds = [...roomClients];
+  for (const socketId of socketIds) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      const userId = (socket as any).userId as number;
+      if (userId == null) continue;
+      const state = await auctionService.buildAuctionState(sessionId, userId);
+      if (state) {
+        socket.emit('auction:state', state);
+      }
+    }
+  }
+}
+
 export { getOnlineCount, broadcastToRoom };

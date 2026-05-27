@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { auctionService } from '../services/auction.service.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
+import { broadcastAuctionState } from '../ws/index.js';
 
 export async function auctionRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authMiddleware);
@@ -21,6 +22,10 @@ export async function auctionRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { productId, roomId } = req.body as any;
       const data = await auctionService.startAuction(req.auth.userId, productId, roomId);
+      // Broadcast auction state to all connected clients in the room
+      if (data.sessionId != null) {
+        broadcastAuctionState(roomId, data.sessionId).catch(() => {});
+      }
       return reply.code(201).send({ code: 0, message: 'ok', data, timestamp: Date.now() });
     },
   );

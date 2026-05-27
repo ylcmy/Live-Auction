@@ -1,50 +1,44 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Form,
-  Input,
-  InputNumber,
-  Button,
-  Card,
-  Descriptions,
-  Tag,
-  Space,
-  Switch,
-  Spin,
-  App,
-} from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeft, Save, AlertTriangle } from 'lucide-react';
 import api from '../../services/api';
+import { toast } from '../../design-system/hooks/use-toast';
 import type { Product } from '../../types/api';
 
-const STATUS_MAP: Record<string, { color: string; label: string }> = {
-  draft: { color: 'default', label: '草稿' },
-  pending: { color: 'processing', label: '待上架' },
-  active: { color: 'success', label: '竞拍中' },
-  ended: { color: 'warning', label: '已结束' },
-  cancelled: { color: 'error', label: '已取消' },
-  unsold: { color: 'default', label: '未售出' },
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  draft: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '草稿' },
+  pending: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '待上架' },
+  active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
+  ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
+  cancelled: { bg: 'bg-rose-50', text: 'text-rose-600', dot: 'bg-rose-500', label: '已取消' },
+  unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
 };
 
 export default function ProductEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { message } = App.useApp();
-  const [form] = Form.useForm();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasCeilingPrice, setHasCeilingPrice] = useState(false);
+  const [form, setForm] = useState({
+    bidIncrement: 100,
+    ceilingPrice: undefined as number | undefined,
+    durationSeconds: 300,
+    extendSeconds: 60,
+    maxExtensions: 3,
+  });
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api.get<{ data: Product }>(`/products/${id}`)
+    api
+      .get<{ data: Product }>(`/products/${id}`)
       .then((res: any) => {
         const data = res.data ?? res;
         setProduct(data);
         if (data.rule) {
-          form.setFieldsValue({
+          setForm({
             bidIncrement: Number(data.rule.bidIncrement),
             ceilingPrice: data.rule.ceilingPrice ? Number(data.rule.ceilingPrice) : undefined,
             durationSeconds: data.rule.durationSeconds,
@@ -54,28 +48,27 @@ export default function ProductEdit() {
           setHasCeilingPrice(!!data.rule.ceilingPrice);
         }
       })
-      .catch((err: any) => {
-        message.error(err?.data?.message || '获取商品详情失败');
+      .catch(() => {
+        setProduct(null);
       })
       .finally(() => setLoading(false));
-  }, [id, form, message]);
+  }, [id]);
 
-  const handleSave = async (values: Record<string, unknown>) => {
+  const handleSave = async () => {
     if (!id) return;
     setSaving(true);
     try {
       const payload = {
-        bidIncrement: values.bidIncrement,
-        ceilingPrice: hasCeilingPrice ? values.ceilingPrice : null,
-        durationSeconds: values.durationSeconds,
-        extendSeconds: values.extendSeconds,
-        maxExtensions: values.maxExtensions,
+        bidIncrement: form.bidIncrement,
+        ceilingPrice: hasCeilingPrice ? form.ceilingPrice : null,
+        durationSeconds: form.durationSeconds,
+        extendSeconds: form.extendSeconds,
+        maxExtensions: form.maxExtensions,
       };
       await api.put(`/products/${id}/rules`, payload);
-      message.success('竞拍规则更新成功');
       navigate(`/admin/products/${id}`);
     } catch (err: any) {
-      message.error(err?.data?.message || '更新失败，请重试');
+      toast({ title: '更新失败', description: err?.data?.message || '请重试', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -83,119 +76,162 @@ export default function ProductEdit() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
-        <Spin size="large" />
+      <div className="flex items-center justify-center h-80">
+        <div className="w-10 h-10 border-2 border-brand border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!product) {
     return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <p style={{ color: '#8c8c8c', marginBottom: 16 }}>商品不存在或已被删除</p>
-        <Button onClick={() => navigate('/admin/products')}>返回商品列表</Button>
+      <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
+        <AlertTriangle className="w-16 h-16 mb-4 opacity-30" />
+        <p className="text-lg font-medium">商品不存在或已被删除</p>
+        <button
+          onClick={() => navigate('/admin/products')}
+          className="mt-4 px-5 py-2.5 bg-surface-card border border-slate-200 rounded-lg text-text-secondary hover:bg-surface-secondary transition-all"
+        >
+          返回商品列表
+        </button>
       </div>
     );
   }
 
-  const statusCfg = STATUS_MAP[product.status] ?? { color: 'default', label: product.status };
+  const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.draft;
   const canEditRules = product.status === 'draft' || product.status === 'pending';
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ marginBottom: 24 }}>
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
+    <div className="max-w-3xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <button
           onClick={() => navigate(`/admin/products/${id}`)}
-          style={{ padding: 0 }}
+          className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium"
         >
+          <ArrowLeft className="w-4 h-4" />
           返回商品详情
-        </Button>
+        </button>
+        {canEditRules && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-medium transition-all shadow-glow-brand disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? '保存中...' : '保存修改'}
+          </button>
+        )}
       </div>
 
-      <Card title="商品信息" style={{ marginBottom: 16 }}>
-        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-          <Descriptions.Item label="商品名称">{product.name}</Descriptions.Item>
-          <Descriptions.Item label="状态">
-            <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="分类">{product.category ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="描述">{product.description || '-'}</Descriptions.Item>
-        </Descriptions>
-      </Card>
+      <h1 className="text-2xl font-bold text-text-primary">编辑竞拍规则</h1>
 
-      <Card title="竞拍规则">
-        {!canEditRules && (
-          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fffbe6', borderRadius: 6, fontSize: 13, color: '#ad6800' }}>
-            当前商品状态为「{statusCfg.label}」，竞拍规则不可修改
+      {/* Product Info Summary */}
+      <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+            {status.label}
+          </span>
+          <span className="text-text-primary font-semibold">{product.name}</span>
+          <span className="text-text-tertiary text-xs font-mono ml-auto">ID: {product.id}</span>
+        </div>
+      </div>
+
+      {!canEditRules && (
+        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <span>
+            当前商品状态为「{status.label}」，竞拍规则不可修改
+          </span>
+        </div>
+      )}
+
+      {/* Rules Form */}
+      <div className={`bg-surface-card border border-slate-200 rounded-xl p-6 space-y-5 shadow-sm ${!canEditRules ? 'opacity-60 pointer-events-none' : ''}`}>
+        <h2 className="text-lg font-bold text-text-primary">竞拍规则</h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              加价幅度 (¥) <span className="text-brand">*</span>
+            </label>
+            <input
+              type="number"
+              value={form.bidIncrement}
+              onChange={(e) => setForm((prev) => ({ ...prev, bidIncrement: Number(e.target.value) }))}
+              min={1}
+              className="w-full bg-surface-secondary border border-slate-200 rounded-lg px-4 py-2.5 text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+            />
           </div>
-        )}
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSave}
-          disabled={!canEditRules}
-        >
-          <Space size="large" wrap>
-            <Form.Item
-              name="bidIncrement"
-              label="加价幅度 (¥)"
-              rules={[{ required: true, message: '请输入加价幅度' }]}
-            >
-              <InputNumber min={1} max={99999999} style={{ width: 160 }} />
-            </Form.Item>
 
-            <Form.Item label="封顶价">
-              <Space>
-                <Switch checked={hasCeilingPrice} onChange={setHasCeilingPrice} disabled={!canEditRules} />
-                {hasCeilingPrice && (
-                  <Form.Item name="ceilingPrice" noStyle>
-                    <InputNumber min={1} max={99999999} placeholder="封顶价格" style={{ width: 160 }} />
-                  </Form.Item>
-                )}
-              </Space>
-            </Form.Item>
-          </Space>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">封顶价 (¥)</label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setHasCeilingPrice(!hasCeilingPrice);
+                  if (hasCeilingPrice) setForm((prev) => ({ ...prev, ceilingPrice: undefined }));
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors ${hasCeilingPrice ? 'bg-brand' : 'bg-slate-300'}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${hasCeilingPrice ? 'translate-x-5' : ''}`}
+                />
+              </button>
+              {hasCeilingPrice && (
+                <input
+                  type="number"
+                  value={form.ceilingPrice ?? ''}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, ceilingPrice: e.target.value ? Number(e.target.value) : undefined }))
+                  }
+                  placeholder="封顶价格"
+                  min={1}
+                  className="flex-1 bg-surface-secondary border border-slate-200 rounded-lg px-4 py-2.5 text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+                />
+              )}
+            </div>
+          </div>
 
-          <Space size="large" wrap>
-            <Form.Item
-              name="durationSeconds"
-              label="竞拍时长 (秒)"
-              rules={[{ required: true, message: '请输入竞拍时长' }]}
-            >
-              <InputNumber min={10} max={3600} style={{ width: 160 }} />
-            </Form.Item>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              竞拍时长 (秒) <span className="text-brand">*</span>
+            </label>
+            <input
+              type="number"
+              value={form.durationSeconds}
+              onChange={(e) => setForm((prev) => ({ ...prev, durationSeconds: Number(e.target.value) }))}
+              min={10}
+              max={3600}
+              className="w-full bg-surface-secondary border border-slate-200 rounded-lg px-4 py-2.5 text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+            />
+          </div>
 
-            <Form.Item
-              name="extendSeconds"
-              label="延时秒数"
-              rules={[{ required: true, message: '请输入延时秒数' }]}
-            >
-              <InputNumber min={5} max={300} style={{ width: 160 }} />
-            </Form.Item>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">延时秒数</label>
+            <input
+              type="number"
+              value={form.extendSeconds}
+              onChange={(e) => setForm((prev) => ({ ...prev, extendSeconds: Number(e.target.value) }))}
+              min={5}
+              max={300}
+              className="w-full bg-surface-secondary border border-slate-200 rounded-lg px-4 py-2.5 text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+            />
+          </div>
 
-            <Form.Item
-              name="maxExtensions"
-              label="最大延时次数"
-              rules={[{ required: true, message: '请输入最大延时次数' }]}
-            >
-              <InputNumber min={1} max={10} style={{ width: 160 }} />
-            </Form.Item>
-          </Space>
-
-          {canEditRules && (
-            <Form.Item>
-              <Space>
-                <Button type="primary" htmlType="submit" loading={saving}>
-                  保存修改
-                </Button>
-                <Button onClick={() => navigate(`/admin/products/${id}`)}>取消</Button>
-              </Space>
-            </Form.Item>
-          )}
-        </Form>
-      </Card>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">最大延时次数</label>
+            <input
+              type="number"
+              value={form.maxExtensions}
+              onChange={(e) => setForm((prev) => ({ ...prev, maxExtensions: Number(e.target.value) }))}
+              min={1}
+              max={10}
+              className="w-full bg-surface-secondary border border-slate-200 rounded-lg px-4 py-2.5 text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

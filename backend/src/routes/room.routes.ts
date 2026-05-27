@@ -81,22 +81,18 @@ export async function roomRoutes(app: FastifyInstance) {
     const room = await liveRoomRepo.findById(roomId);
     if (!room) return reply.code(404).send({ code: 40400, message: '直播间不存在', data: null, timestamp: Date.now() });
 
-    const sessions = await db('auction_sessions as s')
-      .leftJoin('products as p', 's.product_id', 'p.id')
-      .leftJoin('auction_rules as r', 's.rule_id', 'r.id')
-      .where('s.room_id', roomId)
-      .orderBy('s.created_at', 'desc')
+    const allProducts = await db('products as p')
+      .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
+      .where('p.merchant_id', room.host_id)
+      .whereIn('p.status', ['draft', 'pending', 'active', 'ended'])
+      .orderBy('p.created_at', 'desc')
       .select(
-        's.id as sessionId',
-        's.status',
-        's.current_price as currentPrice',
-        's.started_at as startedAt',
-        's.ended_at as endedAt',
-        's.extension_count as extensionCount',
         'p.id as productId',
         'p.name as productName',
         'p.description as productDescription',
         'p.image_url as productImageUrl',
+        'p.status as productStatus',
+        'r.id as ruleId',
         'r.start_price as startPrice',
         'r.bid_increment as bidIncrement',
         'r.ceiling_price as ceilingPrice',
@@ -105,55 +101,77 @@ export async function roomRoutes(app: FastifyInstance) {
         'r.max_extensions as maxExtensions',
       );
 
-    const auctionList = sessions.map((row: any) => ({
-      sessionId: row.sessionId,
-      status: row.status,
-      currentPrice: row.currentPrice,
-      startedAt: row.startedAt,
-      endedAt: row.endedAt,
-      extensionCount: row.extensionCount,
-      product: row.productId ? {
-        id: row.productId,
-        name: row.productName,
-        description: row.productDescription,
-        imageUrl: row.productImageUrl,
-      } : null,
-      rule: {
-        startPrice: row.startPrice,
-        bidIncrement: row.bidIncrement,
-        ceilingPrice: row.ceilingPrice,
-        durationSeconds: row.durationSeconds,
-        extendSeconds: row.extendSeconds,
-        maxExtensions: row.maxExtensions,
-      },
-    }));
+    const existingSessions = await db('auction_sessions as s')
+      .where('s.room_id', roomId)
+      .select(
+        's.id as sessionId',
+        's.product_id as productId',
+        's.status',
+        's.current_price as currentPrice',
+        's.started_at as startedAt',
+        's.ended_at as endedAt',
+        's.extension_count as extensionCount',
+      );
 
-    const activeAuction = sessions.find((s: any) => ['pending', 'active'].includes(s.status));
+    const sessionMap = new Map();
+    existingSessions.forEach((s: any) => sessionMap.set(s.productId, s));
+
+    const auctionList = allProducts.map((row: any) => {
+      const sess = sessionMap.get(row.productId);
+      return {
+        sessionId: sess?.sessionId ?? null,
+        status: sess?.status ?? 'pending',
+        currentPrice: sess?.currentPrice ?? (row.startPrice ?? 0),
+        startedAt: sess?.startedAt ?? null,
+        endedAt: sess?.endedAt ?? null,
+        extensionCount: sess?.extensionCount ?? 0,
+        product: {
+          id: row.productId,
+          name: row.productName,
+          description: row.productDescription,
+          imageUrl: row.productImageUrl,
+        },
+        rule: {
+          startPrice: row.startPrice ?? 0,
+          bidIncrement: row.bidIncrement ?? 10,
+          ceilingPrice: row.ceilingPrice ?? null,
+          durationSeconds: row.durationSeconds ?? 300,
+          extendSeconds: row.extendSeconds ?? 30,
+          maxExtensions: row.maxExtensions ?? 3,
+        },
+      };
+    });
+
+    const activeAuction = existingSessions.find((s: any) => ['pending', 'active'].includes(s.status));
     let currentAuction = null;
     if (activeAuction) {
-      currentAuction = {
-        sessionId: activeAuction.sessionId,
-        status: activeAuction.status,
-        product: activeAuction.productId ? {
-          id: activeAuction.productId,
-          name: activeAuction.productName,
-          description: activeAuction.productDescription,
-          imageUrl: activeAuction.productImageUrl,
-        } : null,
-        rule: {
-          startPrice: activeAuction.startPrice,
-          bidIncrement: activeAuction.bidIncrement,
-          ceilingPrice: activeAuction.ceilingPrice,
-          durationSeconds: activeAuction.durationSeconds,
-          extendSeconds: activeAuction.extendSeconds,
-          maxExtensions: activeAuction.maxExtensions,
-        },
-        currentPrice: activeAuction.currentPrice,
-        leaderboard: [],
-        startedAt: activeAuction.startedAt,
-        participantCount: 0,
-        extensionCount: activeAuction.extensionCount,
-      };
+      const productData = allProducts.find((p: any) => p.productId === activeAuction.product_id);
+      const ruleData = productData;
+      if (productData) {
+        currentAuction = {
+          sessionId: activeAuction.sessionId,
+          status: activeAuction.status,
+          product: {
+            id: productData.productId,
+            name: productData.productName,
+            description: productData.productDescription,
+            imageUrl: productData.productImageUrl,
+          },
+          rule: {
+            startPrice: ruleData?.startPrice ?? 0,
+            bidIncrement: ruleData?.bidIncrement ?? 10,
+            ceilingPrice: ruleData?.ceilingPrice ?? null,
+            durationSeconds: ruleData?.durationSeconds ?? 300,
+            extendSeconds: ruleData?.extendSeconds ?? 30,
+            maxExtensions: ruleData?.maxExtensions ?? 3,
+          },
+          currentPrice: activeAuction.currentPrice,
+          leaderboard: [],
+          startedAt: activeAuction.startedAt,
+          participantCount: 0,
+          extensionCount: activeAuction.extensionCount,
+        };
+      }
     }
 
     return reply.send({ code: 0, message: 'ok', data: { ...room, currentAuction, auctions: auctionList }, timestamp: Date.now() });

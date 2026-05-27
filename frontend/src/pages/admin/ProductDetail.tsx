@@ -1,150 +1,263 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Card, Descriptions, Tag, Button, Spin, App, Image } from 'antd';
-import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Package,
+  Edit,
+  Play,
+  Trash2,
+  Clock,
+  DollarSign,
+  Tag,
+  FileText,
+} from 'lucide-react';
 import api from '../../services/api';
 import type { Product } from '../../types/api';
 
-const STATUS_MAP: Record<string, { color: string; label: string }> = {
-  draft: { color: 'default', label: '草稿' },
-  pending: { color: 'processing', label: '待上架' },
-  active: { color: 'success', label: '竞拍中' },
-  ended: { color: 'warning', label: '已结束' },
-  cancelled: { color: 'error', label: '已取消' },
-  unsold: { color: 'default', label: '未售出' },
-};
-
-const CATEGORY_MAP: Record<string, string> = {
-  digital: '数码产品',
-  wine: '酒水',
-  luxury: '奢侈品',
-  art: '艺术品',
-  collectibles: '收藏品',
-  other: '其他',
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  draft: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '草稿' },
+  pending: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '待上架' },
+  active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
+  ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
+  cancelled: { bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', label: '已取消' },
+  unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
 };
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { message } = App.useApp();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const fetchProduct = useCallback(async () => {
+    if (!id) return;
+    try {
+      const response = (await api.get<{ data: Product }>(`/products/${id}`)) as any;
+      setProduct(response.data as Product);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
+    fetchProduct();
+  }, [fetchProduct]);
+
+  const handleDelete = async () => {
     if (!id) return;
-    setLoading(true);
-    api.get<{ data: Product }>(`/products/${id}`)
-      .then((res: any) => {
-        const data = res.data ?? res;
-        setProduct(data);
-      })
-      .catch((err: any) => {
-        message.error(err?.data?.message || '获取商品详情失败');
-      })
-      .finally(() => setLoading(false));
-  }, [id, message]);
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/products/${id}`);
+      navigate('/admin/products');
+    } catch {
+      // ignore
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
-        <Spin size="large" />
+      <div className="flex items-center justify-center h-80">
+        <div className="w-10 h-10 border-2 border-brand border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!product) {
     return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <p style={{ color: '#8c8c8c', marginBottom: 16 }}>商品不存在或已被删除</p>
-        <Button onClick={() => navigate('/admin/products')}>返回商品列表</Button>
+      <div className="flex flex-col items-center justify-center py-20 text-text-tertiary">
+        <Package className="w-16 h-16 mb-4 opacity-30" />
+        <p className="text-lg font-medium">商品不存在</p>
+        <button
+          onClick={() => navigate('/admin/products')}
+          className="mt-4 text-brand text-sm font-medium hover:underline"
+        >
+          返回商品列表
+        </button>
       </div>
     );
   }
 
-  const statusCfg = STATUS_MAP[product.status] ?? { color: 'default', label: product.status };
-  const rule = product.rule;
+  const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.draft;
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ marginBottom: 24 }}>
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/admin/products')}
-          style={{ padding: 0 }}
-        >
-          返回商品列表
-        </Button>
+    <div className="space-y-6">
+      {/* Breadcrumb */}
+      <button
+        onClick={() => navigate('/admin/products')}
+        className="inline-flex items-center gap-2 text-text-tertiary hover:text-text-primary transition-colors text-sm"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        返回商品列表
+      </button>
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${status.bg} ${status.text}`}>
+            <span className={`w-2 h-2 rounded-full ${status.dot}`} />
+            {status.label}
+          </span>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">{product.name}</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/admin/products/${id}/edit`)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface-card border border-slate-200 rounded-lg text-text-secondary hover:bg-surface-secondary hover:text-text-primary transition-all text-sm font-medium"
+          >
+            <Edit className="w-4 h-4" />
+            编辑
+          </button>
+          {product.status === 'pending' && (
+            <button
+              onClick={() => navigate(`/admin/products/${id}/edit`)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-medium transition-all shadow-glow-brand hover:shadow-lg active:scale-[0.98] text-sm"
+            >
+              <Play className="w-4 h-4" />
+              开始竞拍
+            </button>
+          )}
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface-card border border-red-200 text-red-600 hover:bg-red-50 rounded-lg transition-all text-sm font-medium"
+          >
+            <Trash2 className="w-4 h-4" />
+            删除
+          </button>
+        </div>
       </div>
 
-      <Card
-        title="商品详情"
-        extra={
-          <Button
-            type="primary"
-            icon={<EditOutlined />}
-            onClick={() => navigate(`/admin/products/${id}/edit`)}
-          >
-            编辑
-          </Button>
-        }
-      >
-        <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-          <Descriptions.Item label="商品ID">{product.id}</Descriptions.Item>
-          <Descriptions.Item label="商品名称">{product.name}</Descriptions.Item>
-          <Descriptions.Item label="分类">
-            {CATEGORY_MAP[product.category ?? ''] ?? product.category ?? '-'}
-          </Descriptions.Item>
-          <Descriptions.Item label="状态">
-            <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="描述" span={2}>
-            {product.description || '-'}
-          </Descriptions.Item>
-          <Descriptions.Item label="商品图片" span={2}>
-            {product.imageUrl ? (
-              <Image
-                src={product.imageUrl}
-                alt={product.name}
-                width={120}
-                height={120}
-                style={{ borderRadius: 8, objectFit: 'cover' }}
-                fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjYwIiB5PSI2MCIgZm9udC1zaXplPSIyNCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZpbGw9IiNiYmIiPuKciDwvdGV4dD48L3N2Zz4="
-              />
-            ) : (
-              <div
-                style={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: 8,
-                  background: '#f0f0f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#bbb',
-                  fontSize: 32,
-                }}
-              >
-                📦
-              </div>
-            )}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Left - Image */}
+        <div className="lg:col-span-2">
+          <div className="bg-surface-card border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="aspect-square bg-surface-secondary flex items-center justify-center border-b border-slate-200">
+              {product.imageUrl ? (
+                <img
+                  src={product.imageUrl}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <Package className="w-16 h-16 text-text-tertiary opacity-30" />
+              )}
+            </div>
+            <div className="p-4">
+              <p className="text-text-tertiary text-xs">商品图片</p>
+            </div>
+          </div>
+        </div>
 
-      {rule && (
-        <Card title="竞拍规则" size="small" style={{ marginTop: 16 }}>
-          <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-            <Descriptions.Item label="起拍价">¥{Number(rule.startPrice).toLocaleString()}</Descriptions.Item>
-            <Descriptions.Item label="加价幅度">¥{Number(rule.bidIncrement).toLocaleString()}</Descriptions.Item>
-            <Descriptions.Item label="封顶价">
-              {rule.ceilingPrice ? `¥${Number(rule.ceilingPrice).toLocaleString()}` : '无封顶'}
-            </Descriptions.Item>
-            <Descriptions.Item label="竞拍时长">{rule.durationSeconds}秒</Descriptions.Item>
-            <Descriptions.Item label="延时秒数">{rule.extendSeconds}秒</Descriptions.Item>
-            <Descriptions.Item label="最大延时次数">{rule.maxExtensions}次</Descriptions.Item>
-          </Descriptions>
-        </Card>
+        {/* Right - Info */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Basic Info */}
+          <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Tag className="w-4 h-4 text-brand" />
+              <h2 className="text-base font-bold text-text-primary">基本信息</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                <p className="text-text-tertiary text-xs">商品名称</p>
+                <p className="text-text-primary text-sm font-medium mt-1">{product.name}</p>
+              </div>
+              <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                <p className="text-text-tertiary text-xs">商品分类</p>
+                <p className="text-text-primary text-sm font-medium mt-1">{product.category ?? '未分类'}</p>
+              </div>
+              <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                <p className="text-text-tertiary text-xs">商品状态</p>
+                <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+                  <span className={`w-1 h-1 rounded-full ${status.dot}`} />
+                  {status.label}
+                </span>
+              </div>
+              <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                <p className="text-text-tertiary text-xs">商品ID</p>
+                <p className="text-text-primary text-sm font-medium mt-1 font-mono">{product.id}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Auction Rules */}
+          {product.rule && (
+            <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <DollarSign className="w-4 h-4 text-brand" />
+                <h2 className="text-base font-bold text-text-primary">竞拍规则</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                  <p className="text-text-tertiary text-xs">起拍价</p>
+                  <p className="text-brand font-bold text-lg mt-1">¥{Number(product.rule.startPrice).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                  <p className="text-text-tertiary text-xs">加价幅度</p>
+                  <p className="text-text-primary font-bold text-lg mt-1">¥{Number(product.rule.bidIncrement).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                  <p className="text-text-tertiary text-xs">封顶价</p>
+                  <p className="text-text-primary font-bold text-lg mt-1">
+                    {product.rule.ceilingPrice ? `¥${Number(product.rule.ceilingPrice).toLocaleString()}` : '无'}
+                  </p>
+                </div>
+                <div className="col-span-2 p-3 bg-surface-secondary rounded-lg border border-slate-100">
+                  <p className="text-text-tertiary text-xs">竞拍时长</p>
+                  <p className="text-text-primary font-bold text-lg mt-1 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-text-tertiary" />
+                    {product.rule.durationSeconds} 秒
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          {product.description && (
+            <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-4 h-4 text-brand" />
+                <h2 className="text-base font-bold text-text-primary">商品描述</h2>
+              </div>
+              <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap">{product.description}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Delete Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)} />
+          <div className="relative bg-surface-card border border-slate-200 rounded-xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-bold text-text-primary mb-2">确认删除</h3>
+            <p className="text-text-secondary text-sm mb-6">
+              确定要删除商品 <span className="text-text-primary font-medium">{product.name}</span> 吗？此操作不可撤销。
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 bg-surface-secondary hover:bg-slate-100 border border-slate-200 rounded-lg text-text-secondary text-sm font-medium transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+              >
+                {deleteLoading ? '删除中...' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
