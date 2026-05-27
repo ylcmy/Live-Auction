@@ -1,5 +1,8 @@
 import { productRepo } from '../repositories/product.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
+import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
+import { db } from '../infrastructure/db/knex.js';
+import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { AppError } from '../lib/app-error.js';
 
 export const productService = {
@@ -53,9 +56,6 @@ export const productService = {
       max_extensions: data.rule.maxExtensions,
     });
 
-    // Update product status to pending
-    await productRepo.updateStatus(productId, 'pending');
-
     return { productId, ruleId, status: 'pending' };
   },
 
@@ -93,7 +93,7 @@ export const productService = {
     if (product.merchant_id !== merchantId) {
       throw new AppError('无权限', 403);
     }
-    if (product.status !== 'draft' && product.status !== 'pending') {
+    if (product.status !== 'pending' && product.status !== 'listed') {
       throw new AppError('仅可修改未开始竞拍的商品规则', 409);
     }
 
@@ -109,5 +109,49 @@ export const productService = {
       max_extensions: data.maxExtensions,
     });
     return { ruleId: productId };
+  },
+
+  async updateStatus(merchantId: number, productId: number, newStatus: string) {
+    const product = await productRepo.findById(productId);
+    if (!product) throw new AppError('商品不存在', 404);
+    if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
+
+    const VALID_TRANSITIONS: Record<string, string[]> = {
+      pending: ['listed', 'deleted'],
+      listed: ['pending', 'active', 'deleted'],
+      active: ['listed', 'ended', 'unsold', 'deleted'],
+      ended: ['deleted'],
+      unsold: ['listed', 'deleted'],
+      deleted: [],
+    };
+
+    const allowed = VALID_TRANSITIONS[product.status] ?? [];
+    if (!allowed.includes(newStatus)) {
+      throw new AppError(`商品状态不可从 ${product.status} 变为 ${newStatus}`, 409);
+    }
+
+    await productRepo.updateStatus(productId, newStatus);
+
+    if (newStatus === 'listed' && product.status === 'active') {
+      const sessions = await db('auction_sessions')
+        .where({ product_id: productId })
+        .whereIn('status', ['active', 'pending']);
+      for (const session of sessions) {
+        await auctionSessionRepo.updateStatus(session.id, 'cancelled', { ended_at: db.fn.now() });
+        await cleanupAuctionCache(session.id, session.room_id);
+      }
+    }
+
+    if (newStatus === 'deleted') {
+      const sessions = await db('auction_sessions')
+        .where({ product_id: productId })
+        .whereIn('status', ['active', 'pending']);
+      for (const session of sessions) {
+        await auctionSessionRepo.updateStatus(session.id, 'cancelled', { ended_at: db.fn.now() });
+        await cleanupAuctionCache(session.id, session.room_id);
+      }
+    }
+
+    return { productId, status: newStatus };
   },
 };

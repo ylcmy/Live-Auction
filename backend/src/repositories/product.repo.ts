@@ -8,7 +8,7 @@ export const productRepo = {
     image_url?: string;
     category?: string;
   }): Promise<number> {
-    const [id] = await db('products').insert({ ...data, status: 'draft' });
+    const [id] = await db('products').insert({ ...data, status: 'pending' });
     return id;
   },
 
@@ -28,7 +28,11 @@ export const productRepo = {
 
     let countQuery = db('products');
     if (merchant_id) countQuery = countQuery.where({ merchant_id });
-    if (status) countQuery = countQuery.where({ status });
+    if (status) {
+      countQuery = countQuery.where({ status });
+    } else {
+      countQuery = countQuery.whereNot({ status: 'deleted' });
+    }
     const total = await countQuery.count('* as count').first();
 
     let rowsQuery = db('products')
@@ -45,7 +49,11 @@ export const productRepo = {
       );
 
     if (merchant_id) rowsQuery = rowsQuery.where({ 'products.merchant_id': merchant_id });
-    if (status) rowsQuery = rowsQuery.where({ 'products.status': status });
+    if (status) {
+      rowsQuery = rowsQuery.where({ 'products.status': status });
+    } else {
+      rowsQuery = rowsQuery.whereNot({ 'products.status': 'deleted' });
+    }
 
     const rows = await rowsQuery
       .orderBy('products.created_at', 'desc')

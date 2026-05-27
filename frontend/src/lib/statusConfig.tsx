@@ -35,12 +35,12 @@ export const AUCTION_STATUS_CONFIG: Record<AuctionStatus, { label: string; class
 };
 
 export const PRODUCT_STATUS_STYLES: Record<ProductStatus, { bg: string; text: string; dot: string; label: string }> = {
-  draft: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '草稿' },
-  pending: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '待上架' },
+  pending: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '等待上架' },
+  listed: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '上架待竞拍' },
   active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
   ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
-  cancelled: { bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', label: '已取消' },
-  unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
+  unsold: { bg: 'bg-orange-50', text: 'text-orange-600', dot: 'bg-orange-500', label: '流拍' },
+  deleted: { bg: 'bg-slate-100', text: 'text-slate-400', dot: 'bg-slate-300', label: '已删除' },
 };
 
 export const ORDER_STATUS_CONFIG: Record<OrderStatus, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; icon: React.ReactNode; className: string }> = {

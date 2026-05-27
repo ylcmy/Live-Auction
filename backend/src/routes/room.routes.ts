@@ -85,7 +85,7 @@ export async function roomRoutes(app: FastifyInstance) {
     const allProducts = await db('products as p')
       .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
       .where('p.merchant_id', room.host_id)
-      .whereIn('p.status', ['draft', 'pending', 'active', 'ended'])
+      .whereIn('p.status', ['pending', 'listed', 'active', 'ended'])
       .orderBy('p.created_at', 'desc')
       .select(
         'p.id as productId',

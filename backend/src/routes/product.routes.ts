@@ -93,4 +93,28 @@ export async function productRoutes(app: FastifyInstance) {
       return replySuccess(reply, data);
     },
   );
+
+  app.put(
+    '/api/products/:id/status',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['status'],
+          properties: {
+            status: { type: 'string', enum: ['pending', 'listed', 'active', 'ended', 'unsold', 'deleted'] },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const body = req.body as any;
+      const data = await productService.updateStatus(
+        req.auth.userId,
+        Number((req.params as any).id),
+        body.status,
+      );
+      return replySuccess(reply, data);
+    },
+  );
 }

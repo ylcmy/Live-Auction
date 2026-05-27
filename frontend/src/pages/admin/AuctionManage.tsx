@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   PlayCircle,
   CheckCircle2,
@@ -30,6 +30,7 @@ const ROOM_STATUS: Record<string, { bg: string; text: string; dot: string; label
 
 export default function AuctionManage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [rooms, setRooms] = useState<LiveRoom[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
@@ -46,10 +47,22 @@ export default function AuctionManage() {
       try {
         const [roomsRes, productsRes] = await Promise.all([
           api.get<{ data: { items: LiveRoom[] } }>('/rooms'),
-          api.get<{ data: { items: Product[] } }>('/products', { status: 'pending' }),
+          api.get<{ data: { items: Product[] } }>('/products', { status: 'listed' }),
         ]);
-        setRooms((roomsRes as any)?.data?.items ?? []);
-        setProducts((productsRes as any)?.data?.items ?? []);
+        const roomItems = (roomsRes as any)?.data?.items ?? [];
+        const productItems = (productsRes as any)?.data?.items ?? [];
+        setRooms(roomItems);
+        setProducts(productItems);
+        const productIdFromUrl = searchParams.get('productId');
+        if (productIdFromUrl) {
+          const pid = Number(productIdFromUrl);
+          if (productItems.some((p: Product) => p.id === pid)) {
+            setSelectedProduct(pid);
+          }
+        }
+        if (roomItems.length === 1) {
+          setSelectedRoom(roomItems[0].id);
+        }
       } catch {
         // ignore
       } finally {
@@ -238,7 +251,7 @@ export default function AuctionManage() {
                 {products.length === 0 ? (
                   <div className="px-4 py-6 text-center text-text-tertiary text-sm">
                     <Package className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                    暂无待上架商品
+                    暂无上架待竞拍的商品
                   </div>
                 ) : (
                   <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
@@ -271,7 +284,7 @@ export default function AuctionManage() {
               </div>
             )}
           </div>
-          <p className="text-text-tertiary text-xs mt-2">仅显示状态为"待上架"的商品</p>
+          <p className="text-text-tertiary text-xs mt-2">仅显示状态为"上架待竞拍"的商品</p>
         </div>
       </div>
 

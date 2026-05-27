@@ -34,12 +34,12 @@ export interface Product {
 }
 
 export type ProductStatus =
-  | 'draft'
   | 'pending'
+  | 'listed'
   | 'active'
   | 'ended'
-  | 'cancelled'
-  | 'unsold';
+  | 'unsold'
+  | 'deleted';
 
 export interface AuctionRule {
   id: number;

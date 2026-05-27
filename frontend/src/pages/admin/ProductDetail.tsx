@@ -73,7 +73,7 @@ export default function ProductDetail() {
     );
   }
 
-  const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.draft;
+  const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.pending;
 
   return (
     <div className="space-y-6">
@@ -103,9 +103,9 @@ export default function ProductDetail() {
             <Edit className="w-4 h-4" />
             编辑
           </button>
-          {product.status === 'pending' && (
+          {product.status === 'listed' && (
             <button
-              onClick={() => navigate(`/admin/products/${id}/edit`)}
+              onClick={() => navigate(`/admin/auction?productId=${id}`)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-medium transition-all shadow-glow-brand hover:shadow-lg active:scale-[0.98] text-sm"
             >
               <Play className="w-4 h-4" />

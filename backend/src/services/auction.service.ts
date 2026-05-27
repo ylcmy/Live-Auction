@@ -4,6 +4,7 @@ import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
 import { liveRoomRepo } from '../repositories/live-room.repo.js';
 import { orderRepo } from '../repositories/order.repo.js';
 import { cache } from '../infrastructure/cache/redis.js';
+import { db } from '../infrastructure/db/knex.js';
 import { bidService } from './bid.service.js';
 import { logger } from '../middleware/logger.js';
 import { AppError } from '../lib/app-error.js';
@@ -37,7 +38,7 @@ export const auctionService = {
     const product = await productRepo.findById(productId);
     if (!product) throw new AppError('商品不存在', 404);
     if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
-    if (product.status !== 'pending' && product.status !== 'draft') throw new AppError('该商品当前状态不可发起竞拍', 409);
+    if (product.status !== 'listed') throw new AppError('该商品当前状态不可发起竞拍', 409);
 
     const room = await liveRoomRepo.findById(roomId);
     if (!room) throw new AppError('直播间不存在', 404);
@@ -247,7 +248,7 @@ export const auctionService = {
       // Update statuses
       await auctionSessionRepo.updateStatus(sessionId, newStatus, {
         winner_id: winner?.userId,
-        ended_at: new Date().toISOString(),
+        ended_at: db.fn.now(),
       });
       await productRepo.updateStatus(session.product_id, newStatus === 'ended' ? 'ended' : 'unsold');
       await liveRoomRepo.updateStatus(session.room_id, 'offline');
@@ -280,8 +281,8 @@ export const auctionService = {
       throw new AppError('该竞拍已结束', 409);
     }
 
-    await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: new Date().toISOString() });
-    await productRepo.updateStatus(session.product_id, 'cancelled');
+    await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: db.fn.now() });
+    await productRepo.updateStatus(session.product_id, 'listed');
     await liveRoomRepo.updateStatus(session.room_id, 'offline');
 
     clearAuctionTimer(sessionId);

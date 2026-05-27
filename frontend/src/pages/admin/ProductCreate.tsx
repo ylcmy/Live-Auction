@@ -9,6 +9,7 @@ import {
   Tag,
 } from 'lucide-react';
 import api from '../../services/api';
+import { toast } from '../../design-system/hooks/use-toast';
 
 interface FormData {
   name: string;
@@ -76,8 +77,9 @@ export default function ProductCreate() {
         },
       };
       const response = (await api.post('/products', payload)) as any;
-      const id = response?.data?.id ?? response?.id;
-      navigate(`/admin/products/${id}`);
+      void response;
+      toast({ title: '商品已创建，请上架后开始竞拍', variant: 'success' });
+      navigate('/admin/products');
     } catch {
       // ignore
     } finally {

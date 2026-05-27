@@ -97,8 +97,8 @@ export default function ProductEdit() {
     );
   }
 
-  const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.draft;
-  const canEditRules = product.status === 'draft' || product.status === 'pending';
+  const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.pending;
+  const canEditRules = product.status === 'pending' || product.status === 'listed';
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">

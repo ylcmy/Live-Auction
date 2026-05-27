@@ -243,7 +243,7 @@ export default function Dashboard() {
           </div>
           <div className="divide-y divide-slate-100">
             {products.slice(0, 5).map((product) => {
-              const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.draft;
+              const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.pending;
               return (
                 <div
                   key={product.id}
