@@ -13,6 +13,7 @@ import ProductEdit from './pages/admin/ProductEdit';
 import ProductList from './pages/admin/ProductList';
 import OrderList from './pages/admin/OrderList';
 import LiveRoom from './pages/live/LiveRoom';
+import LiveRoomList from './pages/live/LiveRoomList';
 import AuctionManage from './pages/admin/AuctionManage';
 import HistoryList from './pages/live/HistoryList';
 import { Toaster } from './design-system/components/ui/toaster';
@@ -62,6 +63,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <HistoryList />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/live"
+                element={
+                  <ProtectedRoute>
+                    <LiveRoomList />
                   </ProtectedRoute>
                 }
               />

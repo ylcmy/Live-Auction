@@ -77,3 +77,11 @@ export interface EmotionEvent {
   type: 'lead' | 'overtaken' | 'extended' | 'ended' | 'cancelled';
   extendSeconds?: number;
 }
+
+export interface ChatMessage {
+  userId: number;
+  userNickname: string;
+  avatarUrl: string | null;
+  content: string;
+  timestamp: string;
+}

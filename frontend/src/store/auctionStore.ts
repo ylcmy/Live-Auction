@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AuctionState, LeaderboardEntry, BidResult, EmotionEvent, CountdownSync } from '../types/ws';
+import type { AuctionState, LeaderboardEntry, BidResult, EmotionEvent, CountdownSync, ChatMessage } from '../types/ws';
 import type { RoomAuctionItem } from '../types/api';
 
 interface AuctionStore {
@@ -13,6 +13,7 @@ interface AuctionStore {
   onlineCount: number;
   myBids: Record<number, number>;
   roomAuctions: RoomAuctionItem[];
+  chatMessages: ChatMessage[];
 
   setAuction: (auction: AuctionState) => void;
   setLeaderboard: (lb: LeaderboardEntry[]) => void;
@@ -25,8 +26,10 @@ interface AuctionStore {
   setMyBid: (sessionId: number, amount: number) => void;
   setRoomAuctions: (auctions: RoomAuctionItem[]) => void;
   updateAuctionPrice: (sessionId: number, newPrice: number) => void;
+  updateAuctionStatus: (sessionId: number, status: string) => void;
   clearEmotion: () => void;
   clearAuction: () => void;
+  addChatMessage: (msg: ChatMessage) => void;
 }
 
 export const useAuctionStore = create<AuctionStore>((set) => ({
@@ -40,6 +43,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   onlineCount: 0,
   myBids: {},
   roomAuctions: [],
+  chatMessages: [],
 
   setAuction: (auction) =>
     set({
@@ -70,6 +74,16 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
           ? { ...state.currentAuction, currentPrice: newPrice }
           : state.currentAuction,
     })),
+  updateAuctionStatus: (sessionId, status) =>
+    set((state) => ({
+      roomAuctions: state.roomAuctions.map((a) =>
+        a.sessionId === sessionId ? { ...a, status: status as RoomAuctionItem['status'] } : a,
+      ),
+      currentAuction:
+        state.currentAuction?.sessionId === sessionId
+          ? { ...state.currentAuction, status: status as AuctionState['status'] }
+          : state.currentAuction,
+    })),
   clearEmotion: () => set({ emotionEvent: null }),
   clearAuction: () =>
     set({
@@ -82,5 +96,10 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
       participantCount: 0,
       myBids: {},
       roomAuctions: [],
+      chatMessages: [],
     }),
+  addChatMessage: (msg) =>
+    set((state) => ({
+      chatMessages: [...state.chatMessages.slice(-99), msg],
+    })),
 }));

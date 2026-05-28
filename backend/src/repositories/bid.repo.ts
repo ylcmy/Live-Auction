@@ -17,7 +17,7 @@ export const bidRepo = {
     idempotency_key: string;
   }): Promise<number> {
     const [id] = await db('bid_records').insert(data);
-    return id;
+    return id as number;
   },
 
   async findBySession(

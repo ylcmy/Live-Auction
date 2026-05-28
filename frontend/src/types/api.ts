@@ -71,7 +71,8 @@ export type AuctionStatus =
   | 'listed'
   | 'active'
   | 'ended'
-  | 'unsold';
+  | 'unsold'
+  | 'cancelled';
 
 export interface BidRecord {
   id: number;

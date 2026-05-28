@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { joinRoom, leaveRoom, getOnlineCount, broadcastToRoom } from './rooms.js';
 import { registerBidHandlers } from './handlers/bid.js';
 import { registerAuctionHandlers } from './handlers/auction.js';
-import { auctionService } from '../services/auction.service.js';
+import { auctionService, setAuctionIo } from '../services/auction.service.js';
 import { cache } from '../infrastructure/cache/redis.js';
 import type { AuthPayload } from '../middleware/auth.js';
 
@@ -17,6 +17,9 @@ export function initWebSocket(httpServer: HttpServer) {
     pingInterval: 25000,
     pingTimeout: 5000,
   });
+
+  // Inject io instance into auction service for settlement broadcasts
+  setAuctionIo(io);
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;

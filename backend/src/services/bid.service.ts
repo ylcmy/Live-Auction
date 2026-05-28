@@ -141,7 +141,7 @@ export const bidService = {
       // Check last bidder (most recent bid in this session)
       const lastBids = await bidRepo.findBySession(sessionId, 1);
       const lastBidUserId =
-        lastBids.length > 0 ? lastBids[0].user_id : null;
+        lastBids.length > 0 ? lastBids[0]!.user_id : null;
 
       // Rate limit check using Redis sorted set sliding window
       const rateKey = `ratelimit:${sessionId}:${userId}`;

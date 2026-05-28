@@ -14,7 +14,7 @@ export function useCountdown(initialMs?: number) {
     const tick = () => {
       const remaining = Math.max(0, endTimeRef.current! - Date.now());
       setRemainingMs(remaining);
-      setIsUrgent(remaining < 10000);
+      setIsUrgent(remaining < 10000 && remaining > 0);
       if (remaining > 0) {
         rafRef.current = requestAnimationFrame(tick);
       }

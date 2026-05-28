@@ -14,8 +14,11 @@ export default function BidButton({ sessionId }: Props) {
 
   if (!currentAuction || !currentAuction.rule) return null;
 
-  const nextBid = currentAuction.currentPrice + currentAuction.rule.bidIncrement;
-  const overCeiling = currentAuction.rule.ceilingPrice && nextBid > currentAuction.rule.ceilingPrice;
+  const currentPrice = Number(currentAuction.currentPrice) || 0;
+  const bidIncrement = Number(currentAuction.rule.bidIncrement) || 1;
+  const nextBid = currentPrice + bidIncrement;
+  const ceilingPrice = currentAuction.rule.ceilingPrice ?? null;
+  const overCeiling = ceilingPrice !== null && nextBid > ceilingPrice;
   const disabled = overCeiling || currentAuction.status !== 'active';
 
   const handleClick = () => {

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, Gavel } from 'lucide-react';
+import { Clock, Gavel } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -19,6 +19,17 @@ interface ProductDetailSheetProps {
   onClose: () => void;
   item: RoomAuctionItem | null;
   onBid: (item: RoomAuctionItem) => void;
+}
+
+const STATUS_MESSAGES: Record<string, string> = {
+  listed: '拍卖尚未开始',
+  ended: '拍卖已结束',
+  unsold: '该商品已流拍',
+  cancelled: '拍卖已取消',
+};
+
+function getStatusMessage(status: string): string {
+  return STATUS_MESSAGES[status] ?? '拍卖已结束';
 }
 
 const sheetVariants = {
@@ -95,17 +106,9 @@ export default function ProductDetailSheet({
 
           {/* Header */}
           <SheetHeader className="px-5 pb-3 border-b border-white/5 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <SheetTitle className="text-text-primary text-base font-semibold">
-                商品详情
-              </SheetTitle>
-              <button
-                onClick={handleClose}
-                className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center text-text-tertiary hover:text-text-secondary transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+            <SheetTitle className="text-text-primary text-base font-semibold">
+              商品详情
+            </SheetTitle>
             <SheetDescription className="sr-only">
               查看商品详细信息和出价
             </SheetDescription>
@@ -275,13 +278,7 @@ export default function ProductDetailSheet({
                   className="flex items-center justify-center py-4 rounded-xl bg-surface-elevated border border-white/5"
                 >
                   <span className="text-text-tertiary text-sm">
-                    {item.status === 'listed'
-                      ? '拍卖尚未开始'
-                      : item.status === 'ended'
-                        ? '拍卖已结束'
-                        : item.status === 'unsold'
-                          ? '该商品已流拍'
-                          : '拍卖已取消'}
+                    {getStatusMessage(item.status)}
                   </span>
                 </motion.div>
               )}

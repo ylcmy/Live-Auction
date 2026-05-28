@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 
 interface CartButtonProps {
   productCount: number;
@@ -7,20 +7,20 @@ interface CartButtonProps {
 }
 
 export default function CartButton({ productCount, onClick }: CartButtonProps) {
-  if (productCount === 0) return null;
-
   return (
     <motion.button
       onClick={onClick}
-      whileTap={{ scale: 0.9 }}
+      whileTap={{ scale: 0.92 }}
       whileHover={{ scale: 1.05 }}
       transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-      className="fixed bottom-24 right-4 z-30 flex items-center justify-center w-14 h-14 rounded-full bg-brand text-white shadow-[0_4px_20px_rgba(254,44,85,0.4)] hover:shadow-[0_6px_28px_rgba(254,44,85,0.55)] active:shadow-[0_2px_12px_rgba(254,44,85,0.3)] transition-shadow"
+      className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-hover text-white shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/35 active:shadow-md transition-all duration-200"
     >
-      <ShoppingCart className="w-6 h-6" />
-      <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[20px] h-5 rounded-full bg-white text-brand text-[11px] font-bold px-1 shadow-sm">
-        {productCount > 99 ? '99+' : productCount}
-      </span>
+      <ShoppingBag className="w-5 h-5" />
+      {productCount > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1 shadow-md border-2 border-white">
+          {productCount > 99 ? '99+' : productCount}
+        </span>
+      )}
     </motion.button>
   );
 }

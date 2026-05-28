@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from '../../design-system/hooks/use-toast';
+import { ROOM_STATUS_STYLES } from '../../lib/statusConfig';
 import type { LiveRoom, Product } from '../../types/api';
 
 interface AuctionSession {
@@ -22,11 +23,6 @@ interface AuctionSession {
   createdAt: string;
   endedAt?: string;
 }
-
-const ROOM_STATUS: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  live: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '直播中' },
-  offline: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '离线' },
-};
 
 export default function AuctionManage() {
   const navigate = useNavigate();
@@ -145,15 +141,15 @@ export default function AuctionManage() {
                   </div>
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      ROOM_STATUS[selectedRoomData.status]?.bg ?? ROOM_STATUS.offline.bg
-                    } ${ROOM_STATUS[selectedRoomData.status]?.text ?? ROOM_STATUS.offline.text}`}
+                      ROOM_STATUS_STYLES[selectedRoomData.status]?.bg ?? ROOM_STATUS_STYLES.offline.bg
+                    } ${ROOM_STATUS_STYLES[selectedRoomData.status]?.text ?? ROOM_STATUS_STYLES.offline.text}`}
                   >
                     <span
                       className={`w-1 h-1 rounded-full ${
-                        ROOM_STATUS[selectedRoomData.status]?.dot ?? ROOM_STATUS.offline.dot
+                        ROOM_STATUS_STYLES[selectedRoomData.status]?.dot ?? ROOM_STATUS_STYLES.offline.dot
                       }`}
                     />
-                    {ROOM_STATUS[selectedRoomData.status]?.label ?? '离线'}
+                    {ROOM_STATUS_STYLES[selectedRoomData.status]?.label ?? '离线'}
                   </span>
                 </div>
               ) : (
@@ -172,7 +168,7 @@ export default function AuctionManage() {
                 ) : (
                   <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
                     {rooms.map((room) => {
-                      const status = ROOM_STATUS[room.status] ?? ROOM_STATUS.offline;
+                      const status = ROOM_STATUS_STYLES[room.status] ?? ROOM_STATUS_STYLES.offline;
                       return (
                         <button
                           key={room.id}

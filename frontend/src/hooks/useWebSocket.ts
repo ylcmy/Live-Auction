@@ -1,13 +1,17 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { connectSocket } from '../services/socket';
+import { connectSocket, getSocket } from '../services/socket';
 import { useAuthStore } from '../store/authStore';
+
+// Track joined rooms globally to prevent duplicate joins
+const joinedRooms = new Set<number>();
 
 export function useWebSocket(roomId: number | null) {
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const token = useAuthStore((s) => s.token);
   const socketRef = useRef<Socket | null>(null);
+  const myRoomRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!token || !roomId) return;
@@ -26,6 +30,9 @@ export function useWebSocket(roomId: number | null) {
     const onReconnect = () => {
       setIsConnected(true);
       setIsReconnecting(false);
+      if (myRoomRef.current !== null) {
+        socket.emit('auction:join', { roomId: myRoomRef.current });
+      }
     };
 
     socket.on('connect', onConnect);
@@ -33,11 +40,18 @@ export function useWebSocket(roomId: number | null) {
     socket.on('reconnect_attempt', onReconnectAttempt);
     socket.on('reconnect', onReconnect);
 
-    // Join room
-    socket.emit('auction:join', { roomId });
+    if (!joinedRooms.has(roomId)) {
+      socket.emit('auction:join', { roomId });
+      joinedRooms.add(roomId);
+    }
+    myRoomRef.current = roomId;
 
     return () => {
-      socket.emit('auction:leave', { roomId });
+      if (myRoomRef.current === roomId) {
+        socket.emit('auction:leave', { roomId });
+        joinedRooms.delete(roomId);
+        myRoomRef.current = null;
+      }
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('reconnect_attempt', onReconnectAttempt);
@@ -47,9 +61,11 @@ export function useWebSocket(roomId: number | null) {
   }, [token, roomId]);
 
   const subscribe = useCallback(<T>(event: string, handler: (data: T) => void) => {
-    socketRef.current?.on(event, handler);
+    // Use the shared socket instance directly to avoid stale ref issues
+    const currentSocket = socketRef.current || getSocket();
+    currentSocket?.on(event, handler);
     return () => {
-      socketRef.current?.off(event, handler);
+      currentSocket?.off(event, handler);
     };
   }, []);
 

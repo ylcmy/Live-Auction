@@ -21,4 +21,10 @@ export async function orderRoutes(app: FastifyInstance) {
     const data = await orderService.mockPay(Number((req.params as any).id));
     return replySuccess(reply, data);
   });
+
+  app.put('/api/orders/:id/status', async (req, reply) => {
+    const { status } = req.body as { status: string };
+    const data = await orderService.updateStatus(Number((req.params as any).id), status);
+    return replySuccess(reply, data);
+  });
 }

@@ -132,17 +132,8 @@ export const productService = {
 
     await productRepo.updateStatus(productId, newStatus);
 
-    if (newStatus === 'listed' && product.status === 'active') {
-      const sessions = await db('auction_sessions')
-        .where({ product_id: productId })
-        .whereIn('status', ['active', 'pending']);
-      for (const session of sessions) {
-        await auctionSessionRepo.updateStatus(session.id, 'cancelled', { ended_at: db.fn.now() });
-        await cleanupAuctionCache(session.id, session.room_id);
-      }
-    }
-
-    if (newStatus === 'deleted') {
+    const needsCancel = (newStatus === 'listed' && product.status === 'active') || newStatus === 'deleted';
+    if (needsCancel) {
       const sessions = await db('auction_sessions')
         .where({ product_id: productId })
         .whereIn('status', ['active', 'pending']);

@@ -19,6 +19,7 @@ import {
 import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
+import { PRODUCT_STATUS_STYLES } from '../../lib/statusConfig';
 import type { Product, PaginatedData } from '../../types/api';
 
 type StatusFilter = 'all' | 'pending' | 'listed' | 'active' | 'ended' | 'unsold' | 'deleted';
@@ -31,14 +32,6 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'ended', label: '已结束' },
   { value: 'unsold', label: '流拍' },
 ];
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  pending: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '等待上架' },
-  listed: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '上架待竞拍' },
-  active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
-  ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
-  unsold: { bg: 'bg-orange-50', text: 'text-orange-600', dot: 'bg-orange-500', label: '流拍' },
-};
 
 interface ProductRow extends Product {
   currentPrice?: number | null;
@@ -382,7 +375,7 @@ export default function ProductList() {
             {/* Table Body */}
             <div className="divide-y divide-slate-100">
               {sortedProducts.map((product) => {
-                const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.pending;
+                const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.pending;
                 const isSelected = selectedIds.has(product.id);
                 return (
                   <div

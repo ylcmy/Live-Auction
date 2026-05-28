@@ -3,15 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, AlertTriangle } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from '../../design-system/hooks/use-toast';
+import { PRODUCT_STATUS_STYLES } from '../../lib/statusConfig';
 import type { Product } from '../../types/api';
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  pending: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '等待上架' },
-  listed: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '上架待竞拍' },
-  active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
-  ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
-  unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
-};
 
 export default function ProductEdit() {
   const { id } = useParams<{ id: string }>();
@@ -96,7 +89,7 @@ export default function ProductEdit() {
     );
   }
 
-  const status = STATUS_STYLES[product.status] ?? STATUS_STYLES.pending;
+  const status = PRODUCT_STATUS_STYLES[product.status] ?? PRODUCT_STATUS_STYLES.pending;
   const canEditRules = product.status === 'pending' || product.status === 'listed';
 
   return (

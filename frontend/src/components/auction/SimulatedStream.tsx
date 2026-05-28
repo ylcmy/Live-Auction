@@ -142,12 +142,14 @@ export default function SimulatedStream({
       ctx.shadowColor = colors.accent;
       ctx.shadowBlur = 20 + 10 * Math.sin(f * 0.05);
       ctx.fillStyle = colors.bgLight;
-      roundRect(ctx, imgX - 3, imgY - 3, imgW + 6, imgH + 6, 12);
+      ctx.beginPath();
+      ctx.roundRect(imgX - 3, imgY - 3, imgW + 6, imgH + 6, 12);
       ctx.fill();
       ctx.restore();
 
       ctx.save();
-      roundRect(ctx, imgX, imgY, imgW, imgH, 10);
+      ctx.beginPath();
+      ctx.roundRect(imgX, imgY, imgW, imgH, 10);
       ctx.clip();
       const img = imageRef.current!;
       const scale = Math.max(imgW / img.width, imgH / img.height);
@@ -164,12 +166,14 @@ export default function SimulatedStream({
       vignetteGrad.addColorStop(0.7, 'rgba(0,0,0,0)');
       vignetteGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
       ctx.fillStyle = vignetteGrad;
-      roundRect(ctx, imgX, imgY, imgW, imgH, 10);
+      ctx.beginPath();
+      ctx.roundRect(imgX, imgY, imgW, imgH, 10);
       ctx.fill();
     } else {
       // Placeholder
       ctx.fillStyle = colors.bgLight;
-      roundRect(ctx, imgX, imgY, imgW, imgH, 10);
+      ctx.beginPath();
+      ctx.roundRect(imgX, imgY, imgW, imgH, 10);
       ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
       ctx.font = `${imgW * 0.08}px sans-serif`;
@@ -179,7 +183,8 @@ export default function SimulatedStream({
 
     // Product name on image
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    roundRect(ctx, imgX, imgY + imgH - 52, imgW, 52, [0, 0, 10, 10]);
+    ctx.beginPath();
+    ctx.roundRect(imgX, imgY + imgH - 52, imgW, 52, [0, 0, 10, 10]);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.font = `bold ${Math.min(imgW * 0.06, 18)}px "PingFang SC", sans-serif`;
@@ -215,19 +220,6 @@ export default function SimulatedStream({
     ctx.font = `${Math.min(w * 0.02, 14)}px sans-serif`;
     ctx.fillText(`🔥 ${participantCount} 人参与竞拍`, priceX, priceY + 80);
 
-    // LIVE badge (top-left)
-    const liveX = 16;
-    const liveY = 16;
-    const livePulse = 0.7 + 0.3 * Math.sin(f * 0.15);
-    ctx.fillStyle = `rgba(254,44,85,${livePulse})`;
-    ctx.beginPath();
-    ctx.roundRect(liveX, liveY, 52, 24, 12);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('● LIVE', liveX + 26, liveY + 16);
-
     // Online count badge
     const badgeW = 72;
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -237,7 +229,7 @@ export default function SimulatedStream({
     ctx.fillStyle = '#fff';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`👥 ${participantCount + 128}`, w - 22, liveY + 16);
+    ctx.fillText(`👥 ${participantCount + 128}`, w - 22, 32);
 
     // Particles (floating emojis)
     const particles = particlesRef.current;
@@ -274,7 +266,7 @@ export default function SimulatedStream({
       comments.push({
         text: `${nick}: ${msg}`,
         x: w + 50,
-        y: h - 54 - Math.random() * 30,
+        y: h - 130 - Math.random() * 30,
         speed: 0.6 + Math.random() * 1.2,
         color: `hsl(${Math.random() * 360}, 70%, 75%)`,
         alpha: 0.85 + Math.random() * 0.15,
@@ -299,18 +291,18 @@ export default function SimulatedStream({
       if (c.x < -textW - 60) comments.splice(i, 1);
     }
 
-    // Bottom gradient overlay
-    const bottomGrad = ctx.createLinearGradient(0, h - 70, 0, h);
+    // Bottom gradient overlay - moved up to avoid bottom bar
+    const bottomGrad = ctx.createLinearGradient(0, h - 140, 0, h - 56);
     bottomGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    bottomGrad.addColorStop(1, 'rgba(0,0,0,0.7)');
+    bottomGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
     ctx.fillStyle = bottomGrad;
-    ctx.fillRect(0, h - 70, w, 70);
+    ctx.fillRect(0, h - 140, w, 84);
 
-    // Room title at bottom
+    // Room title at bottom - moved up
     ctx.fillStyle = '#fff';
     ctx.font = '14px "PingFang SC", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`直播间 · ${roomId}号厅`, 16, h - 12);
+    ctx.fillText(`直播间 · ${roomId}号厅`, 16, h - 64);
 
     animationRef.current = requestAnimationFrame(animate);
   }, [roomId, productName, currentPrice, participantCount]);
@@ -346,23 +338,4 @@ export default function SimulatedStream({
   );
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number | number[],
-) {
-  ctx.beginPath();
-  if (typeof r === 'number') {
-    r = [r, r, r, r];
-  }
-  const [tl, tr = tl!, br = tl!, bl = tl!] = r;
-  ctx.moveTo(x + tl, y);
-  ctx.lineTo(x + w - tr, y);
-  ctx.arcTo(x + w, y, x + w, y + tr, tr);
-  ctx.lineTo(x + w, y + h - br);
-  ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
-  ctx.lineTo(x + bl, y + h);
-  ctx.arcTo(x, y + h, x, y + h - bl, bl);
-  ctx.lineTo(x, y + tl);
-  ctx.arcTo(x, y, x + tl, y, tl);
-  ctx.closePath();
-}
+

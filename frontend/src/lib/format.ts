@@ -1,5 +1,8 @@
-export function formatPrice(price: number | string): string {
-  return `¥${Number(price).toFixed(2)}`;
+export function formatPrice(price: number | string | undefined | null): string {
+  if (price == null) return '¥--';
+  const num = typeof price === 'string' ? Number(price) : price;
+  if (Number.isNaN(num)) return '¥--';
+  return `¥${num.toFixed(2)}`;
 }
 
 export function formatMs(ms: number): string {

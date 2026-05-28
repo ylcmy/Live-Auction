@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { userRepo } from '../repositories/user.repo.js';
 import { env } from '../config/env.js';
+import { AppError } from '../lib/app-error.js';
 
 export const authService = {
   async register(data: {
@@ -12,7 +13,7 @@ export const authService = {
   }) {
     const existing = await userRepo.findByUsername(data.username);
     if (existing) {
-      throw Object.assign(new Error('用户名已存在'), { statusCode: 409 });
+      throw new AppError('用户名已存在', 409);
     }
 
     const password_hash = await bcrypt.hash(data.password, 10);
@@ -29,12 +30,12 @@ export const authService = {
   async login(username: string, password: string) {
     const user = await userRepo.findByUsername(username);
     if (!user) {
-      throw Object.assign(new Error('用户名或密码错误'), { statusCode: 401 });
+      throw new AppError('用户名或密码错误', 401);
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      throw Object.assign(new Error('用户名或密码错误'), { statusCode: 401 });
+      throw new AppError('用户名或密码错误', 401);
     }
 
     const payload = { userId: user.id, role: user.role };
@@ -61,7 +62,7 @@ export const authService = {
       );
       return { accessToken, expiresIn: env.JWT_EXPIRES_IN };
     } catch {
-      throw Object.assign(new Error('刷新令牌无效'), { statusCode: 401 });
+      throw new AppError('刷新令牌无效', 401);
     }
   },
 };

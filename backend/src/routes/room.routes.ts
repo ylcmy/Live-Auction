@@ -7,6 +7,65 @@ import { logger } from '../middleware/logger.js';
 import { broadcastRoomStatus } from '../ws/index.js';
 import { replySuccess, replyError } from '../lib/reply.js';
 
+async function buildCurrentAuction(roomId: number) {
+  const existingSessions = await db('auction_sessions as s')
+    .where('s.room_id', roomId)
+    .select(
+      's.id as sessionId',
+      's.product_id as productId',
+      's.status',
+      's.current_price as currentPrice',
+      's.started_at as startedAt',
+      's.ended_at as endedAt',
+      's.extension_count as extensionCount',
+    );
+
+  const activeAuction = existingSessions.find((s: any) => s.status === 'active');
+  if (!activeAuction) return null;
+
+  const productData = await db('products as p')
+    .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
+    .where('p.id', activeAuction.productId)
+    .first(
+      'p.id as productId',
+      'p.name as productName',
+      'p.description as productDescription',
+      'p.image_url as productImageUrl',
+      'r.start_price as startPrice',
+      'r.bid_increment as bidIncrement',
+      'r.ceiling_price as ceilingPrice',
+      'r.duration_seconds as durationSeconds',
+      'r.extend_seconds as extendSeconds',
+      'r.max_extensions as maxExtensions',
+    );
+
+  if (!productData) return null;
+
+  return {
+    sessionId: activeAuction.sessionId,
+    status: activeAuction.status,
+    product: {
+      id: productData.productId,
+      name: productData.productName,
+      description: productData.productDescription,
+      imageUrl: productData.productImageUrl,
+    },
+    rule: {
+      startPrice: productData.startPrice ?? 0,
+      bidIncrement: productData.bidIncrement ?? 10,
+      ceilingPrice: productData.ceilingPrice ?? null,
+      durationSeconds: productData.durationSeconds ?? 300,
+      extendSeconds: productData.extendSeconds ?? 30,
+      maxExtensions: productData.maxExtensions ?? 3,
+    },
+    currentPrice: activeAuction.currentPrice,
+    leaderboard: [],
+    startedAt: activeAuction.startedAt,
+    participantCount: 0,
+    extensionCount: activeAuction.extensionCount,
+  };
+}
+
 export async function roomRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authMiddleware);
 
@@ -35,7 +94,15 @@ export async function roomRoutes(app: FastifyInstance) {
     if (req.auth.role === 'merchant') filters.host_id = req.auth.userId;
     if (query.status) filters.status = query.status;
     const data = await liveRoomRepo.findAll({ ...filters, page: parseInt(query.page) || 1, limit: parseInt(query.limit) || 20 });
-    return replySuccess(reply, data);
+
+    const itemsWithAuction = await Promise.all(
+      data.items.map(async (room: any) => {
+        const currentAuction = await buildCurrentAuction(room.id);
+        return { ...room, currentAuction };
+      })
+    );
+
+    return replySuccess(reply, { ...data, items: itemsWithAuction });
   });
 
   app.put('/api/rooms/:id/status', { onRequest: requireRole('merchant') }, async (req, reply) => {
@@ -143,37 +210,7 @@ export async function roomRoutes(app: FastifyInstance) {
       };
     });
 
-    const activeAuction = existingSessions.find((s: any) => ['pending', 'active'].includes(s.status));
-    let currentAuction = null;
-    if (activeAuction) {
-      const productData = allProducts.find((p: any) => p.productId === activeAuction.product_id);
-      const ruleData = productData;
-      if (productData) {
-        currentAuction = {
-          sessionId: activeAuction.sessionId,
-          status: activeAuction.status,
-          product: {
-            id: productData.productId,
-            name: productData.productName,
-            description: productData.productDescription,
-            imageUrl: productData.productImageUrl,
-          },
-          rule: {
-            startPrice: ruleData?.startPrice ?? 0,
-            bidIncrement: ruleData?.bidIncrement ?? 10,
-            ceilingPrice: ruleData?.ceilingPrice ?? null,
-            durationSeconds: ruleData?.durationSeconds ?? 300,
-            extendSeconds: ruleData?.extendSeconds ?? 30,
-            maxExtensions: ruleData?.maxExtensions ?? 3,
-          },
-          currentPrice: activeAuction.currentPrice,
-          leaderboard: [],
-          startedAt: activeAuction.startedAt,
-          participantCount: 0,
-          extensionCount: activeAuction.extensionCount,
-        };
-      }
-    }
+    const currentAuction = await buildCurrentAuction(roomId);
 
     return replySuccess(reply, { ...room, currentAuction, auctions: auctionList });
   });

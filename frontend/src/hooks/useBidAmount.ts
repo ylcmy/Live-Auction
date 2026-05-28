@@ -8,7 +8,11 @@ interface UseBidAmountReturn {
   isAtMin: boolean;
 }
 
-export function useBidAmount(currentPrice: number, bidIncrement: number): UseBidAmountReturn {
+export function useBidAmount(currentPriceRaw: number | string, bidIncrementRaw: number | string): UseBidAmountReturn {
+  // Ensure numeric values - backend may return strings
+  const currentPrice = Number(currentPriceRaw) || 0;
+  const bidIncrement = Number(bidIncrementRaw) || 1;
+
   const minBid = currentPrice + bidIncrement;
   const [bidAmount, setBidAmount] = useState(minBid);
 
@@ -38,7 +42,7 @@ export function useBidAmount(currentPrice: number, bidIncrement: number): UseBid
     [bidIncrement],
   );
 
-  const isAtMin = bidAmount === currentPrice + bidIncrement;
+  const isAtMin = bidAmount <= currentPrice + bidIncrement;
 
   return { bidAmount, setValue, reset, snapToMin, isAtMin };
 }

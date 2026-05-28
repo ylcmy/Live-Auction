@@ -14,7 +14,7 @@ export const auctionRuleRepo = {
       ...data,
       max_extensions: data.max_extensions ?? 10,
     });
-    return id;
+    return id as number;
   },
 
   async findByProductId(productId: number) {

@@ -8,7 +8,9 @@ export async function cleanupAuctionCache(sessionId: number, roomId: number) {
     `auction:${sessionId}:product_id`,
     `auction:${sessionId}:room_id`,
     `auction:${sessionId}:top_bid`,
+    `auction:${sessionId}:leaderboard`,
     `room:${roomId}:active_session`,
+    `room:${roomId}:participants`,
   ];
   await Promise.all(keys.map((k) => cache.del(k)));
 }

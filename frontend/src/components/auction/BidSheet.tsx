@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Crown } from 'lucide-react';
+import { Check, Crown } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -11,9 +11,9 @@ import {
 import { Button } from '../../design-system/components/ui/button';
 import { useBidAmount } from '../../hooks/useBidAmount';
 import { useBid } from '../../hooks/useBid';
-import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatPrice } from '../../lib/format';
+import { getSocket } from '../../services/socket';
 import BidStepper from './BidStepper';
 import BidHint from './BidHint';
 import type { RoomAuctionItem } from '../../types/api';
@@ -24,10 +24,9 @@ interface BidSheetProps {
   onClose: () => void;
   item: RoomAuctionItem | null;
   myLastBid: number | null;
-  roomId: number;
 }
 
-export default function BidSheet({ open, onClose, item, myLastBid, roomId }: BidSheetProps) {
+export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetProps) {
   const [bidSuccess, setBidSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOutbid, setIsOutbid] = useState(false);
@@ -35,10 +34,9 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
   const endedTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const setMyBid = useAuctionStore((s) => s.setMyBid);
   const updateAuctionPrice = useAuctionStore((s) => s.updateAuctionPrice);
-  const { subscribe, isConnected } = useWebSocket(roomId);
 
-  const currentPrice = item?.currentPrice ?? 0;
-  const bidIncrement = item?.rule?.bidIncrement ?? 1;
+  const currentPrice = Number(item?.currentPrice) || 0;
+  const bidIncrement = Number(item?.rule?.bidIncrement) || 1;
 
   const { bidAmount, setValue, reset, snapToMin } =
     useBidAmount(currentPrice, bidIncrement);
@@ -58,7 +56,10 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
   useEffect(() => {
     if (!open || !item) return;
 
-    const unsub = subscribe<BidResult>('bid:accepted', (data) => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handler = (data: BidResult) => {
       if (data.sessionId === item.sessionId) {
         setMyBid(data.sessionId, data.amount);
         setBidSuccess(true);
@@ -74,38 +75,44 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
           setBidSuccess(false);
         }, 1500);
       }
-    });
+    };
+
+    socket.on('bid:accepted', handler);
 
     return () => {
-      unsub();
+      socket.off('bid:accepted', handler);
       clearTimeout(successTimerRef.current);
     };
-  }, [open, item, subscribe, setMyBid, updateAuctionPrice, isConnected]);
+  }, [open, item, setMyBid, updateAuctionPrice]);
 
   // Subscribe to bid:new for real-time price updates and outbid detection
   useEffect(() => {
     if (!open || !item) return;
 
-    const unsub = subscribe<{ sessionId: number; amount: number; newTopBid: boolean }>(
-      'bid:new',
-      (data) => {
-        if (data.sessionId === item.sessionId && data.newTopBid) {
-          // Update price in store
-          updateAuctionPrice(data.sessionId, data.amount);
-          // Snap bid amount to new minimum if outbid
-          snapToMin(data.amount);
+    const socket = getSocket();
+    if (!socket) return;
 
-          // Flash outbid indicator if the new bid is not from us
-          if (myLastBid == null || data.amount > myLastBid) {
-            setIsOutbid(true);
-            setTimeout(() => setIsOutbid(false), 800);
-          }
+    const handler = (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
+      if (data.sessionId === item.sessionId && data.newTopBid) {
+        // Update price in store
+        updateAuctionPrice(data.sessionId, data.amount);
+        // Snap bid amount to new minimum if outbid
+        snapToMin(data.amount);
+
+        // Flash outbid indicator if the new bid is not from us
+        if (myLastBid == null || data.amount > myLastBid) {
+          setIsOutbid(true);
+          setTimeout(() => setIsOutbid(false), 800);
         }
-      },
-    );
+      }
+    };
 
-    return unsub;
-  }, [open, item, subscribe, updateAuctionPrice, snapToMin, myLastBid, isConnected]);
+    socket.on('bid:new', handler);
+
+    return () => {
+      socket.off('bid:new', handler);
+    };
+  }, [open, item, updateAuctionPrice, snapToMin, myLastBid]);
 
   const handleClose = useCallback(() => {
     setBidSuccess(false);
@@ -117,24 +124,26 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
   useEffect(() => {
     if (!open || !item) return;
 
-    const unsub = subscribe<{ sessionId: number; status: string; winner?: { userNickname: string; finalPrice: number } }>(
-      'auction:ended',
-      (data) => {
-        if (data.sessionId === item.sessionId) {
-          // Auto-dismiss after 3s
-          clearTimeout(endedTimerRef.current);
-          endedTimerRef.current = setTimeout(() => {
-            handleClose();
-          }, 3000);
-        }
-      },
-    );
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handler = (data: { sessionId: number; status: string; winner?: { userNickname: string; finalPrice: number } }) => {
+      if (data.sessionId === item.sessionId) {
+        // Auto-dismiss after 3s
+        clearTimeout(endedTimerRef.current);
+        endedTimerRef.current = setTimeout(() => {
+          handleClose();
+        }, 3000);
+      }
+    };
+
+    socket.on('auction:ended', handler);
 
     return () => {
-      unsub();
+      socket.off('auction:ended', handler);
       clearTimeout(endedTimerRef.current);
     };
-  }, [open, item, subscribe, handleClose, isConnected]);
+  }, [open, item, handleClose]);
 
   const handleSubmit = useCallback(() => {
     if (!item || isSubmitting) return;
@@ -160,18 +169,10 @@ export default function BidSheet({ open, onClose, item, myLastBid, roomId }: Bid
         </div>
 
         <SheetHeader className="px-5 pb-3 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-text-primary text-base font-semibold flex items-center gap-2">
-              <Crown className="w-5 h-5 text-brand" />
-              确认出价
-            </SheetTitle>
-            <button
-              onClick={handleClose}
-              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-text-tertiary hover:text-text-secondary transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <SheetTitle className="text-text-primary text-base font-semibold flex items-center gap-2">
+            <Crown className="w-5 h-5 text-brand" />
+            确认出价
+          </SheetTitle>
           <SheetDescription className="sr-only">
             调整出价金额并确认竞拍
           </SheetDescription>

@@ -9,9 +9,18 @@ import { bidService } from './bid.service.js';
 import { logger } from '../middleware/logger.js';
 import { AppError } from '../lib/app-error.js';
 import { cleanupAuctionCache } from '../lib/auction-cache.js';
+import { broadcastToRoom } from '../ws/rooms.js';
+import type { Server } from 'socket.io';
 
 /** Map of sessionId -> setTimeout id for auction settlement timers */
 const auctionTimers = new Map<number, NodeJS.Timeout>();
+
+/** Socket.IO server instance for broadcasting */
+let ioInstance: Server | null = null;
+
+export function setAuctionIo(io: Server) {
+  ioInstance = io;
+}
 
 function clearAuctionTimer(sessionId: number) {
   const existing = auctionTimers.get(sessionId);
@@ -76,6 +85,31 @@ export const auctionService = {
 
     // Schedule settlement timer
     scheduleSettlement(sessionId!, rule.duration_seconds * 1000);
+
+    // Broadcast auction started to all clients in the room
+    if (ioInstance) {
+      broadcastToRoom(ioInstance, String(roomId), 'auction:started', {
+        sessionId,
+        status: 'active',
+        product: {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          imageUrl: product.image_url,
+        },
+        rule: {
+          startPrice: Number(rule.start_price),
+          bidIncrement: Number(rule.bid_increment),
+          ceilingPrice: rule.ceiling_price ? Number(rule.ceiling_price) : null,
+          durationSeconds: rule.duration_seconds,
+          extendSeconds: rule.extend_seconds,
+          maxExtensions: rule.max_extensions,
+        },
+        currentPrice: Number(rule.start_price),
+        startedAt: new Date().toISOString(),
+        extensionCount: 0,
+      });
+    }
 
     logger.info({ event: 'auction_start', sessionId, productId, roomId, merchantId, duration: rule.duration_seconds }, 'Auction started');
 
@@ -245,13 +279,25 @@ export const auctionService = {
       // Build leaderboard with nicknames
       const leaderboard = await bidService.getLeaderboard(sessionId, 0);
 
-      // Update statuses
+      // Update statuses - only auction session and product, NOT the room
       await auctionSessionRepo.updateStatus(sessionId, newStatus, {
         winner_id: winner?.userId,
         ended_at: db.fn.now(),
       });
       await productRepo.updateStatus(session.product_id, newStatus === 'ended' ? 'ended' : 'unsold');
-      await liveRoomRepo.updateStatus(session.room_id, 'offline');
+      // Note: Room stays 'live' so merchant can start next auction
+
+      // Broadcast auction ended to room BEFORE clearing cache
+      if (ioInstance) {
+        broadcastToRoom(ioInstance, String(session.room_id), 'auction:ended', {
+          sessionId,
+          status: newStatus,
+          winner,
+          leaderboard,
+          orderId,
+        });
+        logger.info({ event: 'auction_ended_broadcast', sessionId, roomId: session.room_id, status: newStatus }, 'Broadcast auction:ended to room');
+      }
 
       // Clear auction timers
       clearAuctionTimer(sessionId);
@@ -283,7 +329,7 @@ export const auctionService = {
 
     await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: db.fn.now() });
     await productRepo.updateStatus(session.product_id, 'listed');
-    await liveRoomRepo.updateStatus(session.room_id, 'offline');
+    // Note: Room stays 'live' so merchant can start next auction
 
     clearAuctionTimer(sessionId);
 

@@ -23,7 +23,7 @@ export const userRepo = {
     nickname: string;
   }): Promise<number> {
     const [id] = await db('users').insert(data);
-    return id;
+    return id as number;
   },
 
   async findByIds(ids: number[]): Promise<Pick<UserRow, 'id' | 'nickname' | 'avatar_url'>[]> {

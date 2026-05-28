@@ -26,6 +26,12 @@ export const AUCTION_STATUS_CONFIG: Record<AuctionStatus, { label: string; class
     icon: <XCircle className="w-3 h-3" />,
     priceLabel: '起拍价',
   },
+  cancelled: {
+    label: '已取消',
+    className: 'bg-red-500/20 text-red-400 border-red-500/30',
+    icon: <XCircle className="w-3 h-3" />,
+    priceLabel: '起拍价',
+  },
 };
 
 export const PRODUCT_STATUS_STYLES: Record<ProductStatus, { bg: string; text: string; dot: string; label: string }> = {
@@ -62,4 +68,9 @@ export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; text: string
   pending_payment: { bg: 'bg-sky-50', text: 'text-sky-600', label: '待支付' },
   paid: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: '已支付' },
   cancelled: { bg: 'bg-slate-100', text: 'text-slate-500', label: '已取消' },
+};
+
+export const ROOM_STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  live: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '直播中' },
+  offline: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '离线' },
 };

@@ -41,7 +41,7 @@ export default function ProductDetail() {
     if (!id) return;
     setDeleteLoading(true);
     try {
-      await api.delete(`/products/${id}`);
+      await api.put(`/products/${id}/status`, { status: 'deleted' });
       navigate('/admin/products');
     } catch {
       // ignore

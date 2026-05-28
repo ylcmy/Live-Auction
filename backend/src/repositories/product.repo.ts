@@ -9,7 +9,7 @@ export const productRepo = {
     category?: string;
   }): Promise<number> {
     const [id] = await db('products').insert({ ...data, status: 'pending' });
-    return id;
+    return id as number;
   },
 
   async findById(id: number) {

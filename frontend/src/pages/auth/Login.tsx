@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../design-system/components/ui/button';
@@ -23,6 +23,7 @@ const DEMO_ACCOUNTS: Record<'merchant' | 'user', { username: string; password: s
 };
 
 export default function Login() {
+  const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
   const [username, setUsername] = useState(DEMO_ACCOUNTS.merchant.username);
   const [password, setPassword] = useState(DEMO_ACCOUNTS.merchant.password);
@@ -40,11 +41,11 @@ export default function Login() {
     await login(username, password);
     const token = localStorage.getItem('accessToken');
     if (token) {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (payload.role === 'merchant') {
-        window.location.href = '/admin';
-      } else {
-        window.location.href = '/live/1';
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        navigate(payload.role === 'merchant' ? '/admin' : '/live');
+      } catch {
+        navigate('/live');
       }
     }
   };
