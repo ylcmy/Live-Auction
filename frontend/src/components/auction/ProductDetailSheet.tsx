@@ -69,8 +69,8 @@ export default function ProductDetailSheet({
   }, [item]);
 
   const statusCfg = useMemo(() => {
-    if (!item) return AUCTION_STATUS_CONFIG.pending;
-    return AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
+    if (!item) return AUCTION_STATUS_CONFIG.listed;
+    return AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.listed;
   }, [item]);
 
   if (!item) return null;
@@ -275,7 +275,7 @@ export default function ProductDetailSheet({
                   className="flex items-center justify-center py-4 rounded-xl bg-surface-elevated border border-white/5"
                 >
                   <span className="text-text-tertiary text-sm">
-                    {item.status === 'pending'
+                    {item.status === 'listed'
                       ? '拍卖尚未开始'
                       : item.status === 'ended'
                         ? '拍卖已结束'

@@ -1,6 +1,6 @@
 export interface AuctionState {
   sessionId: number;
-  status: 'pending' | 'active' | 'ended' | 'cancelled';
+  status: 'listed' | 'active' | 'ended';
   product: {
     id: number;
     name: string;

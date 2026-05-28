@@ -15,7 +15,7 @@ export function formatTime(iso: string): string {
 
 export function getPriceLabel(item: { status: string; currentPrice: number; rule: { startPrice: number } }): { label: string; price: number } {
   switch (item.status) {
-    case 'pending':
+    case 'listed':
       return { label: '起拍价', price: item.rule.startPrice };
     case 'active':
       return item.currentPrice > item.rule.startPrice

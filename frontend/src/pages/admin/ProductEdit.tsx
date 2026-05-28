@@ -6,11 +6,10 @@ import { toast } from '../../design-system/hooks/use-toast';
 import type { Product } from '../../types/api';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  draft: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '草稿' },
-  pending: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '待上架' },
+  pending: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '等待上架' },
+  listed: { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-500', label: '上架待竞拍' },
   active: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '竞拍中' },
   ended: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', label: '已结束' },
-  cancelled: { bg: 'bg-rose-50', text: 'text-rose-600', dot: 'bg-rose-500', label: '已取消' },
   unsold: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '未售出' },
 };
 

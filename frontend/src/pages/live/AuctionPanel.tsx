@@ -117,7 +117,7 @@ export default function AuctionPanel() {
         <div className="text-center py-4 bg-gradient-to-b from-surface-secondary to-transparent rounded-2xl border border-surface-border">
           <div className="text-text-tertiary text-xs mb-2 flex items-center justify-center gap-1.5">
             <Crown className="w-3.5 h-3.5" />
-            {currentAuction.status === 'pending' ? '起拍价' : '当前最高价'}
+            {currentAuction.status === 'listed' ? '起拍价' : '当前最高价'}
           </div>
           <motion.div
             className="text-brand-gradient text-5xl font-bold tracking-tight"
@@ -127,7 +127,7 @@ export default function AuctionPanel() {
             {formatPrice(currentAuction.currentPrice)}
           </motion.div>
           <div className="mt-4">
-            {currentAuction.status === 'pending' ? (
+            {currentAuction.status === 'listed' ? (
               <Badge variant="outline" className="border-blue-500/30 text-blue-500 text-sm px-4 py-1">
                 <Clock className="w-3.5 h-3.5 mr-1.5" />
                 等待开始

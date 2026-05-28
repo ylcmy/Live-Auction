@@ -146,7 +146,7 @@ export default function LiveRoom() {
     }
   }, [wasReconnected]);
 
-  const pendingCount = roomAuctions.filter((a) => a.status === 'pending').length;
+  const pendingCount = roomAuctions.filter((a) => a.status === 'listed').length;
   const endedCount = roomAuctions.filter((a) => ['ended', 'unsold', 'cancelled'].includes(a.status)).length;
 
   const handleSelectAuction = (item: RoomAuctionItem) => {

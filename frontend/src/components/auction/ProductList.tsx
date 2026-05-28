@@ -34,9 +34,9 @@ export default function ProductList({ auctions, currentSessionId, onSelectAuctio
         </div>
 
         {auctions.map((item, idx) => {
-          const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
+          const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.listed;
           const isCurrent = item.sessionId === currentSessionId;
-          const isClickable = ['pending', 'active'].includes(item.status) && onSelectAuction;
+          const isClickable = ['listed', 'active'].includes(item.status) && onSelectAuction;
           const priceInfo = getPriceLabel(item);
 
           return (

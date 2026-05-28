@@ -14,10 +14,10 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ item, isCurrent, myLastBid, onSelect, onBid }: ProductCardProps) {
-  const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.pending;
+  const cfg = AUCTION_STATUS_CONFIG[item.status] ?? AUCTION_STATUS_CONFIG.listed;
   const { label: priceLabel, price: displayPrice } = getPriceLabel(item);
   const isActive = item.status === 'active';
-  const isClickable = ['pending', 'active'].includes(item.status);
+  const isClickable = ['listed', 'active'].includes(item.status);
 
   return (
     <motion.div

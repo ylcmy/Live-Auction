@@ -1,8 +1,8 @@
-import { Clock, Gavel, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Clock, Gavel, CheckCircle2, XCircle } from 'lucide-react';
 import type { AuctionStatus, ProductStatus, OrderStatus } from '../types/api';
 
 export const AUCTION_STATUS_CONFIG: Record<AuctionStatus, { label: string; className: string; icon: React.ReactNode; priceLabel: string }> = {
-  pending: {
+  listed: {
     label: '待拍',
     className: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     icon: <Clock className="w-3 h-3" />,
@@ -24,12 +24,6 @@ export const AUCTION_STATUS_CONFIG: Record<AuctionStatus, { label: string; class
     label: '流拍',
     className: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
     icon: <XCircle className="w-3 h-3" />,
-    priceLabel: '起拍价',
-  },
-  cancelled: {
-    label: '已取消',
-    className: 'bg-red-500/20 text-red-400 border-red-500/30',
-    icon: <AlertCircle className="w-3 h-3" />,
     priceLabel: '起拍价',
   },
 };

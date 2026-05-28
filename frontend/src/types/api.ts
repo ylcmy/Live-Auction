@@ -68,10 +68,9 @@ export interface AuctionSession {
 }
 
 export type AuctionStatus =
-  | 'pending'
+  | 'listed'
   | 'active'
   | 'ended'
-  | 'cancelled'
   | 'unsold';
 
 export interface BidRecord {
