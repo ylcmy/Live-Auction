@@ -43,9 +43,9 @@ export default function LiveRoomList() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen bg-[#161823] flex flex-col">
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/80 backdrop-blur-md sticky top-0 z-10">
+      <header className="border-b border-white/10 bg-[#161823]/80 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Radio className="w-6 h-6 text-brand" />

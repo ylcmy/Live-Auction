@@ -15,7 +15,9 @@ import OrderList from './pages/admin/OrderList';
 import LiveRoom from './pages/live/LiveRoom';
 import LiveRoomList from './pages/live/LiveRoomList';
 import AuctionManage from './pages/admin/AuctionManage';
-import HistoryList from './pages/live/HistoryList';
+import UserLayout from './components/UserLayout';
+import ProfilePage from './pages/profile/ProfilePage';
+import MyOrders from './pages/profile/MyOrders';
 import { Toaster } from './design-system/components/ui/toaster';
 import { ConfirmProvider } from './components/admin/ConfirmDialog';
 
@@ -58,30 +60,12 @@ export default function App() {
                 <Route path="orders" element={<OrderList />} />
                 <Route path="auction" element={<AuctionManage />} />
               </Route>
-              <Route
-                path="/history"
-                element={
-                  <ProtectedRoute>
-                    <HistoryList />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/live"
-                element={
-                  <ProtectedRoute>
-                    <LiveRoomList />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/live/:roomId"
-                element={
-                  <ProtectedRoute>
-                    <LiveRoom />
-                  </ProtectedRoute>
-                }
-              />
+              <Route element={<UserLayout />}>
+                <Route path="/live" element={<LiveRoomList />} />
+                <Route path="/me" element={<ProfilePage />} />
+                <Route path="/me/orders" element={<MyOrders />} />
+              </Route>
+              <Route path="/live/:roomId" element={<ProtectedRoute><LiveRoom /></ProtectedRoute>} />
               <Route path="/" element={<Navigate to="/login" />} />
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>

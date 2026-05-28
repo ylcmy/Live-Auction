@@ -222,9 +222,9 @@ export default function LiveRoom() {
   const isOffline = roomStatus === 'offline';
 
   return (
-    <div className="h-screen w-screen bg-black overflow-hidden relative">
+    <div className="h-screen w-screen bg-[#161823] overflow-hidden relative">
       {/* Video / Simulated stream area — full screen */}
-      <div className="w-full h-full bg-black relative overflow-hidden">
+      <div className="w-full h-full bg-[#161823] relative overflow-hidden">
         <div className="h-full w-full relative">
           {isOffline ? (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900">

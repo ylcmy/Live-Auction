@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
+import { Eye, EyeOff } from 'lucide-react';
 
 const stagger = {
   animate: {
@@ -27,6 +28,7 @@ export default function Login() {
   const { login, isLoading, error, clearError } = useAuthStore();
   const [username, setUsername] = useState(DEMO_ACCOUNTS.merchant.username);
   const [password, setPassword] = useState(DEMO_ACCOUNTS.merchant.password);
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'merchant' | 'user'>('merchant');
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#161823] flex items-center justify-center px-4 relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand/10 rounded-full blur-3xl" />
@@ -93,7 +95,7 @@ export default function Login() {
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="请输入用户名"
                     required
-                    className="bg-surface-secondary border-white/10 text-white placeholder:text-text-tertiary focus-visible:ring-brand"
+                    className="bg-surface-secondary border-gray-200 text-text-primary placeholder:text-text-tertiary focus-visible:ring-brand"
                   />
                 </div>
 
@@ -101,15 +103,25 @@ export default function Login() {
                   <label htmlFor="password" className="block text-sm font-medium text-text-secondary mb-1.5">
                     密码
                   </label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="请输入密码"
-                    required
-                    className="bg-surface-secondary border-white/10 text-white placeholder:text-text-tertiary focus-visible:ring-brand"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="请输入密码"
+                      required
+                      className="bg-surface-secondary border-gray-200 text-text-primary placeholder:text-text-tertiary focus-visible:ring-brand pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
+                      aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Role Selector */}

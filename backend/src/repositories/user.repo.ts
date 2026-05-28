@@ -30,4 +30,13 @@ export const userRepo = {
     if (ids.length === 0) return [];
     return db('users').whereIn('id', ids).select('id', 'nickname', 'avatar_url');
   },
+
+  async findById(id: number): Promise<Omit<UserRow, 'password_hash'> | undefined> {
+    return db('users').where({ id }).select('id', 'username', 'role', 'nickname', 'avatar_url', 'created_at', 'updated_at').first();
+  },
+
+  async updateProfile(id: number, data: { nickname: string }): Promise<Omit<UserRow, 'password_hash'> | undefined> {
+    await db('users').where({ id }).update({ ...data, updated_at: new Date().toISOString() });
+    return this.findById(id);
+  },
 };

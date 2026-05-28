@@ -7,6 +7,7 @@ import { productRoutes } from './routes/product.routes.js';
 import { roomRoutes } from './routes/room.routes.js';
 import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
+import { userRoutes } from './routes/user.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
 
 export async function buildApp() {
@@ -36,6 +37,7 @@ export async function buildApp() {
   await app.register(roomRoutes);
   await app.register(auctionRoutes);
   await app.register(orderRoutes);
+  await app.register(userRoutes);
 
   app.get('/api/health', async () => ({
     code: 0,
