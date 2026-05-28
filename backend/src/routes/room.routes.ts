@@ -187,8 +187,8 @@ export async function roomRoutes(app: FastifyInstance) {
     const auctionList = allProducts.map((row: any) => {
       const sess = sessionMap.get(row.productId);
       return {
-        sessionId: sess?.sessionId ?? null,
-        status: sess?.status ?? 'pending',
+        sessionId: sess?.sessionId ?? row.productId,
+        status: sess?.status ?? 'listed',
         currentPrice: sess?.currentPrice ?? (row.startPrice ?? 0),
         startedAt: sess?.startedAt ?? null,
         endedAt: sess?.endedAt ?? null,

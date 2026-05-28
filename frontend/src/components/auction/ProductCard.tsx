@@ -37,7 +37,6 @@ function AudioWaveform() {
 export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, onSelect, onBid, index }: ProductCardProps) {
   const { label: priceLabel, price: displayPrice } = getPriceLabel(item);
   const isActive = item.status === 'active';
-  const isClickable = ['listed', 'active'].includes(item.status);
 
   // 状态标签颜色映射
   const statusColors: Record<string, { bg: string; text: string }> = {
@@ -61,9 +60,9 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
 
   return (
     <motion.div
-      whileTap={isClickable ? { scale: 0.98 } : undefined}
-      onClick={isClickable ? onSelect : undefined}
-      className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm"
+      whileTap={{ scale: 0.98 }}
+      onClick={onSelect}
+      className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm cursor-pointer"
     >
       <div className="flex items-start gap-3">
         {/* 左侧：序号 + 图片 */}
@@ -123,7 +122,7 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
               <span className="text-gray-400 text-[11px]">{priceLabel}</span>
             </div>
 
-            {/* 操作按钮 */}
+            {/* 操作按钮：竞拍中显示"去出价"，其他所有状态显示"去看看" */}
             {isActive ? (
               <button
                 onClick={(e) => {
@@ -134,7 +133,7 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
               >
                 去出价
               </button>
-            ) : isClickable ? (
+            ) : (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -144,10 +143,6 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
               >
                 去看看
               </button>
-            ) : (
-              <span className="text-gray-400 text-xs px-4 py-1.5">
-                {item.status === 'ended' ? '已成交' : '已结束'}
-              </span>
             )}
           </div>
         </div>

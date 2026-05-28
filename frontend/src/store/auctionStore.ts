@@ -24,7 +24,7 @@ interface AuctionStore {
   setParticipantCount: (n: number) => void;
   setOnlineCount: (n: number) => void;
   setMyBid: (sessionId: number, amount: number) => void;
-  setRoomAuctions: (auctions: RoomAuctionItem[]) => void;
+  setRoomAuctions: (auctions: RoomAuctionItem[] | ((prev: RoomAuctionItem[]) => RoomAuctionItem[])) => void;
   updateAuctionPrice: (sessionId: number, newPrice: number) => void;
   updateAuctionStatus: (sessionId: number, status: string) => void;
   clearEmotion: () => void;
@@ -63,7 +63,10 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   setOnlineCount: (onlineCount) => set({ onlineCount }),
   setMyBid: (sessionId, amount) =>
     set((state) => ({ myBids: { ...state.myBids, [sessionId]: amount } })),
-  setRoomAuctions: (auctions) => set({ roomAuctions: auctions }),
+  setRoomAuctions: (auctions) =>
+    set((state) => ({
+      roomAuctions: typeof auctions === 'function' ? auctions(state.roomAuctions) : auctions,
+    })),
   updateAuctionPrice: (sessionId, newPrice) =>
     set((state) => ({
       roomAuctions: state.roomAuctions.map((a) =>
@@ -75,15 +78,47 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
           : state.currentAuction,
     })),
   updateAuctionStatus: (sessionId, status) =>
-    set((state) => ({
-      roomAuctions: state.roomAuctions.map((a) =>
-        a.sessionId === sessionId ? { ...a, status: status as RoomAuctionItem['status'] } : a,
-      ),
-      currentAuction:
-        state.currentAuction?.sessionId === sessionId
-          ? { ...state.currentAuction, status: status as AuctionState['status'] }
-          : state.currentAuction,
-    })),
+    set((state) => {
+      const exists = state.roomAuctions.some((a) => a.sessionId === sessionId);
+      if (!exists) {
+        // If auction not in list, add it (edge case)
+        return {
+          roomAuctions: [
+            ...state.roomAuctions,
+            {
+              sessionId,
+              status: status as RoomAuctionItem['status'],
+              currentPrice: 0,
+              startedAt: null,
+              endedAt: null,
+              extensionCount: 0,
+              product: null,
+              rule: {
+                startPrice: 0,
+                bidIncrement: 0,
+                ceilingPrice: null,
+                durationSeconds: 0,
+                extendSeconds: 0,
+                maxExtensions: 0,
+              },
+            } as RoomAuctionItem,
+          ],
+          currentAuction:
+            state.currentAuction?.sessionId === sessionId
+              ? { ...state.currentAuction, status: status as AuctionState['status'] }
+              : state.currentAuction,
+        };
+      }
+      return {
+        roomAuctions: state.roomAuctions.map((a) =>
+          a.sessionId === sessionId ? { ...a, status: status as RoomAuctionItem['status'] } : a,
+        ),
+        currentAuction:
+          state.currentAuction?.sessionId === sessionId
+            ? { ...state.currentAuction, status: status as AuctionState['status'] }
+            : state.currentAuction,
+      };
+    }),
   clearEmotion: () => set({ emotionEvent: null }),
   clearAuction: () =>
     set({

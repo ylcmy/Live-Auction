@@ -116,13 +116,17 @@ export default function LiveRoom() {
       subscribe<any>('emotion:overtaken', (data: any) => setEmotion({ ...data, type: 'overtaken' })),
       subscribe<any>('auction:started', (data: any) => {
         setBubbleDismissed(false);
-        const existingAuction = roomAuctions.find((a) => a.sessionId === data.sessionId);
-        if (existingAuction) {
-          updateAuctionStatus(data.sessionId, 'active');
-        } else {
-          // If not in list (edge case), add it
-          setRoomAuctions([
-            ...roomAuctions,
+        setRoomAuctions((prev: RoomAuctionItem[]) => {
+          const existingAuction = prev.find((a) => a.sessionId === data.sessionId);
+          if (existingAuction) {
+            // Update existing auction status
+            return prev.map((a) =>
+              a.sessionId === data.sessionId ? { ...a, status: 'active' as const } : a
+            );
+          }
+          // Add new auction
+          return [
+            ...prev,
             {
               sessionId: data.sessionId,
               status: 'active',
@@ -133,8 +137,8 @@ export default function LiveRoom() {
               product: data.product,
               rule: data.rule,
             },
-          ]);
-        }
+          ];
+        });
         // Also set as current auction
         setAuction({
           sessionId: data.sessionId,
@@ -200,22 +204,9 @@ export default function LiveRoom() {
     }
   }, [wasReconnected]);
 
-  const handleSelectAuction = (item: RoomAuctionItem) => {
-    if (!item.product) return;
-    const auctionState: AuctionState = {
-      sessionId: item.sessionId,
-      status: item.status as AuctionState['status'],
-      product: item.product,
-      rule: item.rule,
-      currentPrice: item.currentPrice,
-      leaderboard: [],
-      myRank: null,
-      remainingMs: item.rule.durationSeconds * 1000,
-      startedAt: item.startedAt ?? new Date().toISOString(),
-      participantCount: 0,
-      extensionCount: item.extensionCount,
-    };
-    setAuction(auctionState);
+  const handleSelectAuction = (_item: RoomAuctionItem) => {
+    // 仅打开商品详情，不修改当前竞拍状态
+    // 商品详情由 CartPanel 内部管理
   };
 
   const handleSendMessage = useCallback((content: string) => {

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Gavel } from 'lucide-react';
+import { Clock, Gavel, X } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -90,7 +90,7 @@ export default function ProductDetailSheet({
     <Sheet open={open} onOpenChange={(v) => !v && handleClose()}>
       <SheetContent
         side="bottom"
-        className="bg-surface-card border-white/10 rounded-t-2xl h-[50vh] flex flex-col p-0 overflow-hidden"
+        className="bg-white border-gray-200 rounded-t-2xl h-[50vh] flex flex-col p-0 overflow-hidden"
       >
         <motion.div
           variants={sheetVariants}
@@ -101,14 +101,21 @@ export default function ProductDetailSheet({
         >
           {/* Drag handle */}
           <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-            <div className="w-10 h-1 rounded-full bg-white/20" />
+            <div className="w-10 h-1 rounded-full bg-gray-300" />
           </div>
 
           {/* Header */}
-          <SheetHeader className="px-5 pb-3 border-b border-white/5 flex-shrink-0">
-            <SheetTitle className="text-text-primary text-base font-semibold">
+          <SheetHeader className="px-5 pb-3 border-b border-gray-100 flex-shrink-0 flex flex-row items-center justify-between">
+            <SheetTitle className="text-gray-900 text-base font-semibold">
               商品详情
             </SheetTitle>
+            <button
+              onClick={handleClose}
+              className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="关闭"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
             <SheetDescription className="sr-only">
               查看商品详细信息和出价
             </SheetDescription>
@@ -124,7 +131,7 @@ export default function ProductDetailSheet({
               className="flex flex-col"
             >
               {/* Product image with gradient overlay */}
-              <div className="relative w-full h-48 bg-surface-secondary flex-shrink-0">
+              <div className="relative w-full h-48 bg-gray-100 flex-shrink-0">
                 {imageUrl ? (
                   <img
                     src={imageUrl}
@@ -132,12 +139,14 @@ export default function ProductDetailSheet({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-5xl">
-                    📦
+                  <div className="w-full h-full flex items-center justify-center">
+                    <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
                   </div>
                 )}
                 {/* Gradient overlay for text readability */}
-                <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/60 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
 
                 {/* Status badge overlaid on image */}
                 <div className="absolute top-3 right-3">
@@ -147,7 +156,7 @@ export default function ProductDetailSheet({
                     {statusCfg.label}
                   </Badge>
                   {isActive && (
-                    <Badge className="bg-brand text-white border-0 text-xs px-2 py-0.5 ml-2 animate-pulse">
+                    <Badge className="bg-red-500 text-white border-0 text-xs px-2 py-0.5 ml-2 animate-pulse">
                       LIVE
                     </Badge>
                   )}
@@ -156,34 +165,34 @@ export default function ProductDetailSheet({
 
               {/* Product info */}
               <div className="px-5 -mt-8 relative z-10">
-                <h3 className="text-text-primary font-bold text-lg leading-tight">
+                <h3 className="text-gray-900 font-bold text-lg leading-tight">
                   {productName}
                 </h3>
 
                 {productDescription && (
-                  <p className="text-text-secondary text-sm mt-2 line-clamp-2">
+                  <p className="text-gray-500 text-sm mt-2 line-clamp-2">
                     {productDescription}
                   </p>
                 )}
 
                 {/* Price section */}
                 {priceInfo && (
-                  <div className="mt-4 p-3 rounded-xl bg-surface-elevated border border-white/5">
+                  <div className="mt-4 p-3 rounded-xl bg-gray-50 border border-gray-100">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-text-tertiary text-xs">
+                        <span className="text-gray-400 text-xs">
                           {priceInfo.label}
                         </span>
-                        <div className="text-brand font-bold text-xl mt-0.5">
+                        <div className="text-red-500 font-bold text-xl mt-0.5">
                           {formatPrice(priceInfo.price)}
                         </div>
                       </div>
 
                       {/* Countdown placeholder */}
                       {isActive && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand/10 border border-brand/20">
-                          <Clock className="w-3.5 h-3.5 text-brand" />
-                          <span className="text-brand text-sm font-medium font-mono">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100">
+                          <Clock className="w-3.5 h-3.5 text-red-500" />
+                          <span className="text-red-500 text-sm font-medium font-mono">
                             --:--
                           </span>
                         </div>
@@ -192,43 +201,43 @@ export default function ProductDetailSheet({
 
                     {/* Auction details */}
                     {item.rule && (
-                      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/5">
+                      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100">
                         <div>
-                          <span className="text-text-tertiary text-[10px]">
+                          <span className="text-gray-400 text-[10px]">
                             起拍价
                           </span>
-                          <span className="block text-text-secondary text-xs font-medium">
+                          <span className="block text-gray-700 text-xs font-medium">
                             {formatPrice(item.rule.startPrice)}
                           </span>
                         </div>
-                        <div className="w-px h-6 bg-white/10" />
+                        <div className="w-px h-6 bg-gray-200" />
                         <div>
-                          <span className="text-text-tertiary text-[10px]">
+                          <span className="text-gray-400 text-[10px]">
                             加价幅度
                           </span>
-                          <span className="block text-text-secondary text-xs font-medium">
+                          <span className="block text-gray-700 text-xs font-medium">
                             {formatPrice(item.rule.bidIncrement)}
                           </span>
                         </div>
                         {item.rule.ceilingPrice != null && (
                           <>
-                            <div className="w-px h-6 bg-white/10" />
+                            <div className="w-px h-6 bg-gray-200" />
                             <div>
-                              <span className="text-text-tertiary text-[10px]">
+                              <span className="text-gray-400 text-[10px]">
                                 封顶价
                               </span>
-                              <span className="block text-text-secondary text-xs font-medium">
+                              <span className="block text-gray-700 text-xs font-medium">
                                 {formatPrice(item.rule.ceilingPrice)}
                               </span>
                             </div>
                           </>
                         )}
-                        <div className="w-px h-6 bg-white/10" />
+                        <div className="w-px h-6 bg-gray-200" />
                         <div>
-                          <span className="text-text-tertiary text-[10px]">
+                          <span className="text-gray-400 text-[10px]">
                             延时次数
                           </span>
-                          <span className="block text-text-secondary text-xs font-medium">
+                          <span className="block text-gray-700 text-xs font-medium">
                             {item.extensionCount} 次
                           </span>
                         </div>
@@ -244,7 +253,7 @@ export default function ProductDetailSheet({
           </div>
 
           {/* Action button */}
-          <div className="px-5 pb-6 pt-2 flex-shrink-0 border-t border-white/5">
+          <div className="px-5 pb-6 pt-2 flex-shrink-0 border-t border-gray-100">
             <AnimatePresence mode="wait">
               {isActive ? (
                 <motion.div
@@ -256,7 +265,7 @@ export default function ProductDetailSheet({
                   <Button
                     onClick={handleBid}
                     size="lg"
-                    className="w-full h-14 rounded-xl bg-gradient-to-r from-brand to-brand-hover hover:from-brand-hover hover:to-brand text-white font-bold text-lg shadow-[0_4px_20px_rgba(254,44,85,0.35)] hover:shadow-[0_6px_28px_rgba(254,44,85,0.5)] disabled:opacity-40 disabled:cursor-not-allowed border-0"
+                    className="w-full h-14 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold text-lg shadow-[0_4px_20px_rgba(239,68,68,0.35)] hover:shadow-[0_6px_28px_rgba(239,68,68,0.5)] disabled:opacity-40 disabled:cursor-not-allowed border-0"
                   >
                     <span className="flex items-center gap-2">
                       <Gavel className="w-5 h-5" />
@@ -275,9 +284,9 @@ export default function ProductDetailSheet({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="flex items-center justify-center py-4 rounded-xl bg-surface-elevated border border-white/5"
+                  className="flex items-center justify-center py-4 rounded-xl bg-gray-50 border border-gray-100"
                 >
-                  <span className="text-text-tertiary text-sm">
+                  <span className="text-gray-400 text-sm">
                     {getStatusMessage(item.status)}
                   </span>
                 </motion.div>

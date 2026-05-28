@@ -41,13 +41,27 @@ export default function CartPanel({
     return result;
   }, [auctions, currentSessionId]);
 
-  // 原始序号映射
+  // 原始序号映射（基于原始 auctions 数组，不随排序改变）
   const originalIndexMap = useMemo(() => {
     const map = new Map<number, number>();
     auctions.forEach((item, idx) => {
       map.set(item.sessionId, idx);
     });
     return map;
+  }, [auctions]);
+
+  // 检查 auctions 中是否有重复的 sessionId（开发调试使用）
+  const duplicateSessionIds = useMemo(() => {
+    const seen = new Set<number>();
+    const duplicates = new Set<number>();
+    auctions.forEach((item) => {
+      if (seen.has(item.sessionId)) {
+        duplicates.add(item.sessionId);
+      } else {
+        seen.add(item.sessionId);
+      }
+    });
+    return duplicates;
   }, [auctions]);
 
   const handleSelect = useCallback(
@@ -126,6 +140,14 @@ export default function CartPanel({
                     />
                   ))}
                 </div>
+                {/* 开发调试：显示重复 sessionId 警告 */}
+                {duplicateSessionIds.size > 0 && (
+                  <div className="px-3 pb-3">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
+                      警告：检测到重复的商品 sessionId: {[...duplicateSessionIds].join(', ')}
+                    </div>
+                  </div>
+                )}
               </ScrollArea>
             )}
           </div>
