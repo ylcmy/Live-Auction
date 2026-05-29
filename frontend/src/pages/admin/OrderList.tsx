@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
   Package,
   XCircle,
   RefreshCw,
+  Timer,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
@@ -15,16 +16,18 @@ import { formatPrice, formatTime } from '../../lib/format';
 import { ORDER_STATUS_STYLES } from '../../lib/statusConfig';
 import type { Order, OrderStatus } from '../../types/api';
 
-type StatusFilter = 'all' | 'pending_payment' | 'paid' | 'cancelled';
+type StatusFilter = 'all' | OrderStatus;
 
 const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: '全部订单' },
   { value: 'pending_payment', label: '待支付' },
   { value: 'paid', label: '已支付' },
+  { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
 ];
 
 export default function OrderList() {
+  const navigate = useNavigate();
   const { confirm } = useConfirm();
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,23 +64,10 @@ export default function OrderList() {
     setActionLoading((prev) => ({ ...prev, [id]: v }));
   };
 
-  const handlePay = async (orderId: number) => {
-    setLoadingFor(orderId, true);
-    try {
-      await api.post(`/orders/${orderId}/pay`);
-      toast({ title: '支付成功', description: `订单 #${orderId} 已完成支付`, variant: 'success' });
-      fetchOrders();
-    } catch (err: any) {
-      toast({ title: '支付失败', description: err?.message || '请稍后重试', variant: 'destructive' });
-    } finally {
-      setLoadingFor(orderId, false);
-    }
-  };
-
   const handleCancel = async (orderId: number) => {
     const ok = await confirm({
       title: '取消订单',
-      description: `确定要取消订单 #${orderId} 吗？取消后买家将收到退款。`,
+      description: `确定要取消订单 #${orderId} 吗？`,
       variant: 'warning',
       confirmText: '确认取消',
     });
@@ -89,27 +79,6 @@ export default function OrderList() {
       fetchOrders();
     } catch (err: any) {
       toast({ title: '取消失败', description: err?.message || '请稍后重试', variant: 'destructive' });
-    } finally {
-      setLoadingFor(orderId, false);
-    }
-  };
-
-  const handleStatusChange = async (orderId: number, newStatus: OrderStatus) => {
-    const statusLabel = newStatus === 'cancelled' ? '退款' : '恢复';
-    const ok = await confirm({
-      title: `${statusLabel}订单`,
-      description: `确定要${statusLabel}订单 #${orderId} 吗？`,
-      variant: newStatus === 'cancelled' ? 'warning' : 'info',
-      confirmText: `确认${statusLabel}`,
-    });
-    if (!ok) return;
-    setLoadingFor(orderId, true);
-    try {
-      await api.put(`/orders/${orderId}/status`, { status: newStatus });
-      toast({ title: '操作成功', description: `订单 #${orderId} 已${statusLabel}`, variant: 'success' });
-      fetchOrders();
-    } catch (err: any) {
-      toast({ title: '操作失败', description: err?.message || '请稍后重试', variant: 'destructive' });
     } finally {
       setLoadingFor(orderId, false);
     }
@@ -176,22 +145,26 @@ export default function OrderList() {
             <div className="hidden sm:grid grid-cols-12 gap-4 px-5 py-3 bg-surface-secondary/50 border-b border-slate-200 text-text-tertiary text-xs font-medium uppercase tracking-wider">
               <div className="col-span-1">订单号</div>
               <div className="col-span-2">商品</div>
-              <div className="col-span-2">买家</div>
+              <div className="col-span-1">买家</div>
               <div className="col-span-2">成交价</div>
-              <div className="col-span-2">状态</div>
-              <div className="col-span-2">创建时间</div>
+              <div className="col-span-1">状态</div>
+              <div className="col-span-2">支付信息</div>
+              <div className="col-span-2">时间</div>
               <div className="col-span-1 text-right">操作</div>
             </div>
 
             {/* Table Body */}
             <div className="divide-y divide-slate-100">
               {orders.map((order) => {
-                const status = ORDER_STATUS_STYLES[order.status] ?? ORDER_STATUS_STYLES.pending_payment;
+                const isExpired = order.status === 'pending_payment' && new Date(order.expireAt) < new Date();
+                const displayStatus: OrderStatus = isExpired ? 'cancelled' : order.status;
+                const status = ORDER_STATUS_STYLES[displayStatus] ?? ORDER_STATUS_STYLES.pending_payment;
                 const isLoading = actionLoading[order.id];
                 return (
                   <div
                     key={order.id}
-                    className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:gap-4 px-5 py-4 hover:bg-slate-50 transition-colors"
+                    onClick={() => navigate(`/admin/orders/${order.id}`)}
+                    className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:gap-4 px-5 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center justify-between sm:col-span-1">
                       <span className="sm:hidden text-text-tertiary text-xs">订单号</span>
@@ -201,72 +174,77 @@ export default function OrderList() {
                       <span className="sm:hidden text-text-tertiary text-xs">商品</span>
                       <span className="text-text-secondary text-sm">商品 #{order.productId}</span>
                     </div>
-                    <div className="flex items-center justify-between sm:col-span-2">
+                    <div className="flex items-center justify-between sm:col-span-1">
                       <span className="sm:hidden text-text-tertiary text-xs">买家</span>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-surface-secondary flex items-center justify-center border border-slate-200">
                           <Package className="w-3 h-3 text-text-tertiary" />
                         </div>
-                        <span className="text-text-secondary text-sm">用户 #{order.buyerId}</span>
+                        <span className="text-text-secondary text-sm">#{order.buyerId}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between sm:col-span-2">
                       <span className="sm:hidden text-text-tertiary text-xs">成交价</span>
                       <span className="text-brand font-bold text-sm">{formatPrice(order.finalPrice)}</span>
                     </div>
-                    <div className="flex items-center justify-between sm:col-span-2">
+                    <div className="flex items-center justify-between sm:col-span-1">
                       <span className="sm:hidden text-text-tertiary text-xs">状态</span>
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
-                        {status.label}
+                        {isExpired ? '已截止' : status.label}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between sm:col-span-2">
-                      <span className="sm:hidden text-text-tertiary text-xs">创建时间</span>
-                      <span className="text-text-tertiary text-xs">{formatTime(order.createdAt)}</span>
+                    <div className="flex flex-col justify-center sm:col-span-2">
+                      <span className="sm:hidden text-text-tertiary text-xs">支付信息</span>
+                      {order.transactionId ? (
+                        <div className="space-y-0.5">
+                          <span className="text-text-secondary text-xs font-mono">{order.transactionId}</span>
+                          {order.paymentMethod && (
+                            <span className="text-text-tertiary text-xs block">{order.paymentMethod}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-text-tertiary text-xs">-</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col justify-center sm:col-span-2">
+                      <span className="sm:hidden text-text-tertiary text-xs">时间</span>
+                      <div className="space-y-0.5">
+                        <span className="text-text-tertiary text-xs">创建: {formatTime(order.createdAt)}</span>
+                        {order.paidAt && (
+                          <span className="text-text-tertiary text-xs block">支付: {formatTime(order.paidAt)}</span>
+                        )}
+                        {order.completedAt && (
+                          <span className="text-text-tertiary text-xs block">完成: {formatTime(order.completedAt)}</span>
+                        )}
+                        {order.cancelledAt && (
+                          <span className="text-text-tertiary text-xs block">取消: {formatTime(order.cancelledAt)}</span>
+                        )}
+                        {order.status === 'pending_payment' && !isExpired && (
+                          <span className="text-amber-600 text-xs flex items-center gap-1">
+                            <Timer className="w-3 h-3" />
+                            截止: {formatTime(order.expireAt)}
+                          </span>
+                        )}
+                        {isExpired && (
+                          <span className="text-red-500 text-xs flex items-center gap-1">
+                            <Timer className="w-3 h-3" />
+                            已截止: {formatTime(order.expireAt)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center justify-end sm:col-span-1 gap-1">
-                      {order.status === 'pending_payment' && (
-                        <>
-                          <button
-                            onClick={() => handlePay(order.id)}
-                            disabled={isLoading}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-medium transition-all shadow-glow-brand disabled:opacity-50"
-                          >
-                            {isLoading ? (
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <CreditCard className="w-3 h-3" />
-                            )}
-                            支付
-                          </button>
-                          <button
-                            onClick={() => handleCancel(order.id)}
-                            disabled={isLoading}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-secondary hover:bg-slate-100 border border-slate-200 text-text-secondary rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                          >
-                            <XCircle className="w-3 h-3" />
-                            取消
-                          </button>
-                        </>
-                      )}
-                      {order.status === 'paid' && (
+                      {order.status === 'pending_payment' && !isExpired && (
                         <button
-                          onClick={() => handleStatusChange(order.id, 'cancelled')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancel(order.id);
+                          }}
                           disabled={isLoading}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-secondary hover:bg-slate-100 border border-slate-200 text-text-secondary rounded-lg text-xs font-medium transition-all disabled:opacity-50"
                         >
                           {isLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
-                          退款
-                        </button>
-                      )}
-                      {order.status === 'cancelled' && (
-                        <button
-                          onClick={() => handleStatusChange(order.id, 'pending_payment')}
-                          disabled={isLoading}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-secondary hover:bg-slate-100 border border-slate-200 text-text-secondary rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                        >
-                          {isLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                          恢复
+                          取消
                         </button>
                       )}
                     </div>

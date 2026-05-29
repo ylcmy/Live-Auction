@@ -10,39 +10,15 @@ import { logger } from '../middleware/logger.js';
 import { AppError } from '../lib/app-error.js';
 import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { broadcastToRoom } from '../ws/rooms.js';
+import { AuctionTimerManager } from './auction-timer-manager.js';
 import type { Server } from 'socket.io';
 
-/** Map of sessionId -> setTimeout id for auction settlement timers */
-const auctionTimers = new Map<number, NodeJS.Timeout>();
+export class AuctionService {
+  constructor(
+    private io: Server | null,
+    private timerManager: AuctionTimerManager,
+  ) {}
 
-/** Socket.IO server instance for broadcasting */
-let ioInstance: Server | null = null;
-
-export function setAuctionIo(io: Server) {
-  ioInstance = io;
-}
-
-function clearAuctionTimer(sessionId: number) {
-  const existing = auctionTimers.get(sessionId);
-  if (existing) {
-    clearTimeout(existing);
-    auctionTimers.delete(sessionId);
-  }
-}
-
-function scheduleSettlement(sessionId: number, delayMs: number) {
-  clearAuctionTimer(sessionId);
-  const timer = setTimeout(() => {
-    auctionTimers.delete(sessionId);
-    auctionService.settleAuction(sessionId).catch((err) => {
-      logger.error({ event: 'settle_timer_error', sessionId, err }, 'Auction settlement timer failed');
-    });
-  }, delayMs);
-  auctionTimers.set(sessionId, timer);
-  logger.info({ event: 'settlement_scheduled', sessionId, delayMs }, 'Auction settlement timer scheduled');
-}
-
-export const auctionService = {
   async startAuction(merchantId: number, productId: number, roomId: number) {
     const product = await productRepo.findById(productId);
     if (!product) throw new AppError('商品不存在', 404);
@@ -84,11 +60,13 @@ export const auctionService = {
     await cache.set(`room:${roomId}:active_session`, String(sessionId));
 
     // Schedule settlement timer
-    scheduleSettlement(sessionId!, rule.duration_seconds * 1000);
+    this.timerManager.schedule(sessionId!, rule.duration_seconds * 1000, () =>
+      this.settleAuction(sessionId!),
+    );
 
     // Broadcast auction started to all clients in the room
-    if (ioInstance) {
-      broadcastToRoom(ioInstance, String(roomId), 'auction:started', {
+    if (this.io) {
+      broadcastToRoom(this.io, String(roomId), 'auction:started', {
         sessionId,
         status: 'active',
         product: {
@@ -121,7 +99,7 @@ export const auctionService = {
       rule,
       product,
     };
-  },
+  }
 
   /**
    * Extend an auction when a bid comes in near the deadline.
@@ -151,12 +129,14 @@ export const auctionService = {
     await auctionSessionRepo.updateStatus(sessionId, 'active', { extension_count: newExtensions });
 
     // Reschedule settlement timer
-    scheduleSettlement(sessionId, rule.extend_seconds * 1000);
+    this.timerManager.schedule(sessionId, rule.extend_seconds * 1000, () =>
+      this.settleAuction(sessionId),
+    );
 
     logger.info({ event: 'auction_extend', sessionId, extensions: newExtensions, newEndTime }, 'Auction extended');
 
     return { remainingMs: rule.extend_seconds * 1000, extensionCount: newExtensions };
-  },
+  }
 
   /**
    * Get current auction timer info for countdown sync.
@@ -167,7 +147,7 @@ export const auctionService = {
     const serverTime = Date.now();
     const remainingMs = Math.max(0, endTime - serverTime);
     return { serverTime, endTime, remainingMs };
-  },
+  }
 
   /**
    * Build full AuctionState for WS events and REST responses.
@@ -209,7 +189,7 @@ export const auctionService = {
       participantCount: leaderboard.length,
       extensionCount: extensions,
     };
-  },
+  }
 
   /**
    * Settle an auction: determine winner, create order, update statuses, broadcast cleanup.
@@ -288,8 +268,8 @@ export const auctionService = {
       // Note: Room stays 'live' so merchant can start next auction
 
       // Broadcast auction ended to room BEFORE clearing cache
-      if (ioInstance) {
-        broadcastToRoom(ioInstance, String(session.room_id), 'auction:ended', {
+      if (this.io) {
+        broadcastToRoom(this.io, String(session.room_id), 'auction:ended', {
           sessionId,
           status: newStatus,
           winner,
@@ -300,7 +280,7 @@ export const auctionService = {
       }
 
       // Clear auction timers
-      clearAuctionTimer(sessionId);
+      this.timerManager.clear(sessionId);
 
       await cleanupAuctionCache(sessionId, session.room_id);
 
@@ -310,7 +290,7 @@ export const auctionService = {
     } finally {
       await cache.del(lockKey);
     }
-  },
+  }
 
   /**
    * Cancel an auction (merchant only).
@@ -331,10 +311,36 @@ export const auctionService = {
     await productRepo.updateStatus(session.product_id, 'listed');
     // Note: Room stays 'live' so merchant can start next auction
 
-    clearAuctionTimer(sessionId);
+    this.timerManager.clear(sessionId);
 
     await cleanupAuctionCache(sessionId, session.room_id);
 
     logger.info({ event: 'auction_cancelled', sessionId, merchantId }, 'Auction cancelled');
+  }
+}
+
+let defaultServiceInstance: AuctionService | null = null;
+
+export function createAuctionService(io: Server | null = null): AuctionService {
+  const timerManager = new AuctionTimerManager();
+  return new AuctionService(io, timerManager);
+}
+
+export function initializeDefaultAuctionService(io: Server): void {
+  defaultServiceInstance = createAuctionService(io);
+}
+
+export function getAuctionService(): AuctionService {
+  if (!defaultServiceInstance) {
+    throw new Error('AuctionService not initialized. Call initializeDefaultAuctionService first.');
+  }
+  return defaultServiceInstance;
+}
+
+// Backward-compatible export: Proxy to default instance for existing code
+export const auctionService = new Proxy({} as AuctionService, {
+  get(_target, prop) {
+    const service = getAuctionService();
+    return service[prop as keyof AuctionService];
   },
-};
+});

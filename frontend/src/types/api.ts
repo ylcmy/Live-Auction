@@ -91,9 +91,15 @@ export interface Order {
   finalPrice: number;
   status: OrderStatus;
   createdAt: string;
+  paidAt: string | null;
+  cancelledAt: string | null;
+  completedAt: string | null;
+  expireAt: string;
+  paymentMethod: string | null;
+  transactionId: string | null;
 }
 
-export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled';
+export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled' | 'completed';
 
 export interface User {
   id: number;

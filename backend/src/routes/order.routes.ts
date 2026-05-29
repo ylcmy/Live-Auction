@@ -8,7 +8,13 @@ export async function orderRoutes(app: FastifyInstance) {
 
   app.get('/api/orders', async (req, reply) => {
     const query = req.query as any;
-    const data = await orderService.getOrders(req.auth.userId, req.auth.role, parseInt(query.page) || 1, parseInt(query.limit) || 20);
+    const data = await orderService.getOrders(
+      req.auth.userId,
+      req.auth.role,
+      parseInt(query.page) || 1,
+      parseInt(query.limit) || 20,
+      query.status,
+    );
     return replySuccess(reply, data);
   });
 

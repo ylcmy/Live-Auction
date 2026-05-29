@@ -18,6 +18,8 @@ import AuctionManage from './pages/admin/AuctionManage';
 import UserLayout from './components/UserLayout';
 import ProfilePage from './pages/profile/ProfilePage';
 import MyOrders from './pages/profile/MyOrders';
+import OrderDetail from './pages/profile/OrderDetail';
+import AdminOrderDetail from './pages/admin/OrderDetail';
 import { Toaster } from './design-system/components/ui/toaster';
 import { ConfirmProvider } from './components/admin/ConfirmDialog';
 
@@ -58,12 +60,14 @@ export default function App() {
                 <Route path="products/:id" element={<ProductDetail />} />
                 <Route path="products/:id/edit" element={<ProductEdit />} />
                 <Route path="orders" element={<OrderList />} />
+                <Route path="orders/:id" element={<AdminOrderDetail />} />
                 <Route path="auction" element={<AuctionManage />} />
               </Route>
               <Route element={<UserLayout />}>
                 <Route path="/live" element={<LiveRoomList />} />
                 <Route path="/me" element={<ProfilePage />} />
                 <Route path="/me/orders" element={<MyOrders />} />
+                <Route path="/me/orders/:id" element={<OrderDetail />} />
               </Route>
               <Route path="/live/:roomId" element={<ProtectedRoute><LiveRoom /></ProtectedRoute>} />
               <Route path="/" element={<Navigate to="/login" />} />

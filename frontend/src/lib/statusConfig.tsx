@@ -56,6 +56,12 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatus, { variant: 'default' | 'se
     icon: <CheckCircle2 className="w-3.5 h-3.5" />,
     className: 'bg-emerald-50 text-emerald-600 border-emerald-200',
   },
+  completed: {
+    variant: 'secondary',
+    label: '已完成',
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    className: 'bg-green-50 text-green-600 border-green-200',
+  },
   cancelled: {
     variant: 'outline',
     label: '已取消',
@@ -67,6 +73,7 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatus, { variant: 'default' | 'se
 export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; text: string; label: string }> = {
   pending_payment: { bg: 'bg-sky-50', text: 'text-sky-600', label: '待支付' },
   paid: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: '已支付' },
+  completed: { bg: 'bg-green-50', text: 'text-green-600', label: '已完成' },
   cancelled: { bg: 'bg-slate-100', text: 'text-slate-500', label: '已取消' },
 };
 

@@ -4,7 +4,7 @@ import { api } from '../../services/api';
 import { formatPrice } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
-import { ArrowLeft, Package, Clock } from 'lucide-react';
+import { ArrowLeft, Package, Clock, Timer, CreditCard, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '../../design-system/hooks/use-toast';
 import type { ApiResponse, Order, OrderStatus } from '../../types/api';
@@ -12,13 +12,48 @@ import type { ApiResponse, Order, OrderStatus } from '../../types/api';
 const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
   pending_payment: { label: '待付款', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
   paid: { label: '已付款', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  completed: { label: '已完成', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
   cancelled: { label: '已取消', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
 };
+
+const FILTER_OPTIONS: { value: OrderStatus | 'all'; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'pending_payment', label: '待付款' },
+  { value: 'paid', label: '已付款' },
+  { value: 'completed', label: '已完成' },
+  { value: 'cancelled', label: '已取消' },
+];
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 };
+
+function useCountdown(targetDate: string | null) {
+  const [remaining, setRemaining] = useState('');
+
+  useEffect(() => {
+    if (!targetDate) return;
+    const target = new Date(targetDate).getTime();
+
+    const update = () => {
+      const diff = target - Date.now();
+      if (diff <= 0) {
+        setRemaining('已超时');
+        return;
+      }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${m}分${s}秒`);
+    };
+
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [targetDate]);
+
+  return remaining;
+}
 
 export default function MyOrders() {
   const navigate = useNavigate();
@@ -26,11 +61,16 @@ export default function MyOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get<ApiResponse<{ items: Order[]; total: number; page: number; limit: number }>>('/orders');
+      const params: Record<string, string> = {};
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      const response = await api.get<ApiResponse<{ items: Order[]; total: number; page: number; limit: number }>>('/orders', params);
       if (response.data) {
         setOrders(response.data.items);
       }
@@ -39,7 +79,7 @@ export default function MyOrders() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => {
     fetchOrders();
@@ -71,6 +111,23 @@ export default function MyOrders() {
       </header>
 
       <div className="px-4 py-4">
+        {/* Status Filter */}
+        <div className="flex gap-2 overflow-x-auto pb-3 mb-1 scrollbar-hide">
+          {FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                statusFilter === opt.value
+                  ? 'bg-brand text-white'
+                  : 'bg-white/5 text-text-tertiary border border-white/10 hover:bg-white/10'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -99,47 +156,112 @@ export default function MyOrders() {
             variants={{ animate: { transition: { staggerChildren: 0.06 } } }}
             className="space-y-3"
           >
-            {orders.map((order) => {
-              const statusConfig = STATUS_MAP[order.status] ?? STATUS_MAP.pending_payment;
-              return (
-                <motion.div
-                  key={order.id}
-                  variants={fadeUp}
-                  className="bg-white/5 border border-white/10 rounded-xl p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-white font-medium text-sm">订单 #{order.id}</span>
-                    <Badge className={statusConfig.className}>
-                      {statusConfig.label}
-                    </Badge>
-                  </div>
-
-                  <p className="text-brand font-bold text-lg mt-2">
-                    {formatPrice(order.finalPrice)}
-                  </p>
-
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-text-tertiary text-xs flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(order.createdAt).toLocaleString('zh-CN')}
-                    </span>
-                    {order.status === 'pending_payment' && (
-                      <Button
-                        size="sm"
-                        onClick={() => handlePay(order.id)}
-                        disabled={payingId === order.id}
-                        className="bg-brand/10 text-brand border border-brand/20 hover:bg-brand/20 h-7 px-3 text-xs cursor-pointer"
-                      >
-                        {payingId === order.id ? '支付中...' : '去支付'}
-                      </Button>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
+            {orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onPay={handlePay}
+                payingId={payingId}
+              />
+            ))}
           </motion.div>
         )}
       </div>
     </div>
+  );
+}
+
+function OrderCard({
+  order,
+  onPay,
+  payingId,
+}: {
+  order: Order;
+  onPay: (id: number) => void;
+  payingId: number | null;
+}) {
+  const navigate = useNavigate();
+  const isExpired = order.status === 'pending_payment' && new Date(order.expireAt) < new Date();
+  const displayStatus = isExpired ? 'expired' : order.status;
+  const statusConfig = STATUS_MAP[displayStatus as OrderStatus] ?? STATUS_MAP.pending_payment;
+  const countdown = useCountdown(order.status === 'pending_payment' && !isExpired ? order.expireAt : null);
+
+  return (
+    <motion.div
+      variants={fadeUp}
+      onClick={() => navigate(`/me/orders/${order.id}`)}
+      className="bg-white/5 border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/[0.07] transition-colors"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-white font-medium text-sm">订单 #{order.id}</span>
+        <Badge className={statusConfig.className}>
+          {isExpired ? '已超时' : statusConfig.label}
+        </Badge>
+      </div>
+
+      <p className="text-brand font-bold text-lg mt-2">
+        {formatPrice(order.finalPrice)}
+      </p>
+
+      {/* Extra info */}
+      <div className="mt-2 space-y-1">
+        {order.status === 'pending_payment' && !isExpired && (
+          <div className="flex items-center gap-1 text-amber-400 text-xs">
+            <Timer className="w-3 h-3" />
+            <span>支付截止: {countdown}</span>
+          </div>
+        )}
+        {isExpired && (
+          <div className="flex items-center gap-1 text-red-400 text-xs">
+            <Timer className="w-3 h-3" />
+            <span>已超时截止</span>
+          </div>
+        )}
+        {order.transactionId && (
+          <div className="flex items-center gap-1 text-text-tertiary text-xs">
+            <CreditCard className="w-3 h-3" />
+            <span>流水号: {order.transactionId}</span>
+          </div>
+        )}
+        {order.paidAt && (
+          <div className="flex items-center gap-1 text-text-tertiary text-xs">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>支付时间: {new Date(order.paidAt).toLocaleString('zh-CN')}</span>
+          </div>
+        )}
+        {order.completedAt && (
+          <div className="flex items-center gap-1 text-text-tertiary text-xs">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>完成时间: {new Date(order.completedAt).toLocaleString('zh-CN')}</span>
+          </div>
+        )}
+        {order.cancelledAt && !isExpired && (
+          <div className="flex items-center gap-1 text-text-tertiary text-xs">
+            <Clock className="w-3 h-3" />
+            <span>取消时间: {new Date(order.cancelledAt).toLocaleString('zh-CN')}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between mt-3">
+        <span className="text-text-tertiary text-xs flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {new Date(order.createdAt).toLocaleString('zh-CN')}
+        </span>
+        {order.status === 'pending_payment' && !isExpired && (
+          <Button
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPay(order.id);
+            }}
+            disabled={payingId === order.id}
+            className="bg-brand/10 text-brand border border-brand/20 hover:bg-brand/20 h-7 px-3 text-xs cursor-pointer"
+          >
+            {payingId === order.id ? '支付中...' : '去支付'}
+          </Button>
+        )}
+      </div>
+    </motion.div>
   );
 }
