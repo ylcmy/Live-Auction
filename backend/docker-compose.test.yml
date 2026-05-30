@@ -1,0 +1,30 @@
+services:
+  mysql-test:
+    image: mysql:8.0
+    container_name: live-auction-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MYSQL_DATABASE: live_auction_test
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-test:
+    image: redis:7
+    container_name: live-auction-redis-test
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_test_data:

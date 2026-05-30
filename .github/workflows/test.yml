@@ -1,0 +1,162 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx vitest run --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: live_auction_test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: 3307
+      TEST_DB_NAME: live_auction_test
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: testpass
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: 6380
+      JWT_SECRET: test-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Run migrations
+        run: npx tsx node_modules/knex/bin/cli.js migrate:latest --knexfile src/infrastructure/db/knex.ts
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3307
+          DB_NAME: live_auction_test
+          DB_USER: root
+          DB_PASSWORD: testpass
+      - name: Unit Tests + Coverage
+        run: npx vitest run --coverage
+        # vitest 自动应用 thresholds 配置（见 vitest.config.ts），覆盖率不达标则 job 失败
+      - name: Integration Tests
+        run: npx vitest run --config vitest.integration.config.ts
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 7
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [frontend-tests, backend-tests]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: live_auction_test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      CI: true
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: 3307
+      TEST_DB_NAME: live_auction_test
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: testpass
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: 6380
+      JWT_SECRET: test-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install backend dependencies
+        run: cd backend && npm ci
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Run migrations
+        run: cd backend && npx tsx node_modules/knex/bin/cli.js migrate:latest --knexfile src/infrastructure/db/knex.ts
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3307
+          DB_NAME: live_auction_test
+          DB_USER: root
+          DB_PASSWORD: testpass
+      - name: Run E2E Tests
+        run: npx playwright test
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

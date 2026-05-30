@@ -1,0 +1,139 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`statusConfig snapshots > AUCTION_STATUS_CONFIG serializable fields remain stable 1`] = `
+{
+  "active": {
+    "className": "bg-brand/20 text-brand border-brand/30",
+    "label": "竞拍中",
+    "priceLabel": "当前最高价",
+  },
+  "cancelled": {
+    "className": "bg-red-500/20 text-red-400 border-red-500/30",
+    "label": "已取消",
+    "priceLabel": "起拍价",
+  },
+  "ended": {
+    "className": "bg-green-500/20 text-green-400 border-green-500/30",
+    "label": "已成交",
+    "priceLabel": "落槌价",
+  },
+  "listed": {
+    "className": "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    "label": "待拍",
+    "priceLabel": "起拍价",
+  },
+  "unsold": {
+    "className": "bg-gray-500/20 text-gray-400 border-gray-500/30",
+    "label": "流拍",
+    "priceLabel": "起拍价",
+  },
+}
+`;
+
+exports[`statusConfig snapshots > ORDER_STATUS_CONFIG serializable fields remain stable 1`] = `
+{
+  "cancelled": {
+    "className": "bg-red-50 text-red-500 border-red-200",
+    "label": "已取消",
+    "variant": "outline",
+  },
+  "completed": {
+    "className": "bg-green-50 text-green-600 border-green-200",
+    "label": "已完成",
+    "variant": "secondary",
+  },
+  "paid": {
+    "className": "bg-emerald-50 text-emerald-600 border-emerald-200",
+    "label": "已支付",
+    "variant": "secondary",
+  },
+  "pending_payment": {
+    "className": "bg-brand-50 text-brand border-brand/20",
+    "label": "待支付",
+    "variant": "default",
+  },
+}
+`;
+
+exports[`statusConfig snapshots > ORDER_STATUS_STYLES remains stable 1`] = `
+{
+  "cancelled": {
+    "bg": "bg-slate-100",
+    "label": "已取消",
+    "text": "text-slate-500",
+  },
+  "completed": {
+    "bg": "bg-green-50",
+    "label": "已完成",
+    "text": "text-green-600",
+  },
+  "paid": {
+    "bg": "bg-emerald-50",
+    "label": "已支付",
+    "text": "text-emerald-600",
+  },
+  "pending_payment": {
+    "bg": "bg-sky-50",
+    "label": "待支付",
+    "text": "text-sky-600",
+  },
+}
+`;
+
+exports[`statusConfig snapshots > PRODUCT_STATUS_STYLES remains stable 1`] = `
+{
+  "active": {
+    "bg": "bg-emerald-50",
+    "dot": "bg-emerald-500",
+    "label": "竞拍中",
+    "text": "text-emerald-600",
+  },
+  "deleted": {
+    "bg": "bg-slate-100",
+    "dot": "bg-slate-300",
+    "label": "已删除",
+    "text": "text-slate-400",
+  },
+  "ended": {
+    "bg": "bg-amber-50",
+    "dot": "bg-amber-500",
+    "label": "已结束",
+    "text": "text-amber-600",
+  },
+  "listed": {
+    "bg": "bg-sky-50",
+    "dot": "bg-sky-500",
+    "label": "上架待竞拍",
+    "text": "text-sky-600",
+  },
+  "pending": {
+    "bg": "bg-slate-100",
+    "dot": "bg-slate-400",
+    "label": "等待上架",
+    "text": "text-slate-500",
+  },
+  "unsold": {
+    "bg": "bg-orange-50",
+    "dot": "bg-orange-500",
+    "label": "流拍",
+    "text": "text-orange-600",
+  },
+}
+`;
+
+exports[`statusConfig snapshots > ROOM_STATUS_STYLES remains stable 1`] = `
+{
+  "live": {
+    "bg": "bg-emerald-50",
+    "dot": "bg-emerald-500",
+    "label": "直播中",
+    "text": "text-emerald-600",
+  },
+  "offline": {
+    "bg": "bg-slate-100",
+    "dot": "bg-slate-400",
+    "label": "离线",
+    "text": "text-slate-500",
+  },
+}
+`;

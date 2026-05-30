@@ -36,6 +36,10 @@ Thumbs.db
 # Coverage
 coverage/
 
+# Test output
+test-results/
+playwright-report/
+
 # Misc
 *.tmp
 .cache/
@@ -45,3 +49,4 @@ coverage/
 .dbg/
 .agents/
 skills-lock.json
+

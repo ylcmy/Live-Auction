@@ -149,28 +149,26 @@ export default function LiveRoomList() {
                       <span>主播 ID: {room.hostId}</span>
                     </div>
 
-                    {/* Current auction info */}
-                    {room.currentAuction?.product ? (
-                      <div className="bg-white/5 rounded-lg p-3 mb-3">
-                        <div className="flex items-center gap-1.5 text-text-secondary text-xs mb-1">
-                          <Gavel className="w-3 h-3" />
-                          <span>当前竞拍</span>
+                    {/* Current auction info - unified height */}
+                    <div className="bg-white/5 rounded-lg p-3 mb-3 h-[52px] flex flex-col justify-center">
+                      {room.currentAuction?.product ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-text-secondary text-xs">
+                            <Gavel className="w-3 h-3" />
+                            <span>当前竞拍</span>
+                          </div>
+                          <p className="text-brand text-sm font-bold">
+                            <span className="text-text-tertiary text-xs font-normal mr-1">当前价</span>
+                            {formatPrice(room.currentAuction.currentPrice)}
+                          </p>
                         </div>
-                        <p className="text-white text-sm font-medium line-clamp-1">
-                          {room.currentAuction.product.name}
-                        </p>
-                        <p className="text-brand text-sm font-bold mt-1">
-                          {formatPrice(room.currentAuction.currentPrice)}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-white/5 rounded-lg p-3 mb-3">
+                      ) : (
                         <div className="flex items-center gap-1.5 text-text-tertiary text-xs">
                           <Gavel className="w-3 h-3" />
                           <span>等待主播发起竞拍</span>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Enter button */}
                     <Button
