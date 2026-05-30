@@ -6,20 +6,10 @@
  * 默认基准量（可通过命令行参数乘以倍数）:
  *   - 50 商家, 2000 普通用户
  *   - 500 商品, 500 竞拍规则
- *   - 50 直播间
+ *   - 50 直播间（每个商家一个）
  *   - 200 竞拍场次 (含 pending/active/ended/unsold/cancelled 混合)
  *   - 50000 出价记录
  *   - 100 订单
- *
- * 适配要点（基于实际数据库 SHOW CREATE TABLE 结果）:
- *   1. auction_rules: 无 updated_at，无 UNIQUE(product_id)
- *   2. auction_sessions: 无 rule_id/version/extension_count，有 extend_count/ends_at
- *   3. products: status 为 VARCHAR(50) 非 ENUM，有 owner_id/images/start_price
- *   4. bid_records: 出价金额字段为 amount 非 bid_amount
- *   5. orders: 无 buyer_id/product_id/final_price/expire_at/completed_at/cancelled_at/
- *      payment_method，有 user_id/amount/transaction_id/paid_at
- *   6. live_rooms: 无 UNIQUE(host_id)，有 updated_at
- *   7. users: 有 password/avatar/avatar_url/phone 字段
  */
 
 import { db } from '../src/infrastructure/db/knex.js';
@@ -31,7 +21,6 @@ const MULTIPLIER = Math.max(1, parseInt(process.argv[2] || '1', 10));
 const MERCHANT_COUNT = 50 * MULTIPLIER;
 const USER_COUNT = 2000 * MULTIPLIER;
 const PRODUCT_COUNT = 500 * MULTIPLIER;
-const ROOM_COUNT = 50 * MULTIPLIER;
 const SESSION_COUNT = 200 * MULTIPLIER;
 const BID_COUNT = 50000 * MULTIPLIER;
 const ORDER_COUNT = 100 * MULTIPLIER;
@@ -80,12 +69,9 @@ async function generateUsers(): Promise<{ merchantIds: number[]; userIds: number
     merchants.push({
       username: `merchant_${i}`,
       password_hash: hash,
-      password: 'pass1234',
       role: 'merchant',
       nickname: `商家${String(i).padStart(3, '0')}`,
-      avatar: '',
       avatar_url: '',
-      phone: `138${String(randomInt(10000000, 99999999))}`,
       created_at: new Date(),
       updated_at: new Date(),
     });
@@ -96,12 +82,9 @@ async function generateUsers(): Promise<{ merchantIds: number[]; userIds: number
     users.push({
       username: `user_${i}`,
       password_hash: hash,
-      password: 'pass1234',
       role: 'user',
       nickname: `竞拍用户${String(i).padStart(4, '0')}`,
-      avatar: '',
       avatar_url: '',
-      phone: `159${String(randomInt(10000000, 99999999))}`,
       created_at: new Date(),
       updated_at: new Date(),
     });
@@ -116,7 +99,6 @@ async function generateProducts(merchantIds: number[]): Promise<number[]> {
   console.log(`\n生成商品 (${PRODUCT_COUNT})...`);
   const categories = ['数码', '美妆', '服饰', '家电', '食品', '图书', '玩具', '珠宝', '运动', '家居'];
 
-  // 实际 DB: status VARCHAR(50)，常见值 pending/listed/active/ended/unsold/deleted
   const statusWeights: string[] = [
     ...Array(15).fill('listed'),
     ...Array(5).fill('pending'),
@@ -128,18 +110,12 @@ async function generateProducts(merchantIds: number[]): Promise<number[]> {
 
   const rows: Record<string, unknown>[] = [];
   for (let i = 1; i <= PRODUCT_COUNT; i++) {
-    const merchantId = randomItem(merchantIds);
-    const startPrice = randomPrice(0, 500);
     rows.push({
       name: `商品${i} - ${randomItem(['限量', '新款', '热销', '经典', '爆款'])}${randomItem(categories)}`,
       description: `这是商品${i}的详细描述，品质保证，假一赔十`,
-      images: null,
       category: randomItem(categories),
       image_url: `https://picsum.photos/400/400?random=${i}`,
-      start_price: startPrice,
-      owner_id: merchantId,
-      merchant_id: merchantId,
-      room_id: null,
+      merchant_id: randomItem(merchantIds),
       status: randomItem(statusWeights),
       created_at: randomTimestamp(90),
       updated_at: new Date(),
@@ -152,7 +128,6 @@ async function generateProducts(merchantIds: number[]): Promise<number[]> {
 async function generateAuctionRules(productIds: number[]): Promise<number[]> {
   console.log(`\n生成竞拍规则 (${PRODUCT_COUNT})...`);
 
-  // 实际 DB: auction_rules 无 updated_at 列
   const rows: Record<string, unknown>[] = [];
   for (const pid of productIds) {
     const bidIncrement = randomItem([5, 10, 20, 50, 100]);
@@ -173,13 +148,15 @@ async function generateAuctionRules(productIds: number[]): Promise<number[]> {
 }
 
 async function generateLiveRooms(merchantIds: number[]): Promise<number[]> {
-  console.log(`\n生成直播间 (${ROOM_COUNT})...`);
+  // Each merchant has exactly one live room
+  const roomCount = Math.min(merchantIds.length, MERCHANT_COUNT);
+  console.log(`\n生成直播间 (${roomCount}，每个商家一个)...`);
 
   const rows: Record<string, unknown>[] = [];
-  for (let i = 1; i <= ROOM_COUNT; i++) {
+  for (let i = 0; i < roomCount; i++) {
     rows.push({
-      host_id: randomItem(merchantIds),
-      title: `直播间${i} - ${randomItem(['限时抢购', '秒杀专场', '新品首发', '品牌特卖', '捡漏专区'])}`,
+      host_id: merchantIds[i],
+      title: `直播间${i + 1} - ${randomItem(['限时抢购', '秒杀专场', '新品首发', '品牌特卖', '捡漏专区'])}`,
       status: randomItem(['offline', 'live', 'live', 'live']),
       stream_url: null,
       created_at: randomTimestamp(30),
@@ -200,7 +177,7 @@ interface SessionRow {
   ends_at: Date | null;
   started_at: Date | null;
   ended_at: Date | null;
-  extend_count: number;
+  extension_count: number;
 }
 
 async function generateAuctionSessions(
@@ -214,8 +191,6 @@ async function generateAuctionSessions(
   const rows: Record<string, unknown>[] = [];
   const usedProducts = new Set<number>();
 
-  // 实际 DB: auction_sessions 无 rule_id/version/extension_count
-  // 有 extend_count, ends_at
   const statusWeights: string[] = [
     ...Array(5).fill('pending'),
     ...Array(10).fill('active'),
@@ -272,7 +247,7 @@ async function generateAuctionSessions(
       ends_at: endsAt,
       started_at: startedAt,
       ended_at: endedAt,
-      extend_count: status === 'active' || status === 'ended' ? randomInt(0, 5) : 0,
+      extension_count: status === 'active' || status === 'ended' ? randomInt(0, 5) : 0,
       created_at: new Date(),
       updated_at: new Date(),
     });
@@ -293,7 +268,6 @@ async function generateBidRecords(
 ): Promise<void> {
   console.log(`\n生成出价记录 (${BID_COUNT})...`);
 
-  // 实际 DB: bid_records 出价金额字段为 amount 非 bid_amount
   const rows: Record<string, unknown>[] = [];
   const seenKeys = new Set<string>();
 
@@ -327,11 +301,10 @@ async function generateBidRecords(
 async function generateOrders(
   endedSessionIds: number[],
   userIds: number[],
+  productIds: number[],
 ): Promise<void> {
   console.log(`\n生成订单 (${ORDER_COUNT})...`);
 
-  // 实际 DB: orders 字段为 session_id/user_id/amount/status/transaction_id/paid_at
-  // 无 buyer_id/product_id/final_price/expire_at/completed_at/cancelled_at/payment_method
   const usedSessions = new Set<number>();
   const rows: Record<string, unknown>[] = [];
 
@@ -346,14 +319,20 @@ async function generateOrders(
 
     const orderStatus = randomItem(['pending_payment', 'paid', 'paid', 'completed', 'completed', 'cancelled']);
     const createdAt = randomTimestamp(7);
+    const expireAt = new Date(createdAt.getTime() + 15 * 60 * 1000);
 
     const row: Record<string, unknown> = {
       session_id: sessionId,
-      user_id: randomItem(userIds),
-      amount: randomPrice(50, 2000),
+      buyer_id: randomItem(userIds),
+      product_id: randomItem(productIds),
+      final_price: randomPrice(50, 2000),
       status: orderStatus,
+      expire_at: expireAt,
       transaction_id: null,
       paid_at: null,
+      cancelled_at: null,
+      completed_at: null,
+      payment_method: null,
       created_at: createdAt,
       updated_at: new Date(),
     };
@@ -361,6 +340,15 @@ async function generateOrders(
     if (orderStatus === 'paid' || orderStatus === 'completed') {
       row.paid_at = new Date(createdAt.getTime() + randomInt(1, 5) * 60 * 1000);
       row.transaction_id = `TXN${createdAt.getTime()}${randomUUID().replace(/-/g, '').substring(0, 6).toUpperCase()}`;
+      row.payment_method = 'mock';
+    }
+
+    if (orderStatus === 'completed') {
+      row.completed_at = new Date(createdAt.getTime() + randomInt(5, 10) * 60 * 1000);
+    }
+
+    if (orderStatus === 'cancelled') {
+      row.cancelled_at = new Date(createdAt.getTime() + randomInt(10, 30) * 60 * 1000);
     }
 
     rows.push(row);
@@ -389,34 +377,24 @@ async function main() {
 
   const productIds = await generateProducts(merchantIds);
 
-  const ruleIds = await generateAuctionRules(productIds);
+  await generateAuctionRules(productIds);
 
   const roomIds = await generateLiveRooms(merchantIds);
 
-  const { sessionIds, endedSessionIds } = await generateAuctionSessions(
-    productIds, roomIds, userIds,
-  );
+  const { endedSessionIds } = await generateAuctionSessions(productIds, roomIds, userIds);
 
-  await generateBidRecords(sessionIds, userIds);
+  await generateBidRecords(endedSessionIds, userIds);
 
-  await generateOrders(endedSessionIds, userIds);
+  await generateOrders(endedSessionIds, userIds, productIds);
 
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`\n========================================`);
-  console.log(`完成！耗时 ${elapsed}s`);
-  console.log(`  users:            ${MERCHANT_COUNT + USER_COUNT}`);
-  console.log(`  products:         ${PRODUCT_COUNT}`);
-  console.log(`  auction_rules:    ${ruleIds.length}`);
-  console.log(`  live_rooms:       ${roomIds.length}`);
-  console.log(`  auction_sessions: ${sessionIds.length}`);
-  console.log(`  bid_records:      ${BID_COUNT}`);
-  console.log(`  orders:           ${Math.min(ORDER_COUNT, endedSessionIds.length)}`);
+  console.log('\n========================================');
+  console.log(`全部完成！耗时 ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
   console.log('========================================');
 
   await db.destroy();
 }
 
 main().catch((err) => {
-  console.error('数据生成失败:', err);
-  db.destroy().finally(() => process.exit(1));
+  console.error('生成失败:', err);
+  process.exit(1);
 });
