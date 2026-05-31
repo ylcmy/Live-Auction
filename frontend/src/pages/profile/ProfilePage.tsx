@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { UserCircle, Pencil, Package, RefreshCw, LogOut, ChevronRight } from 'lucide-react';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import {
   Dialog,

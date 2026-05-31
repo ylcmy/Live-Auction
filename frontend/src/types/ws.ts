@@ -18,6 +18,7 @@ export interface AuctionState {
   currentPrice: number;
   leaderboard: LeaderboardEntry[];
   myRank: number | null;
+  myBidAmount: number | null;
   remainingMs: number;
   startedAt: string;
   participantCount: number;

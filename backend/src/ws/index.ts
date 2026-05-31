@@ -37,6 +37,14 @@ export function initWebSocket(httpServer: HttpServer) {
   io.on('connection', async (socket) => {
     const userId = (socket as any).userId as number;
 
+    socket.on('room-list:subscribe', () => {
+      socket.join('room-list');
+    });
+
+    socket.on('room-list:unsubscribe', () => {
+      socket.leave('room-list');
+    });
+
     socket.on('auction:join', async ({ roomId }: { roomId: number }) => {
       const rid = String(roomId);
       joinRoom(socket, rid);
@@ -96,6 +104,11 @@ export function initWebSocket(httpServer: HttpServer) {
 export function broadcastRoomStatus(roomId: number, status: string) {
   if (!io) return;
   broadcastToRoom(io, String(roomId), 'room:status', { roomId, status });
+}
+
+export function broadcastRoomListUpdate(event: string, data: any) {
+  if (!io) return;
+  io.to('room-list').emit(event, data);
 }
 
 export async function broadcastAuctionState(roomId: number, sessionId: number) {

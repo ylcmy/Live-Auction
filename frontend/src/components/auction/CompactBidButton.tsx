@@ -26,7 +26,7 @@ export default function CompactBidButton({ sessionId }: Props) {
   const handleClick = () => {
     if (disabled) return;
     setIsPressed(true);
-    submitBid();
+    submitBid(nextBid);
     setTimeout(() => setIsPressed(false), 300);
   };
 

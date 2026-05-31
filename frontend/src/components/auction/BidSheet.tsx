@@ -93,14 +93,11 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
     if (!socket) return;
 
     const handler = (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
-      if (data.sessionId === item.sessionId && data.newTopBid) {
-        // Update price in store
+      if (data.sessionId === item.sessionId) {
         updateAuctionPrice(data.sessionId, data.amount);
-        // Snap bid amount to new minimum if outbid
         snapToMin(data.amount);
 
-        // Flash outbid indicator if the new bid is not from us
-        if (myLastBid == null || data.amount > myLastBid) {
+        if (myLastBid != null && data.amount > myLastBid) {
           setIsOutbid(true);
           setTimeout(() => setIsOutbid(false), 800);
         }

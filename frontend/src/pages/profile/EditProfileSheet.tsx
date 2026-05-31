@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from '../../design-system/hooks/use-toast';
 import {

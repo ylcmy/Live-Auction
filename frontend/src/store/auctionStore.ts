@@ -46,14 +46,18 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   chatMessages: [],
 
   setAuction: (auction) =>
-    set({
+    set((state) => ({
       currentAuction: auction,
       leaderboard: auction.leaderboard,
       participantCount: auction.participantCount,
       countdown: auction.remainingMs != null
         ? { sessionId: auction.sessionId, remainingMs: auction.remainingMs, serverTime: Date.now() }
         : null,
-    }),
+      myRank: auction.myRank ?? state.myRank,
+      myBids: auction.myBidAmount != null
+        ? { ...state.myBids, [auction.sessionId]: auction.myBidAmount }
+        : state.myBids,
+    })),
   setLeaderboard: (leaderboard) => set({ leaderboard }),
   setCountdown: (countdown) => set({ countdown }),
   triggerExtend: (extendMs) => set({ extendMs }),

@@ -7,7 +7,6 @@ describe('validateBid', () => {
     currentPrice: 0,
     bidIncrement: 10,
     ceilingPrice: null,
-    lastBidUserId: null,
     idempotencyKeyExists: false,
     rateLimitExceeded: false,
   };
@@ -35,10 +34,8 @@ describe('validateBid', () => {
     expect(result!.code).toBe(42900);
   });
 
-  it('should reject consecutive self-bid', () => {
-    const result = validateBid(1, { ...baseCtx, lastBidUserId: 1 });
-    expect(result).not.toBeNull();
-    expect(result!.message).toContain('等待他人');
+  it('should allow consecutive self-bid', () => {
+    expect(validateBid(1, baseCtx)).toBeNull();
   });
 
   it('should reject when bid exceeds ceiling price', () => {

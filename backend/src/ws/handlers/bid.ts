@@ -19,6 +19,7 @@ import {
 import { auctionService } from '../../services/auction.service.js';
 import { auctionSessionRepo } from '../../repositories/auction-session.repo.js';
 import { broadcastToRoom } from '../rooms.js';
+import { broadcastRoomListUpdate } from '../index.js';
 
 export function registerBidHandlers(io: Server, socket: Socket) {
   const userId = (socket as any).userId as number;
@@ -67,6 +68,12 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       amount: result.amount,
       timestamp: new Date().toISOString(),
       newTopBid: result.isLeading,
+    });
+
+    broadcastRoomListUpdate('room-list:bid-new', {
+      roomId: Number(roomId),
+      sessionId,
+      currentPrice: result.amount,
     });
 
     // ---- Broadcast updated leaderboard with real nicknames ----

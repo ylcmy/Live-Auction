@@ -41,6 +41,10 @@ async function buildCurrentAuction(roomId: number) {
 
   if (!productData) return null;
 
+  const topBidRaw = await cache.get(`auction:${activeAuction.sessionId}:top_bid`);
+  const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
+  const currentPrice = topBid ? topBid.amount : activeAuction.currentPrice;
+
   return {
     sessionId: activeAuction.sessionId,
     status: activeAuction.status,
@@ -58,7 +62,7 @@ async function buildCurrentAuction(roomId: number) {
       extendSeconds: productData.extendSeconds ?? 30,
       maxExtensions: productData.maxExtensions ?? 3,
     },
-    currentPrice: activeAuction.currentPrice,
+    currentPrice,
     leaderboard: [],
     startedAt: activeAuction.startedAt,
     participantCount: 0,
@@ -95,12 +99,61 @@ export async function roomRoutes(app: FastifyInstance) {
     if (query.status) filters.status = query.status;
     const data = await liveRoomRepo.findAll({ ...filters, page: parseInt(query.page) || 1, limit: parseInt(query.limit) || 20 });
 
-    const itemsWithAuction = await Promise.all(
-      data.items.map(async (room: any) => {
-        const currentAuction = await buildCurrentAuction(room.id);
-        return { ...room, currentAuction };
-      })
-    );
+    if (data.items.length === 0) {
+      return replySuccess(reply, data);
+    }
+
+    const roomIds = data.items.map((r: any) => r.id);
+
+    const activeSessions = await db('auction_sessions as s')
+      .join('products as p', 's.product_id', 'p.id')
+      .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
+      .whereIn('s.room_id', roomIds)
+      .where('s.status', 'active')
+      .select(
+        's.room_id as roomId', 's.id as sessionId', 's.status', 's.current_price as currentPrice',
+        's.started_at as startedAt', 's.extension_count as extensionCount',
+        'p.id as productId', 'p.name as productName', 'p.description as productDescription', 'p.image_url as productImageUrl',
+        'r.start_price as startPrice', 'r.bid_increment as bidIncrement',
+        'r.ceiling_price as ceilingPrice', 'r.duration_seconds as durationSeconds',
+        'r.extend_seconds as extendSeconds', 'r.max_extensions as maxExtensions',
+      );
+
+    const auctionMap = new Map<number, any>();
+    for (const row of activeSessions) {
+      if (!auctionMap.has(row.roomId)) {
+        const topBidRaw = await cache.get(`auction:${row.sessionId}:top_bid`);
+        const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
+        auctionMap.set(row.roomId, {
+          sessionId: row.sessionId,
+          status: row.status,
+          product: {
+            id: row.productId,
+            name: row.productName,
+            description: row.productDescription,
+            imageUrl: row.productImageUrl,
+          },
+          rule: {
+            startPrice: row.startPrice ?? 0,
+            bidIncrement: row.bidIncrement ?? 10,
+            ceilingPrice: row.ceilingPrice ?? null,
+            durationSeconds: row.durationSeconds ?? 300,
+            extendSeconds: row.extendSeconds ?? 30,
+            maxExtensions: row.maxExtensions ?? 3,
+          },
+          currentPrice: topBid ? topBid.amount : row.currentPrice,
+          leaderboard: [],
+          startedAt: row.startedAt,
+          participantCount: 0,
+          extensionCount: row.extensionCount,
+        });
+      }
+    }
+
+    const itemsWithAuction = data.items.map((room: any) => ({
+      ...room,
+      currentAuction: auctionMap.get(room.id) || null,
+    }));
 
     return replySuccess(reply, { ...data, items: itemsWithAuction });
   });
@@ -152,7 +205,7 @@ export async function roomRoutes(app: FastifyInstance) {
     const allProducts = await db('products as p')
       .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
       .where('p.merchant_id', room.host_id)
-      .whereIn('p.status', ['pending', 'listed', 'active', 'ended'])
+      .whereNotIn('p.status', ['pending', 'deleted'])
       .orderBy('p.created_at', 'desc')
       .select(
         'p.id as productId',
@@ -184,12 +237,18 @@ export async function roomRoutes(app: FastifyInstance) {
     const sessionMap = new Map();
     existingSessions.forEach((s: any) => sessionMap.set(s.productId, s));
 
-    const auctionList = allProducts.map((row: any) => {
+    const auctionListPromises = allProducts.map(async (row: any) => {
       const sess = sessionMap.get(row.productId);
+      let currentPrice = sess?.currentPrice ?? (row.startPrice ?? 0);
+      if (sess?.sessionId && sess?.status === 'active') {
+        const topBidRaw = await cache.get(`auction:${sess.sessionId}:top_bid`);
+        const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
+        if (topBid) currentPrice = topBid.amount;
+      }
       return {
         sessionId: sess?.sessionId ?? row.productId,
-        status: sess?.status ?? 'listed',
-        currentPrice: sess?.currentPrice ?? (row.startPrice ?? 0),
+        status: sess?.status ?? row.productStatus,
+        currentPrice,
         startedAt: sess?.startedAt ?? null,
         endedAt: sess?.endedAt ?? null,
         extensionCount: sess?.extensionCount ?? 0,
@@ -209,6 +268,7 @@ export async function roomRoutes(app: FastifyInstance) {
         },
       };
     });
+    const auctionList = await Promise.all(auctionListPromises);
 
     const currentAuction = await buildCurrentAuction(roomId);
 

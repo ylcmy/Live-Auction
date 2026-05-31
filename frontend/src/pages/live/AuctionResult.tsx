@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
 import { useAuthStore } from '../../store/authStore';
 import { Card, CardContent } from '../../design-system/components/ui/card';

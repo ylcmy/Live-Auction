@@ -8,7 +8,7 @@ export const auctionSessionRepo = {
       current_price: data.current_price ?? 0.00,
       started_at: db.fn.now(),
     });
-    return id;
+    return id as number;
   },
   async findById(id: number) {
     return db('auction_sessions').where({ id }).first();

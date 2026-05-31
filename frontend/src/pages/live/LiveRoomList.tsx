@@ -1,46 +1,160 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
 import { Card, CardContent } from '../../design-system/components/ui/card';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
-import { Radio, Users, Gavel, UserCircle, ArrowRight } from 'lucide-react';
+import { Radio, Users, Gavel, UserCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getSocket } from '../../services/socket';
 import type { LiveRoom } from '../../types/api';
 import type { ApiResponse, PaginatedData } from '../../types/api';
+
+function AudioWaveform() {
+  return (
+    <div className="flex items-end gap-[2px] h-3">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="w-[2px] bg-red-400 rounded-full"
+          animate={{ height: ['3px', '10px', '5px', '10px', '3px'] }}
+          transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const PAGE_SIZE = 20;
 
 export default function LiveRoomList() {
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<LiveRoom[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const fetchRooms = useCallback(async () => {
-    setLoading(true);
+  const hasMore = rooms.length < total;
+
+  const fetchRooms = useCallback(async (pageNum: number, append: boolean) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const response = await api.get<ApiResponse<PaginatedData<LiveRoom>>>('/rooms', {
         status: 'live',
-        page: 1,
-        limit: 20,
+        page: pageNum,
+        limit: PAGE_SIZE,
       });
       const data = (response as any).data ?? response;
-      setRooms(data?.items || []);
+      const items = data?.items || [];
+      setTotal(data?.total || 0);
+      if (append) {
+        setRooms((prev) => [...prev, ...items]);
+      } else {
+        setRooms(items);
+      }
     } catch (err: any) {
       setError(err?.data?.message || err.message || '加载直播间列表失败');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return;
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchRooms(nextPage, true);
+  }, [page, loadingMore, hasMore, fetchRooms]);
+
   useEffect(() => {
-    fetchRooms();
+    fetchRooms(1, false);
   }, [fetchRooms]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket?.connected) return;
+
+    socket.emit('room-list:subscribe');
+
+    const onAuctionStarted = (data: { roomId: number; currentAuction: any }) => {
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === data.roomId
+            ? { ...room, currentAuction: data.currentAuction }
+            : room,
+        ),
+      );
+    };
+
+    const onAuctionEnded = (data: { roomId: number; sessionId: number; status: string }) => {
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === data.roomId
+            ? { ...room, currentAuction: null }
+            : room,
+        ),
+      );
+    };
+
+    const onBidNew = (data: { roomId: number; sessionId: number; currentPrice: number }) => {
+      setRooms((prev) =>
+        prev.map((room) => {
+          if (room.id !== data.roomId || !room.currentAuction) return room;
+          if (room.currentAuction.sessionId !== data.sessionId) return room;
+          return {
+            ...room,
+            currentAuction: { ...room.currentAuction, currentPrice: data.currentPrice },
+          };
+        }),
+      );
+    };
+
+    socket.on('room-list:auction-started', onAuctionStarted);
+    socket.on('room-list:auction-ended', onAuctionEnded);
+    socket.on('room-list:bid-new', onBidNew);
+
+    return () => {
+      socket.emit('room-list:unsubscribe');
+      socket.off('room-list:auction-started', onAuctionStarted);
+      socket.off('room-list:auction-ended', onAuctionEnded);
+      socket.off('room-list:bid-new', onBidNew);
+    };
+  }, []);
 
   const handleEnterRoom = (roomId: number) => {
     navigate(`/live/${roomId}`);
   };
+
+  const sortedRooms = [...rooms].sort((a, b) => {
+    const aActive = a.currentAuction?.status === 'active' ? 1 : 0;
+    const bActive = b.currentAuction?.status === 'active' ? 1 : 0;
+    return bActive - aActive;
+  });
 
   return (
     <div className="min-h-screen bg-[#161823] flex flex-col">
@@ -57,7 +171,7 @@ export default function LiveRoomList() {
 
       {/* Content */}
       <main className="flex-1 max-w-5xl mx-auto px-4 py-6 w-full">
-        {/* Loading */}
+        {/* Initial Loading */}
         {loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -85,7 +199,7 @@ export default function LiveRoomList() {
               <p className="text-brand text-sm">{error}</p>
               <Button
                 variant="link"
-                onClick={fetchRooms}
+                onClick={() => fetchRooms(1, false)}
                 className="mt-2 text-text-secondary"
               >
                 重试
@@ -114,12 +228,12 @@ export default function LiveRoomList() {
         {/* Room List */}
         {!loading && !error && rooms.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rooms.map((room, index) => (
+            {sortedRooms.map((room, index) => (
               <motion.div
                 key={room.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.08, duration: 0.4 }}
+                transition={{ delay: Math.min(index * 0.05, 0.5), duration: 0.4 }}
               >
                 <Card
                   className="bg-surface-card border-white/10 hover:border-brand/30 transition-all duration-300 cursor-pointer group"
@@ -149,28 +263,26 @@ export default function LiveRoomList() {
                       <span>主播 ID: {room.hostId}</span>
                     </div>
 
-                    {/* Current auction info */}
-                    {room.currentAuction?.product ? (
-                      <div className="bg-white/5 rounded-lg p-3 mb-3">
-                        <div className="flex items-center gap-1.5 text-text-secondary text-xs mb-1">
-                          <Gavel className="w-3 h-3" />
-                          <span>当前竞拍</span>
+                    {/* Current auction info - unified height */}
+                    <div className="bg-white/5 rounded-lg p-3 mb-3 h-[52px] flex flex-col justify-center">
+                      {room.currentAuction?.product ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-text-secondary text-xs">
+                            <AudioWaveform />
+                            <span>当前竞拍</span>
+                          </div>
+                          <p className="text-brand text-sm font-bold">
+                            <span className="text-text-tertiary text-xs font-normal mr-1">当前价</span>
+                            {formatPrice(room.currentAuction.currentPrice)}
+                          </p>
                         </div>
-                        <p className="text-white text-sm font-medium line-clamp-1">
-                          {room.currentAuction.product.name}
-                        </p>
-                        <p className="text-brand text-sm font-bold mt-1">
-                          {formatPrice(room.currentAuction.currentPrice)}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-white/5 rounded-lg p-3 mb-3">
+                      ) : (
                         <div className="flex items-center gap-1.5 text-text-tertiary text-xs">
                           <Gavel className="w-3 h-3" />
                           <span>等待主播发起竞拍</span>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Enter button */}
                     <Button
@@ -184,6 +296,21 @@ export default function LiveRoomList() {
                 </Card>
               </motion.div>
             ))}
+          </div>
+        )}
+
+        {/* Infinite scroll sentinel + loading more indicator */}
+        {!loading && !error && rooms.length > 0 && (
+          <div ref={sentinelRef} className="flex justify-center py-6">
+            {loadingMore && (
+              <div className="flex items-center gap-2 text-text-tertiary text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>加载更多...</span>
+              </div>
+            )}
+            {!hasMore && rooms.length > 0 && (
+              <span className="text-text-tertiary text-xs">已加载全部直播间</span>
+            )}
           </div>
         )}
       </main>

@@ -3,7 +3,6 @@ export interface BidValidationContext {
   currentPrice: number;
   bidIncrement: number;
   ceilingPrice: number | null;
-  lastBidUserId: number | null;
   idempotencyKeyExists: boolean;
   rateLimitExceeded: boolean;
 }
@@ -27,10 +26,6 @@ export function validateBid(
 
   if (context.rateLimitExceeded) {
     return { code: 42900, message: '出价过于频繁，请稍后再试' };
-  }
-
-  if (context.lastBidUserId === userId) {
-    return { code: 40901, message: '请等待他人出价后再出' };
   }
 
   if (context.ceilingPrice !== null && context.ceilingPrice !== undefined) {

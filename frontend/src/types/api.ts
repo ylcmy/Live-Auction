@@ -54,6 +54,7 @@ export interface AuctionRule {
 
 export interface AuctionSession {
   id: number;
+  sessionId: number;
   productId: number;
   product?: Product;
   rule?: AuctionRule;

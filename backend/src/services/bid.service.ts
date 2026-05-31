@@ -138,11 +138,6 @@ export const bidService = {
         };
       }
 
-      // Check last bidder (most recent bid in this session)
-      const lastBids = await bidRepo.findBySession(sessionId, 1);
-      const lastBidUserId =
-        lastBids.length > 0 ? lastBids[0]!.user_id : null;
-
       // Rate limit check using Redis sorted set sliding window
       const rateKey = `ratelimit:${sessionId}:${userId}`;
       const now = Date.now();
@@ -159,8 +154,7 @@ export const bidService = {
         ceilingPrice: rule.ceiling_price
           ? Number(rule.ceiling_price)
           : null,
-        lastBidUserId,
-        idempotencyKeyExists: false, // Already checked via SETNX above
+        idempotencyKeyExists: false,
         rateLimitExceeded,
       });
 
@@ -202,24 +196,22 @@ export const bidService = {
         }),
       );
 
-      // ---- 9. Async persist to MySQL (non-blocking) ----
-      setImmediate(async () => {
-        try {
-          const bidId = await bidRepo.create({
-            session_id: sessionId,
-            user_id: userId,
-            bid_amount: bidAmount,
-            idempotency_key: idempotencyKey,
-          });
-          await auctionSessionRepo.updatePrice(
-            sessionId,
-            bidAmount,
-            shouldEnd ? userId : undefined,
-          );
-        } catch (err) {
-          logger.error({ err, sessionId, userId, bidAmount }, 'Async bid persistence failed');
-        }
-      });
+      // ---- 9. Persist to MySQL ----
+      try {
+        await bidRepo.create({
+          session_id: sessionId,
+          user_id: userId,
+          bid_amount: bidAmount,
+          idempotency_key: idempotencyKey,
+        });
+        await auctionSessionRepo.updatePrice(
+          sessionId,
+          bidAmount,
+          shouldEnd ? userId : undefined,
+        );
+      } catch (err) {
+        logger.error({ err, sessionId, userId, bidAmount }, 'Bid persistence failed');
+      }
 
       // ---- 10. Get rank ----
       const rank = await cache.zrevrank(lbKey, String(userId));

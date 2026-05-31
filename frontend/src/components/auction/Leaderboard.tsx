@@ -84,7 +84,7 @@ export default function Leaderboard() {
                         ? 'bg-brand/20 text-brand'
                         : 'bg-surface-secondary text-text-secondary'
                     }`}>
-                      {entry.userNickname.charAt(0)}
+                      {entry.userNickname.charAt(0) || '?'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex items-center gap-1.5">

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../../design-system/components/ui/sheet';
 import { Badge } from '../../design-system/components/ui/badge';
 import { ScrollArea } from '../../design-system/components/ui/scroll-area';
-import { X, Package } from 'lucide-react';
+import { Package } from 'lucide-react';
 import { useAuctionStore } from '../../store/auctionStore';
 import ProductCard from './ProductCard';
 import ProductDetailSheet from './ProductDetailSheet';
@@ -48,20 +48,6 @@ export default function CartPanel({
       map.set(item.sessionId, idx);
     });
     return map;
-  }, [auctions]);
-
-  // 检查 auctions 中是否有重复的 sessionId（开发调试使用）
-  const duplicateSessionIds = useMemo(() => {
-    const seen = new Set<number>();
-    const duplicates = new Set<number>();
-    auctions.forEach((item) => {
-      if (seen.has(item.sessionId)) {
-        duplicates.add(item.sessionId);
-      } else {
-        seen.add(item.sessionId);
-      }
-    });
-    return duplicates;
   }, [auctions]);
 
   const handleSelect = useCallback(
@@ -110,13 +96,6 @@ export default function CartPanel({
                 {auctions.length} 件
               </Badge>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-              aria-label="关闭"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
           </SheetHeader>
 
           <div className="flex-1 overflow-hidden">
@@ -140,14 +119,6 @@ export default function CartPanel({
                     />
                   ))}
                 </div>
-                {/* 开发调试：显示重复 sessionId 警告 */}
-                {duplicateSessionIds.size > 0 && (
-                  <div className="px-3 pb-3">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
-                      警告：检测到重复的商品 sessionId: {[...duplicateSessionIds].join(', ')}
-                    </div>
-                  </div>
-                )}
               </ScrollArea>
             )}
           </div>

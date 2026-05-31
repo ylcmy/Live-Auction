@@ -14,7 +14,7 @@ export default function BidStepper({ value, min, step, onChange }: BidStepperPro
 
   const handleDecrement = () => {
     if (!isAtMin) {
-      onChange(value - step);
+      onChange(Math.max(value - step, min));
     }
   };
 

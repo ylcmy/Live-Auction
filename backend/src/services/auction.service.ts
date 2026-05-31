@@ -10,6 +10,7 @@ import { logger } from '../middleware/logger.js';
 import { AppError } from '../lib/app-error.js';
 import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { broadcastToRoom } from '../ws/rooms.js';
+import { broadcastRoomListUpdate } from '../ws/index.js';
 import { AuctionTimerManager } from './auction-timer-manager.js';
 import type { Server } from 'socket.io';
 
@@ -60,8 +61,8 @@ export class AuctionService {
     await cache.set(`room:${roomId}:active_session`, String(sessionId));
 
     // Schedule settlement timer
-    this.timerManager.schedule(sessionId!, rule.duration_seconds * 1000, () =>
-      this.settleAuction(sessionId!),
+    this.timerManager.schedule(sessionId, rule.duration_seconds * 1000, () =>
+      this.settleAuction(sessionId),
     );
 
     // Broadcast auction started to all clients in the room
@@ -88,6 +89,22 @@ export class AuctionService {
         extensionCount: 0,
       });
     }
+
+    broadcastRoomListUpdate('room-list:auction-started', {
+      roomId,
+      currentAuction: {
+        sessionId,
+        status: 'active',
+        product: {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          imageUrl: product.image_url,
+        },
+        currentPrice: Number(rule.start_price),
+        startedAt: new Date().toISOString(),
+      },
+    });
 
     logger.info({ event: 'auction_start', sessionId, productId, roomId, merchantId, duration: rule.duration_seconds }, 'Auction started');
 
@@ -164,6 +181,10 @@ export class AuctionService {
     const leaderboard = await bidService.getLeaderboard(sessionId, currentUserId || 0);
     const extensions = parseInt((await cache.get(`auction:${sessionId}:extensions`)) || '0', 10);
 
+    const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
+    const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
+    const currentPrice = topBid ? topBid.amount : Number(session.current_price);
+
     return {
       sessionId,
       status: session.status,
@@ -181,9 +202,10 @@ export class AuctionService {
         extendSeconds: rule.extend_seconds,
         maxExtensions: rule.max_extensions,
       },
-      currentPrice: Number(session.current_price),
+      currentPrice,
       leaderboard,
       myRank: currentUserId ? leaderboard.find((e) => e.userId === currentUserId)?.rank || null : null,
+      myBidAmount: currentUserId ? (await bidService.getMyRank(sessionId, currentUserId)).amount : null,
       remainingMs: timer?.remainingMs ?? 0,
       startedAt: session.started_at,
       participantCount: leaderboard.length,
@@ -278,6 +300,12 @@ export class AuctionService {
         });
         logger.info({ event: 'auction_ended_broadcast', sessionId, roomId: session.room_id, status: newStatus }, 'Broadcast auction:ended to room');
       }
+
+      broadcastRoomListUpdate('room-list:auction-ended', {
+        roomId: session.room_id,
+        sessionId,
+        status: newStatus,
+      });
 
       // Clear auction timers
       this.timerManager.clear(sessionId);

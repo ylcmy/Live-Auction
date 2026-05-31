@@ -49,15 +49,15 @@ export default function Dashboard() {
           api.get<{ data: { items: Product[]; total: number } }>('/products', { page: '1', limit: '100' }),
           api.get<{ data: { items: Order[]; total: number } }>('/orders', { page: '1', limit: '10' }),
         ]);
-        const productItems = productsRes?.data?.items ?? [];
-        const orderItems = ordersRes?.data?.items ?? [];
-        setProducts(productItems);
-        setOrders(orderItems);
+        const productData = productsRes?.data ?? { items: [], total: 0 };
+        const orderData = ordersRes?.data ?? { items: [], total: 0 };
+        setProducts(productData.items);
+        setOrders(orderData.items);
         setStats({
-          totalProducts: productItems.length,
-          activeProducts: productItems.filter((p) => p.status === 'active').length,
-          totalOrders: orderItems.length,
-          revenue: orderItems.filter((o) => o.status === 'paid').reduce((sum, o) => sum + o.finalPrice, 0),
+          totalProducts: productData.total,
+          activeProducts: productData.items.filter((p) => p.status === 'active').length,
+          totalOrders: orderData.total,
+          revenue: orderData.items.filter((o) => o.status === 'paid' || o.status === 'completed').reduce((sum, o) => sum + o.finalPrice, 0),
         });
       } finally {
         setLoading(false);

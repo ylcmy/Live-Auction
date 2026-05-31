@@ -148,6 +148,7 @@ export default function LiveRoom() {
           currentPrice: data.currentPrice,
           leaderboard: [],
           myRank: null,
+          myBidAmount: null,
           remainingMs: data.rule.durationSeconds * 1000,
           startedAt: data.startedAt,
           participantCount: 0,
@@ -167,9 +168,7 @@ export default function LiveRoom() {
       }),
       subscribe<any>('auction:cancelled', (data: any) => setEmotion({ ...data, type: 'cancelled' })),
       subscribe<any>('bid:new', (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
-        if (data.newTopBid) {
-          updateAuctionPrice(data.sessionId, data.amount);
-        }
+        updateAuctionPrice(data.sessionId, data.amount);
       }),
       subscribe<any>('bid:accepted', (data: { sessionId: number; amount: number }) => {
         setMyBid(data.sessionId, data.amount);
@@ -337,6 +336,7 @@ export default function LiveRoom() {
             </div>
 
             {/* Cart button with auction bubble wrapper */}
+            {roomAuctions.length > 0 && (
             <div className="relative flex-shrink-0">
               {/* Active auction bubble */}
               {currentAuction?.status === 'active' && currentAuction.product && !bubbleDismissed && (
@@ -406,6 +406,7 @@ export default function LiveRoom() {
 
               <CartButton productCount={productCount} onClick={openCart} />
             </div>
+            )}
           </>
         )}
       </div>

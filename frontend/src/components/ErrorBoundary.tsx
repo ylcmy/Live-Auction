@@ -24,7 +24,6 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-text-secondary mb-4">{this.state.error?.message}</p>
             <button
               onClick={() => {
-                this.setState({ hasError: false });
                 window.location.reload();
               }}
               className="px-6 py-2 bg-brand rounded-full text-white font-semibold"
