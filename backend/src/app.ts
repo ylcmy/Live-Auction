@@ -9,7 +9,7 @@ import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
-import { redis } from './infrastructure/cache/redis.js';
+import { redis, getRedisMode } from './infrastructure/cache/redis.js';
 import { db } from './infrastructure/db/knex.js';
 
 export async function buildApp() {
@@ -42,16 +42,17 @@ export async function buildApp() {
   await app.register(userRoutes);
 
   app.get('/api/health', async (_request, reply) => {
-    const checks: Record<string, string> = {};
+    const checks: Record<string, unknown> = {};
     let isHealthy = true;
 
     try {
       await redis.ping();
       checks.redis = 'ok';
     } catch {
-      checks.redis = 'error';
-      isHealthy = false;
+      checks.redis = 'degraded';
+      // Redis degraded is not unhealthy - service still available via MySQL fallback
     }
+    checks.redisMode = getRedisMode();
 
     try {
       await db.raw('SELECT 1');

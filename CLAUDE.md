@@ -4,6 +4,6 @@
 
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/004-testing-infrastructure/plan.md
+at specs/005-comprehensive-auction-testing/plan.md
 
 <!-- SPECKIT END -->

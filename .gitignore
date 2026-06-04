@@ -46,6 +46,7 @@ playwright-report/
 
 .superpowers/
 .trae/
+.cursor/
 .dbg/
 .agents/
 skills-lock.json

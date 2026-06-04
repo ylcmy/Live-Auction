@@ -1,7 +1,9 @@
 /**
  * T065: Core Bid Processing Service
  *
- * THE CORE BIDDING ENGINE:
+ * THE CORE BIDDING ENGINE (Dual-path: Redis primary + MySQL fallback):
+ *
+ * Redis path:
  * 1. Idempotency check (Redis SETNX)
  * 2. Session-level distributed lock (Redis SETNX, TTL 3s)
  * 3. Fetch context (session, rules, last bidder, rate limit)
@@ -12,11 +14,17 @@
  * 8. Persist to MySQL (with rollback on failure)
  * 9. Return result with rank
  *
- * Lock is ALWAYS released in a finally block using Lua unlock script
- * to verify ownership before deleting.
+ * MySQL fallback path:
+ * 1. In-memory rate limiting
+ * 2. Fetch context (session, rules) via MySQL
+ * 3. Domain validation (pure)
+ * 4. MySQL transaction: SELECT FOR UPDATE + INSERT bid_record + UPDATE session
+ * 5. Idempotency via MySQL unique constraint (ER_DUP_ENTRY)
+ * 6. Extension check within transaction
+ * 7. Rank from MySQL leaderboard query
  */
 
-import { cache, redis } from '../infrastructure/cache/redis.js';
+import { cache, redis, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import { BID_COMMIT_SCRIPT, BID_ROLLBACK_SCRIPT, UNLOCK_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
@@ -25,6 +33,7 @@ import { productRepo } from '../repositories/product.repo.js';
 import { userRepo } from '../repositories/user.repo.js';
 import { validateBid } from '../domain/bid.js';
 import { logger } from '../middleware/logger.js';
+import { db } from '../infrastructure/db/knex.js';
 
 export interface BidProcessResult {
   success: boolean;
@@ -47,32 +56,90 @@ export interface LeaderboardEntry {
   timestamp: string;
 }
 
+// ---- Task 6: In-Memory Rate Limiter ----
+
+class InMemoryRateLimiter {
+  private store = new Map<string, number[]>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    // Periodic cleanup every 60 seconds to prevent memory leaks
+    this.cleanupTimer = setInterval(() => this.cleanup(), 60_000);
+    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      this.cleanupTimer.unref();
+    }
+  }
+
+  /**
+   * Check if a request is allowed within the sliding window.
+   * @returns true if the request is allowed, false if rate limit exceeded
+   */
+  check(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const windowStart = now - windowMs;
+    let timestamps = this.store.get(key) || [];
+
+    // Remove expired entries
+    timestamps = timestamps.filter(ts => ts > windowStart);
+
+    if (timestamps.length >= limit) {
+      this.store.set(key, timestamps);
+      return false;
+    }
+
+    timestamps.push(now);
+    this.store.set(key, timestamps);
+    return true;
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, timestamps] of this.store) {
+      const filtered = timestamps.filter(ts => ts > now - 60_000);
+      if (filtered.length === 0) {
+        this.store.delete(key);
+      } else {
+        this.store.set(key, filtered);
+      }
+    }
+  }
+}
+
+const rateLimiter = new InMemoryRateLimiter();
+
 /**
  * Resolve user profiles with Redis cache read-through.
- * Returns a Map of userId -> { nickname, avatarUrl }.
+ * Falls back to direct MySQL query when Redis is unavailable.
  */
 async function resolveUserProfiles(
   userIds: number[],
 ): Promise<Map<number, { nickname: string; avatarUrl: string | null }>> {
   const result = new Map<number, { nickname: string; avatarUrl: string | null }>();
   if (userIds.length === 0) return result;
-  const uncached: number[] = [];
 
-  for (const uid of [...new Set(userIds)]) {
-    const cached = await cache.get(`user:profile:${uid}`);
-    if (cached) {
-      result.set(uid, JSON.parse(cached));
-    } else {
-      uncached.push(uid);
+  if (isRedisAvailable()) {
+    const uncached: number[] = [];
+    for (const uid of [...new Set(userIds)]) {
+      const cached = await cache.get(`user:profile:${uid}`);
+      if (cached) {
+        result.set(uid, JSON.parse(cached));
+      } else {
+        uncached.push(uid);
+      }
     }
-  }
-
-  if (uncached.length > 0) {
-    const users = await userRepo.findByIds(uncached);
+    if (uncached.length > 0) {
+      const users = await userRepo.findByIds(uncached);
+      for (const u of users) {
+        const profile = { nickname: u.nickname, avatarUrl: u.avatar_url };
+        result.set(u.id, profile);
+        await cache.set(`user:profile:${u.id}`, JSON.stringify(profile), 300);
+      }
+    }
+  } else {
+    // Redis unavailable: query MySQL directly
+    const users = await userRepo.findByIds([...new Set(userIds)]);
     for (const u of users) {
-      const profile = { nickname: u.nickname, avatarUrl: u.avatar_url };
-      result.set(u.id, profile);
-      await cache.set(`user:profile:${u.id}`, JSON.stringify(profile), 300);
+      result.set(u.id, { nickname: u.nickname, avatarUrl: u.avatar_url });
     }
   }
 
@@ -82,16 +149,24 @@ async function resolveUserProfiles(
 export const bidService = {
   /**
    * Process a bid from a user in an auction session.
-   *
-   * This is the critical path for the entire system. Every operation
-   * is designed for atomicity and resilience:
-   * - Redis SETNX for idempotency (first line of defense)
-   * - Redis SETNX distributed lock per (sessionId, userId)
-   * - Domain validation before any writes
-   * - Lock released in finally block
-   * - MySQL write happens asynchronously after lock release
+   * Dispatches to Redis or MySQL path based on Redis availability.
    */
   async processBid(
+    sessionId: number,
+    userId: number,
+    idempotencyKey: string,
+  ): Promise<BidProcessResult> {
+    if (isRedisAvailable()) {
+      return this._processBidRedis(sessionId, userId, idempotencyKey);
+    }
+    return this._processBidMySQL(sessionId, userId, idempotencyKey);
+  },
+
+  /**
+   * Redis primary path: uses Redis for idempotency, locking, rate limiting,
+   * atomic writes, and leaderboard.
+   */
+  async _processBidRedis(
     sessionId: number,
     userId: number,
     idempotencyKey: string,
@@ -296,6 +371,189 @@ export const bidService = {
   },
 
   /**
+   * MySQL fallback path: uses MySQL transaction for atomicity,
+   * in-memory rate limiting, and MySQL unique constraint for idempotency.
+   */
+  async _processBidMySQL(
+    sessionId: number,
+    userId: number,
+    idempotencyKey: string,
+  ): Promise<BidProcessResult> {
+    logger.info({ event: 'bid_attempt_mysql', sessionId, userId, idempotencyKey }, 'Bid processing started (MySQL path)');
+
+    // ---- 1. In-memory rate limiting ----
+    const rateKey = `ratelimit:${sessionId}:${userId}`;
+    if (!rateLimiter.check(rateKey, 5, 1000)) {
+      logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'rate_limit' }, 'Bid rejected - rate limit exceeded (MySQL path)');
+      return {
+        success: false,
+        error: { code: 42900, message: '出价过于频繁，请稍后再试' },
+      };
+    }
+
+    // ---- 2. Fetch context (outside transaction) ----
+    const productCheck = await auctionSessionRepo.findById(sessionId);
+    if (!productCheck) {
+      return {
+        success: false,
+        error: { code: 40400, message: '竞拍不存在' },
+      };
+    }
+
+    const product = await productRepo.findById(productCheck.product_id);
+    if (!product) {
+      return {
+        success: false,
+        error: { code: 40400, message: '商品不存在' },
+      };
+    }
+
+    const rule = await auctionRuleRepo.findByProductId(productCheck.product_id);
+    if (!rule) {
+      return {
+        success: false,
+        error: { code: 50000, message: '竞拍规则缺失' },
+      };
+    }
+
+    // ---- 3. Domain validation (before entering transaction) ----
+    const validationError = validateBid(userId, {
+      auctionStatus: productCheck.status,
+      sellerId: product.merchant_id,
+      currentPrice: Number(productCheck.current_price),
+      bidIncrement: Number(rule.bid_increment),
+      ceilingPrice: rule.ceiling_price ? Number(rule.ceiling_price) : null,
+      idempotencyKeyExists: false,
+      rateLimitExceeded: false,
+    });
+
+    if (validationError) {
+      logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: validationError.message }, 'Bid rejected - validation failed (MySQL path)');
+      return { success: false, error: validationError };
+    }
+
+    // ---- 4. Calculate bid amount ----
+    let bidAmount = Number(productCheck.current_price) + Number(rule.bid_increment);
+
+    const ceilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
+    const shouldEnd = ceilingPrice !== null && bidAmount >= ceilingPrice;
+    if (ceilingPrice !== null && bidAmount > ceilingPrice) {
+      bidAmount = ceilingPrice;
+    }
+
+    // ---- 5. Execute in MySQL transaction ----
+    let bidId: number | undefined;
+    let extensionResult: { remainingMs: number; extensionCount: number } | null = null;
+
+    try {
+      await db.transaction(async (trx) => {
+        // Acquire row lock
+        const session = await auctionSessionRepo.findByIdForUpdate(sessionId, trx);
+        if (!session) {
+          throw Object.assign(new Error('SESSION_NOT_FOUND'), { _code: 40400 });
+        }
+
+        if (session.status !== 'active') {
+          throw Object.assign(new Error('AUCTION_NOT_ACTIVE'), { _code: 40900 });
+        }
+
+        // Re-validate with locked data
+        const lockedCurrentPrice = Number(session.current_price);
+        const lockedBidAmount = lockedCurrentPrice + Number(rule.bid_increment);
+        const lockedCeilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
+        const lockedShouldEnd = lockedCeilingPrice !== null && lockedBidAmount >= lockedCeilingPrice;
+        const finalBidAmount = (lockedCeilingPrice !== null && lockedBidAmount > lockedCeilingPrice)
+          ? lockedCeilingPrice
+          : lockedBidAmount;
+
+        // INSERT bid_record (idempotency via unique constraint)
+        bidId = await bidRepo.create({
+          session_id: sessionId,
+          user_id: userId,
+          bid_amount: finalBidAmount,
+          idempotency_key: idempotencyKey,
+        }, trx);
+
+        // UPDATE auction_sessions.current_price
+        const updateData: any = { current_price: finalBidAmount, updated_at: new Date().toISOString() };
+        if (lockedShouldEnd) {
+          updateData.winner_id = userId;
+        }
+        await trx('auction_sessions').where({ id: sessionId }).update(updateData).increment('version', 1);
+
+        // Extension check within transaction
+        if (!lockedShouldEnd) {
+          const extensionCount = session.extension_count || 0;
+          if (extensionCount < rule.max_extensions) {
+            const currentEndTime = session.ended_at ? new Date(session.ended_at).getTime() : 0;
+            if (currentEndTime > 0) {
+              const remainingMs = currentEndTime - Date.now();
+              if (remainingMs < rule.extend_seconds * 1000) {
+                const newEndTime = new Date(Date.now() + rule.extend_seconds * 1000);
+                const newExtensions = extensionCount + 1;
+                await trx('auction_sessions').where({ id: sessionId }).update({
+                  ended_at: newEndTime,
+                  extension_count: newExtensions,
+                  updated_at: new Date().toISOString(),
+                });
+                extensionResult = { remainingMs: rule.extend_seconds * 1000, extensionCount: newExtensions };
+                logger.info({ event: 'bid_extension_mysql', sessionId, extensions: newExtensions }, 'Auction extended during bid processing (MySQL path)');
+              }
+            }
+          }
+        }
+
+        // Update bidAmount to the final calculated value for return
+        bidAmount = finalBidAmount;
+      });
+    } catch (err: any) {
+      // Handle ER_DUP_ENTRY for idempotency
+      if (err.code === 'ER_DUP_ENTRY') {
+        logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'duplicate_idempotency_key' }, 'Bid rejected - duplicate idempotency key (MySQL path)');
+        return {
+          success: false,
+          error: { code: 40901, message: '重复的出价请求' },
+        };
+      }
+
+      if (err._code === 40400) {
+        return { success: false, error: { code: 40400, message: '竞拍不存在' } };
+      }
+      if (err._code === 40900) {
+        return { success: false, error: { code: 40900, message: '竞拍已结束或未开始' } };
+      }
+
+      logger.error({ err, sessionId, userId, bidAmount }, 'Bid persistence failed (MySQL path)');
+      return { success: false, error: { code: 50000, message: '出价处理失败，请重试' } };
+    }
+
+    // ---- 6. Get rank from MySQL (outside transaction - read operation) ----
+    const leaderboard = await bidRepo.findLeaderboard(sessionId, 20);
+    const myEntry = leaderboard.find(e => e.userId === userId);
+    const myRank = myEntry?.rank || leaderboard.length + 1;
+
+    // Determine leader status
+    const leader = leaderboard[0];
+    const isLeading = leader?.userId === userId;
+    const gapToLeader = isLeading ? 0 : (leader ? leader.amount - bidAmount : -1);
+
+    const finalShouldEnd = ceilingPrice !== null && bidAmount >= ceilingPrice;
+
+    logger.info({ event: 'bid_success_mysql', sessionId, userId, amount: bidAmount, rank: myRank, isLeading, shouldEnd: finalShouldEnd }, 'Bid processed successfully (MySQL path)');
+
+    return {
+      success: true,
+      bidId,
+      amount: bidAmount,
+      rank: myRank,
+      isLeading,
+      gapToLeader,
+      shouldEnd: finalShouldEnd,
+      extensionResult,
+    };
+  },
+
+  /**
    * Get the raw leaderboard from Redis (alternating userId, score).
    */
   async getLeaderboardRaw(sessionId: number, limit = 20): Promise<string[]> {
@@ -305,38 +563,52 @@ export const bidService = {
 
   /**
    * Get full leaderboard with resolved user nicknames and avatars.
+   * Falls back to MySQL query when Redis is unavailable.
    */
   async getLeaderboard(
     sessionId: number,
     currentUserId: number,
     limit = 20,
   ): Promise<LeaderboardEntry[]> {
-    const lbKey = `auction:${sessionId}:leaderboard`;
-    const raw = await cache.zrevrange(lbKey, 0, limit - 1);
+    if (isRedisAvailable()) {
+      const lbKey = `auction:${sessionId}:leaderboard`;
+      const raw = await cache.zrevrange(lbKey, 0, limit - 1);
 
-    const userIds: number[] = [];
-    const entries: LeaderboardEntry[] = [];
-    for (let i = 0; i < raw.length; i += 2) {
-      const uid = Number(raw[i]);
-      userIds.push(uid);
-      entries.push({
-        rank: Math.floor(i / 2) + 1,
-        userId: uid,
-        userNickname: '',
-        avatarUrl: null,
-        amount: Number(raw[i + 1]),
-        timestamp: new Date().toISOString(),
-      });
+      const userIds: number[] = [];
+      const entries: LeaderboardEntry[] = [];
+      for (let i = 0; i < raw.length; i += 2) {
+        const uid = Number(raw[i]);
+        userIds.push(uid);
+        entries.push({
+          rank: Math.floor(i / 2) + 1,
+          userId: uid,
+          userNickname: '',
+          avatarUrl: null,
+          amount: Number(raw[i + 1]),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const profiles = await resolveUserProfiles(userIds);
+      for (const entry of entries) {
+        const profile = profiles.get(entry.userId);
+        entry.userNickname = profile?.nickname || `用户${entry.userId}`;
+        entry.avatarUrl = profile?.avatarUrl || null;
+      }
+
+      return entries;
     }
 
-    const profiles = await resolveUserProfiles(userIds);
-    for (const entry of entries) {
-      const profile = profiles.get(entry.userId);
-      entry.userNickname = profile?.nickname || `用户${entry.userId}`;
-      entry.avatarUrl = profile?.avatarUrl || null;
-    }
-
-    return entries;
+    // MySQL fallback
+    const rows = await bidRepo.findLeaderboard(sessionId, limit);
+    return rows.map(row => ({
+      rank: row.rank,
+      userId: row.userId,
+      userNickname: row.userNickname,
+      avatarUrl: row.avatarUrl,
+      amount: row.amount,
+      timestamp: row.timestamp,
+    }));
   },
 
   /**
@@ -349,14 +621,25 @@ export const bidService = {
 
   /**
    * Get the rank and bid amount for a specific user in a session.
+   * Falls back to MySQL when Redis is unavailable.
    */
   async getMyRank(
     sessionId: number,
     userId: number,
   ): Promise<{ rank: number | null; amount: number | null }> {
-    const lbKey = `auction:${sessionId}:leaderboard`;
-    const rank = await cache.zrevrank(lbKey, String(userId));
-    const score = rank !== null ? await cache.zscore(lbKey, String(userId)) : null;
-    return { rank: rank !== null ? rank + 1 : null, amount: score !== null ? Number(score) : null };
+    if (isRedisAvailable()) {
+      const lbKey = `auction:${sessionId}:leaderboard`;
+      const rank = await cache.zrevrank(lbKey, String(userId));
+      const score = rank !== null ? await cache.zscore(lbKey, String(userId)) : null;
+      return { rank: rank !== null ? rank + 1 : null, amount: score !== null ? Number(score) : null };
+    }
+
+    // MySQL fallback
+    const leaderboard = await bidRepo.findLeaderboard(sessionId, 100);
+    const myEntry = leaderboard.find(e => e.userId === userId);
+    return {
+      rank: myEntry?.rank || null,
+      amount: myEntry?.amount || null,
+    };
   },
 };

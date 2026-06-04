@@ -25,6 +25,13 @@ export const auctionSessionRepo = {
   async findById(id: number) {
     return db('auction_sessions').where({ id }).first();
   },
+  /**
+   * Find session by ID using SELECT FOR UPDATE within a transaction.
+   * Acquires a row-level lock for MySQL fallback path.
+   */
+  async findByIdForUpdate(id: number, trx: any) {
+    return trx('auction_sessions').where({ id }).forUpdate().first();
+  },
   async findActiveByRoom(roomId: number) {
     return db('auction_sessions').where({ active_room_id: roomId }).first();
   },
