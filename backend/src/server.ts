@@ -5,6 +5,7 @@ import { db } from './infrastructure/db/knex.js';
 import { redis } from './infrastructure/cache/redis.js';
 import { initWebSocket } from './ws/index.js';
 import { orderService } from './services/order.service.js';
+import { getAuctionService } from './services/auction.service.js';
 
 const AUTO_CANCEL_INTERVAL_MS = 60 * 1000;
 
@@ -45,6 +46,10 @@ async function start() {
   initWebSocket(httpServer);
   await app.listen({ port: env.PORT, host: '0.0.0.0' });
   logger.info(`Server running on port ${env.PORT}`);
+
+  // Restore auction settlement timers after process restart
+  const auctionService = getAuctionService();
+  await auctionService.restoreTimers();
 
   startAutoCancelTimer();
   logger.info('Order auto-cancel timer started');

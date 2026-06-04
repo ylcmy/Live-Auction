@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuctionStore } from '../../store/auctionStore';
 import { useCountdown } from '../../hooks/useCountdown';
+import { useAudio } from '../../hooks/useAudio';
 import { formatPrice } from '../../lib/format';
 import BidButton from '../../components/auction/BidButton';
 import Leaderboard from '../../components/auction/Leaderboard';
@@ -20,6 +21,8 @@ export default function AuctionPanel() {
   const countdownSync = useAuctionStore((s) => s.countdown);
   const extendMs = useAuctionStore((s) => s.extendMs);
   const { remainingMs, isUrgent, sync, extend } = useCountdown();
+  const { playTick } = useAudio();
+  const tickPlayedRef = useRef(false);
 
   useEffect(() => {
     if (countdownSync && countdownSync.remainingMs > 0) {
@@ -32,6 +35,16 @@ export default function AuctionPanel() {
       extend(extendMs);
     }
   }, [extendMs, extend]);
+
+  useEffect(() => {
+    if (remainingMs > 0 && remainingMs <= 5000 && !tickPlayedRef.current) {
+      tickPlayedRef.current = true;
+      playTick();
+    }
+    if (remainingMs > 5000) {
+      tickPlayedRef.current = false;
+    }
+  }, [remainingMs, playTick]);
 
   if (!currentAuction) {
     return (

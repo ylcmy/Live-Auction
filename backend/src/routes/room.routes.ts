@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { liveRoomRepo } from '../repositories/live-room.repo.js';
+import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { cache } from '../infrastructure/cache/redis.js';
 import { db } from '../infrastructure/db/knex.js';
 import { logger } from '../middleware/logger.js';
@@ -179,10 +180,7 @@ export async function roomRoutes(app: FastifyInstance) {
     }
 
     if (status === 'offline') {
-      const activeSession = await db('auction_sessions')
-        .where({ room_id: roomId })
-        .whereIn('status', ['pending', 'active'])
-        .first();
+      const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
       if (activeSession) {
         return replyError(reply, 40902, '当前有进行中的竞拍，请先结束竞拍再下播', 409);
       }

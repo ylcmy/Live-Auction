@@ -1,5 +1,6 @@
 export interface BidValidationContext {
   auctionStatus: string;
+  sellerId: number;
   currentPrice: number;
   bidIncrement: number;
   ceilingPrice: number | null;
@@ -18,6 +19,10 @@ export function validateBid(
 ): BidValidationError | null {
   if (context.auctionStatus !== 'active') {
     return { code: 40900, message: '竞拍已结束或未开始' };
+  }
+
+  if (userId === context.sellerId) {
+    return { code: 40300, message: '不能竞拍自己的商品' };
   }
 
   if (context.idempotencyKeyExists) {

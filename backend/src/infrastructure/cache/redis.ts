@@ -30,6 +30,9 @@ export const cache = {
   scard: (key: string) => redis.scard(key),
 
   expire: (key: string, seconds: number) => redis.expire(key, seconds),
+
+  eval: (script: string, keys: string[], args: (string | number)[]): Promise<any> =>
+    redis.eval(script, keys.length, ...keys, ...args),
 };
 
 export { redis };

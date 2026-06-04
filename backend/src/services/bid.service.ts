@@ -3,22 +3,25 @@
  *
  * THE CORE BIDDING ENGINE:
  * 1. Idempotency check (Redis SETNX)
- * 2. Distributed lock per user per auction (Redis SETNX)
+ * 2. Session-level distributed lock (Redis SETNX, TTL 3s)
  * 3. Fetch context (session, rules, last bidder, rate limit)
  * 4. Domain validation (pure)
- * 5. Calculate bid amount
- * 6. Ceiling price check
- * 7. Update Redis (atomic ZADD leaderboard, SET top_bid)
- * 8. Async persist to MySQL (non-blocking, setImmediate)
+ * 5. Read current price from Redis first, fallback to MySQL
+ * 6. Calculate bid amount + ceiling price truncation
+ * 7. Atomic Redis write via Lua (ZADD leaderboard + SADD participants + SET top_bid)
+ * 8. Persist to MySQL (with rollback on failure)
  * 9. Return result with rank
  *
- * Lock is ALWAYS released in a finally block to prevent deadlocks.
+ * Lock is ALWAYS released in a finally block using Lua unlock script
+ * to verify ownership before deleting.
  */
 
 import { cache, redis } from '../infrastructure/cache/redis.js';
+import { BID_COMMIT_SCRIPT, BID_ROLLBACK_SCRIPT, UNLOCK_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
+import { productRepo } from '../repositories/product.repo.js';
 import { userRepo } from '../repositories/user.repo.js';
 import { validateBid } from '../domain/bid.js';
 import { logger } from '../middleware/logger.js';
@@ -32,8 +35,7 @@ export interface BidProcessResult {
   gapToLeader?: number;
   error?: { code: number; message: string };
   shouldEnd?: boolean; // Triggers ceiling price -> auction end
-  extensionApplied?: boolean; // Whether auction was extended due to last-second bid
-  newEndTime?: number; // Updated end time if extended
+  extensionResult?: { remainingMs: number; extensionCount: number } | null;
 }
 
 export interface LeaderboardEntry {
@@ -105,16 +107,17 @@ export const bidService = {
       };
     }
 
-    // ---- 2. Distributed lock per user per auction ----
+    // ---- 2. Session-level distributed lock ----
     logger.info({ event: 'bid_attempt', sessionId, userId, idempotencyKey }, 'Bid processing started');
 
-    const lockKey = `bid_lock:${sessionId}:${userId}`;
-    const lock = await cache.setnx(lockKey, '1', 5);
+    const lockKey = `bid_lock:${sessionId}`;
+    const lockValue = `${userId}:${Date.now()}`;
+    const lock = await cache.setnx(lockKey, lockValue, 3);
     if (!lock) {
-      logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'concurrent_lock' }, 'Bid rejected - concurrent lock held');
+      logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'concurrent_lock' }, 'Bid rejected - session lock held');
       return {
         success: false,
-        error: { code: 40901, message: '您的上一笔出价正在处理中' },
+        error: { code: 40901, message: '出价处理中，请稍后再试' },
       };
     }
 
@@ -126,6 +129,15 @@ export const bidService = {
         return {
           success: false,
           error: { code: 40400, message: '竞拍不存在' },
+        };
+      }
+
+      const product = await productRepo.findById(session.product_id);
+      if (!product) {
+        logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'product_not_found' }, 'Bid rejected - product not found');
+        return {
+          success: false,
+          error: { code: 40400, message: '商品不存在' },
         };
       }
 
@@ -149,6 +161,7 @@ export const bidService = {
       // ---- 4. Domain validation ----
       const error = validateBid(userId, {
         auctionStatus: session.status,
+        sellerId: product.merchant_id,
         currentPrice: Number(session.current_price),
         bidIncrement: Number(rule.bid_increment),
         ceilingPrice: rule.ceiling_price
@@ -167,36 +180,45 @@ export const bidService = {
       await redis.zadd(rateKey, now, String(now));
       await redis.expire(rateKey, 2);
 
-      // ---- 6. Calculate bid amount ----
-      const bidAmount =
-        Number(session.current_price) + Number(rule.bid_increment);
+      // ---- 6. Read current price from Redis first, fallback to MySQL ----
+      let currentPrice: number;
+      const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
+      if (topBidRaw) {
+        const topBid = JSON.parse(topBidRaw);
+        currentPrice = topBid.amount;
+      } else {
+        currentPrice = Number(session.current_price);
+      }
 
-      // ---- 7. Check ceiling price trigger ----
+      // ---- 7. Calculate bid amount ----
+      let bidAmount = currentPrice + Number(rule.bid_increment);
+
+      // ---- 8. Ceiling price truncation ----
       const ceilingPrice = rule.ceiling_price
         ? Number(rule.ceiling_price)
         : null;
       const shouldEnd =
         ceilingPrice !== null && bidAmount >= ceilingPrice;
+      if (ceilingPrice !== null && bidAmount > ceilingPrice) {
+        bidAmount = ceilingPrice;
+      }
 
-      // ---- 8. Update Redis (atomic operations) ----
+      // ---- 9. Save previous top_bid for rollback ----
+      const previousTopBid = topBidRaw || '';
+
+      // ---- 10. Atomic Redis write via Lua ----
       const lbKey = `auction:${sessionId}:leaderboard`;
-      await cache.zadd(lbKey, bidAmount, String(userId));
-      await cache.sadd(
-        `room:${session.room_id}:participants`,
-        String(userId),
-      );
+      const participantsKey = `room:${session.room_id}:participants`;
+      const topBidKey = `auction:${sessionId}:top_bid`;
+      const topBidData = JSON.stringify({
+        userId,
+        amount: bidAmount,
+        timestamp: new Date().toISOString(),
+      });
 
-      // Update top bid
-      await cache.set(
-        `auction:${sessionId}:top_bid`,
-        JSON.stringify({
-          userId,
-          amount: bidAmount,
-          timestamp: new Date().toISOString(),
-        }),
-      );
+      await cache.eval(BID_COMMIT_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), bidAmount, topBidData]);
 
-      // ---- 9. Persist to MySQL ----
+      // ---- 11. Persist to MySQL ----
       try {
         await bidRepo.create({
           session_id: sessionId,
@@ -210,14 +232,38 @@ export const bidService = {
           shouldEnd ? userId : undefined,
         );
       } catch (err) {
-        logger.error({ err, sessionId, userId, bidAmount }, 'Bid persistence failed');
+        logger.error({ err, sessionId, userId, bidAmount }, 'Bid persistence failed - rolling back Redis');
+        // Rollback Redis
+        await cache.eval(BID_ROLLBACK_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), previousTopBid]);
+        return { success: false, error: { code: 50000, message: '出价处理失败，请重试' } };
       }
 
-      // ---- 10. Get rank ----
+      // ---- 12. Extension check (under lock, before release) ----
+      let extensionResult: { remainingMs: number; extensionCount: number } | null = null;
+      if (!shouldEnd) {
+        const extensions = parseInt((await cache.get(`auction:${sessionId}:extensions`)) || '0', 10);
+        if (extensions < rule.max_extensions) {
+          const currentEndTime = parseInt((await cache.get(`auction:${sessionId}:end_time`)) || '0', 10);
+          if (currentEndTime > 0) {
+            const remainingMs = currentEndTime - Date.now();
+            if (remainingMs < rule.extend_seconds * 1000) {
+              const newEndTime = Date.now() + rule.extend_seconds * 1000;
+              const newExtensions = extensions + 1;
+              await cache.set(`auction:${sessionId}:end_time`, String(newEndTime));
+              await cache.set(`auction:${sessionId}:extensions`, String(newExtensions));
+              await auctionSessionRepo.updateStatus(sessionId, 'active', { extension_count: newExtensions });
+              extensionResult = { remainingMs: rule.extend_seconds * 1000, extensionCount: newExtensions };
+              logger.info({ event: 'bid_extension', sessionId, extensions: newExtensions }, 'Auction extended during bid processing');
+            }
+          }
+        }
+      }
+
+      // ---- 13. Get rank ----
       const rank = await cache.zrevrank(lbKey, String(userId));
       const myRank = rank !== null ? rank + 1 : null;
 
-      // ---- 11. Determine leader status ----
+      // ---- 14. Determine leader status ----
       const topBidders = await cache.zrevrange(lbKey, 0, 0);
       let isLeading = false;
       let gapToLeader = -1;
@@ -241,10 +287,11 @@ export const bidService = {
         isLeading,
         gapToLeader,
         shouldEnd,
+        extensionResult,
       };
     } finally {
-      // ---- Always release the lock ----
-      await cache.del(lockKey);
+      // ---- Release lock with ownership verification ----
+      await cache.eval(UNLOCK_SCRIPT, [lockKey], [lockValue]);
     }
   },
 

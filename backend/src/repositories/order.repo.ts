@@ -12,27 +12,40 @@ export const orderRepo = {
   },
 
   async findById(id: number) {
-    return db('orders').where({ id }).first();
+    return db('orders as o')
+      .leftJoin('products as p', 'p.id', 'o.product_id')
+      .leftJoin('users as u', 'u.id', 'o.buyer_id')
+      .select('o.*', 'p.name as product_name', 'p.image_url as product_image_url', 'u.nickname as buyer_nickname')
+      .where('o.id', id)
+      .first();
   },
 
   async findByBuyer(buyerId: number, page = 1, limit = 20, status?: string) {
-    let q = db('orders').where({ buyer_id: buyerId });
+    let q = db('orders as o')
+      .leftJoin('products as p', 'p.id', 'o.product_id')
+      .leftJoin('users as u', 'u.id', 'o.buyer_id')
+      .select('o.*', 'p.name as product_name', 'p.image_url as product_image_url', 'u.nickname as buyer_nickname')
+      .where('o.buyer_id', buyerId);
     if (status) {
-      q = q.where({ status });
+      q = q.where('o.status', status);
     }
-    const total = await q.clone().count('* as cnt').first();
-    const items = await q.orderBy('created_at', 'desc').offset((page - 1) * limit).limit(limit);
+    const total = await q.clone().clearSelect().count('* as cnt').first();
+    const items = await q.orderBy('o.created_at', 'desc').offset((page - 1) * limit).limit(limit);
     return { items, total: Number((total as any)?.cnt || 0), page, limit };
   },
 
   async findByMerchantProductIds(productIds: number[], page = 1, limit = 20, status?: string) {
     if (productIds.length === 0) return { items: [], total: 0, page, limit };
-    let q = db('orders').whereIn('product_id', productIds);
+    let q = db('orders as o')
+      .leftJoin('products as p', 'p.id', 'o.product_id')
+      .leftJoin('users as u', 'u.id', 'o.buyer_id')
+      .select('o.*', 'p.name as product_name', 'p.image_url as product_image_url', 'u.nickname as buyer_nickname')
+      .whereIn('o.product_id', productIds);
     if (status) {
-      q = q.where({ status });
+      q = q.where('o.status', status);
     }
-    const total = await q.clone().count('* as cnt').first();
-    const items = await q.orderBy('created_at', 'desc').offset((page - 1) * limit).limit(limit);
+    const total = await q.clone().clearSelect().count('* as cnt').first();
+    const items = await q.orderBy('o.created_at', 'desc').offset((page - 1) * limit).limit(limit);
     return { items, total: Number((total as any)?.cnt || 0), page, limit };
   },
 

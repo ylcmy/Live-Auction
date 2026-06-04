@@ -4,6 +4,7 @@ import { validateBid } from '../../../src/domain/bid.js';
 describe('validateBid', () => {
   const baseCtx = {
     auctionStatus: 'active',
+    sellerId: 99,
     currentPrice: 0,
     bidIncrement: 10,
     ceilingPrice: null,
@@ -35,6 +36,17 @@ describe('validateBid', () => {
   });
 
   it('should allow consecutive self-bid', () => {
+    expect(validateBid(1, baseCtx)).toBeNull();
+  });
+
+  it('should reject when seller bids on own product', () => {
+    const result = validateBid(99, baseCtx);
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe(40300);
+    expect(result!.message).toContain('不能竞拍自己的商品');
+  });
+
+  it('should allow non-seller to bid', () => {
     expect(validateBid(1, baseCtx)).toBeNull();
   });
 

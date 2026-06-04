@@ -11,6 +11,7 @@ import { AppError } from '../lib/app-error.js';
 import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { broadcastToRoom } from '../ws/rooms.js';
 import { broadcastRoomListUpdate } from '../ws/index.js';
+import { canTransition } from '../domain/auction.js';
 import { AuctionTimerManager } from './auction-timer-manager.js';
 import type { Server } from 'socket.io';
 
@@ -30,35 +31,48 @@ export class AuctionService {
     if (!room) throw new AppError('直播间不存在', 404);
     if (room.host_id !== merchantId) throw new AppError('无权限', 403);
 
-    const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
-    if (activeSession) throw new AppError('当前直播间已有进行中的竞拍', 409);
-
     const rule = await auctionRuleRepo.findByProductId(productId);
     if (!rule) throw new AppError('请先配置竞拍规则', 400);
 
-    const sessionId = await auctionSessionRepo.create({
-      product_id: productId,
-      rule_id: rule.id,
-      room_id: roomId,
-      current_price: rule.start_price,
+    // Use transaction + row-level lock to prevent concurrent auction starts in the same room
+    const sessionId = await db.transaction(async (trx) => {
+      // SELECT FOR UPDATE: acquire row-level lock on any existing active session for this room
+      // If no row exists, no lock is acquired, but the unique index on active_room_id
+      // will still prevent concurrent inserts after we release the transaction
+      const activeSession = await auctionSessionRepo.findActiveByRoomForUpdate(roomId, trx);
+      if (activeSession) throw new AppError('当前直播间已有进行中的竞拍', 409);
+
+      const [id] = await trx('auction_sessions').insert({
+        product_id: productId,
+        rule_id: rule.id,
+        room_id: roomId,
+        status: 'active',
+        active_room_id: roomId,
+        current_price: rule.start_price,
+        started_at: trx.fn.now(),
+      });
+
+      await trx('products').where({ id: productId }).update({ status: 'active', updated_at: trx.fn.now() });
+      await trx('live_rooms').where({ id: roomId }).update({ status: 'live', updated_at: trx.fn.now() });
+
+      return id as number;
     });
 
-    await productRepo.updateStatus(productId, 'active');
-    await liveRoomRepo.updateStatus(roomId, 'live');
-
-    // Cache hot data in Redis
+    // Cache hot data in Redis with TTL
     const endTime = Date.now() + rule.duration_seconds * 1000;
-    await cache.set(`auction:${sessionId}:end_time`, String(endTime));
-    await cache.set(`auction:${sessionId}:status`, 'active');
-    await cache.set(`auction:${sessionId}:extensions`, '0');
-    await cache.set(`auction:${sessionId}:product_id`, String(productId));
-    await cache.set(`auction:${sessionId}:room_id`, String(roomId));
+    const ttlSeconds = rule.duration_seconds + (rule.extend_seconds * rule.max_extensions) + 3600;
+    await cache.set(`auction:${sessionId}:end_time`, String(endTime), ttlSeconds);
+    await cache.set(`auction:${sessionId}:status`, 'active', ttlSeconds);
+    await cache.set(`auction:${sessionId}:extensions`, '0', ttlSeconds);
+    await cache.set(`auction:${sessionId}:product_id`, String(productId), ttlSeconds);
+    await cache.set(`auction:${sessionId}:room_id`, String(roomId), ttlSeconds);
     await cache.set(
       `auction:${sessionId}:top_bid`,
       JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: Date.now() }),
+      ttlSeconds,
     );
     // Map room to active session for WS join lookups
-    await cache.set(`room:${roomId}:active_session`, String(sessionId));
+    await cache.set(`room:${roomId}:active_session`, String(sessionId), ttlSeconds);
 
     // Schedule settlement timer
     this.timerManager.schedule(sessionId, rule.duration_seconds * 1000, () =>
@@ -119,6 +133,16 @@ export class AuctionService {
   }
 
   /**
+   * Reschedule the settlement timer after an extension applied during bid processing.
+   * The Redis/MySQL state is already updated by processBid; this only reschedules the timer.
+   */
+  rescheduleSettlement(sessionId: number, delayMs: number): void {
+    this.timerManager.schedule(sessionId, delayMs, () =>
+      this.settleAuction(sessionId),
+    );
+  }
+
+  /**
    * Extend an auction when a bid comes in near the deadline.
    * Returns the new remaining milliseconds, or null if extension is not allowed.
    */
@@ -141,8 +165,9 @@ export class AuctionService {
 
     const newEndTime = now + rule.extend_seconds * 1000;
     const newExtensions = extensions + 1;
-    await cache.set(`auction:${sessionId}:end_time`, String(newEndTime));
-    await cache.set(`auction:${sessionId}:extensions`, String(newExtensions));
+    const extendTtl = rule.extend_seconds + 3600;
+    await cache.set(`auction:${sessionId}:end_time`, String(newEndTime), extendTtl);
+    await cache.set(`auction:${sessionId}:extensions`, String(newExtensions), extendTtl);
     await auctionSessionRepo.updateStatus(sessionId, 'active', { extension_count: newExtensions });
 
     // Reschedule settlement timer
@@ -251,6 +276,7 @@ export class AuctionService {
 
       let winner: { userId: number; userNickname: string; finalPrice: number } | null = null;
       let orderId: number | null = null;
+      let orderCreated = true;
       let newStatus: string;
 
       if (rawLb.length >= 2) {
@@ -273,6 +299,7 @@ export class AuctionService {
           logger.info({ event: 'order_created', orderId, sessionId, buyerId: winnerId, amount: winningAmount }, 'Order created for winner');
         } catch (err) {
           logger.error({ event: 'order_create_failed', sessionId, err }, 'Failed to create order');
+          orderCreated = false;
         }
       } else {
         newStatus = 'unsold';
@@ -280,6 +307,12 @@ export class AuctionService {
 
       // Build leaderboard with nicknames
       const leaderboard = await bidService.getLeaderboard(sessionId, 0);
+
+      // Enforce state machine transition
+      if (!canTransition(session.status as any, newStatus as any)) {
+        logger.warn({ event: 'invalid_transition', sessionId, from: session.status, to: newStatus }, 'Invalid state transition blocked');
+        return { winner: null, leaderboard: [], orderId: null };
+      }
 
       // Update statuses - only auction session and product, NOT the room
       await auctionSessionRepo.updateStatus(sessionId, newStatus, {
@@ -297,6 +330,7 @@ export class AuctionService {
           winner,
           leaderboard,
           orderId,
+          orderCreated,
         });
         logger.info({ event: 'auction_ended_broadcast', sessionId, roomId: session.room_id, status: newStatus }, 'Broadcast auction:ended to room');
       }
@@ -324,26 +358,90 @@ export class AuctionService {
    * Cancel an auction (merchant only).
    */
   async cancelAuction(sessionId: number, merchantId: number): Promise<void> {
-    const session = await auctionSessionRepo.findById(sessionId);
-    if (!session) throw new AppError('竞拍不存在', 404);
+    const lockKey = `cancel_lock:${sessionId}`;
+    const lock = await cache.setnx(lockKey, '1', 10);
+    if (!lock) throw new AppError('操作进行中，请稍后再试', 409);
 
-    const product = await productRepo.findById(session.product_id);
-    if (!product) throw new AppError('商品不存在', 404);
-    if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
+    try {
+      const session = await auctionSessionRepo.findById(sessionId);
+      if (!session) throw new AppError('竞拍不存在', 404);
 
-    if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
-      throw new AppError('该竞拍已结束', 409);
+      const product = await productRepo.findById(session.product_id);
+      if (!product) throw new AppError('商品不存在', 404);
+      if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
+
+      if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
+        throw new AppError('该竞拍已结束', 409);
+      }
+
+      if (!canTransition(session.status as any, 'cancelled')) {
+        throw new AppError(`竞拍状态不可从 ${session.status} 变为 cancelled`, 409);
+      }
+
+      await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: db.fn.now() });
+      await productRepo.updateStatus(session.product_id, 'listed');
+      // Note: Room stays 'live' so merchant can start next auction
+
+      this.timerManager.clear(sessionId);
+
+      // Broadcast auction cancelled to room
+      if (this.io) {
+        broadcastToRoom(this.io, String(session.room_id), 'auction:cancelled', {
+          sessionId,
+          reason: '商家取消了竞拍',
+        });
+      }
+
+      await cleanupAuctionCache(sessionId, session.room_id);
+
+      logger.info({ event: 'auction_cancelled', sessionId, merchantId }, 'Auction cancelled');
+    } finally {
+      await cache.del(lockKey);
+    }
+  }
+
+  /**
+   * Restore timers for all active auctions after process restart.
+   * Reads end_time from Redis; falls back to started_at + duration from rules.
+   */
+  async restoreTimers(): Promise<void> {
+    const sessions = await auctionSessionRepo.findAllActive();
+    if (sessions.length === 0) {
+      logger.info({ event: 'timer_restore_no_active' }, 'No active auctions to restore');
+      return;
     }
 
-    await auctionSessionRepo.updateStatus(sessionId, 'cancelled', { ended_at: db.fn.now() });
-    await productRepo.updateStatus(session.product_id, 'listed');
-    // Note: Room stays 'live' so merchant can start next auction
+    const resolved: Array<{ id: number; endTimeMs: number }> = [];
 
-    this.timerManager.clear(sessionId);
+    for (const session of sessions) {
+      // Try Redis first
+      const redisEndTime = await cache.get(`auction:${session.id}:end_time`);
+      if (redisEndTime) {
+        const endTimeMs = parseInt(redisEndTime, 10);
+        if (!isNaN(endTimeMs) && endTimeMs > 0) {
+          resolved.push({ id: session.id, endTimeMs });
+          continue;
+        }
+      }
 
-    await cleanupAuctionCache(sessionId, session.room_id);
+      // Fallback: calculate from started_at + duration_seconds
+      const rule = await db('auction_rules').where({ id: session.rule_id }).first();
+      if (!rule || !session.started_at) {
+        logger.warn({ event: 'timer_restore_skip', sessionId: session.id }, 'Cannot determine end_time, skipping session');
+        continue;
+      }
 
-    logger.info({ event: 'auction_cancelled', sessionId, merchantId }, 'Auction cancelled');
+      const startedAt = new Date(session.started_at).getTime();
+      const endTimeMs = startedAt + rule.duration_seconds * 1000;
+      resolved.push({ id: session.id, endTimeMs });
+
+      // Re-populate Redis end_time for future lookups
+      await cache.set(`auction:${session.id}:end_time`, String(endTimeMs));
+    }
+
+    await this.timerManager.restoreTimers(resolved, (sessionId: number) =>
+      this.settleAuction(sessionId),
+    );
   }
 }
 

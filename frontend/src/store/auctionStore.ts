@@ -8,7 +8,7 @@ interface AuctionStore {
   countdown: CountdownSync | null;
   extendMs: number | null;
   myRank: number | null;
-  emotionEvent: EmotionEvent | null;
+  emotionEvents: EmotionEvent[];
   participantCount: number;
   onlineCount: number;
   myBids: Record<number, number>;
@@ -27,7 +27,7 @@ interface AuctionStore {
   setRoomAuctions: (auctions: RoomAuctionItem[] | ((prev: RoomAuctionItem[]) => RoomAuctionItem[])) => void;
   updateAuctionPrice: (sessionId: number, newPrice: number) => void;
   updateAuctionStatus: (sessionId: number, status: string) => void;
-  clearEmotion: () => void;
+  removeEmotion: (id: string) => void;
   clearAuction: () => void;
   addChatMessage: (msg: ChatMessage) => void;
 }
@@ -38,7 +38,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   countdown: null,
   extendMs: null,
   myRank: null,
-  emotionEvent: null,
+  emotionEvents: [],
   participantCount: 0,
   onlineCount: 0,
   myBids: {},
@@ -62,7 +62,12 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   setCountdown: (countdown) => set({ countdown }),
   triggerExtend: (extendMs) => set({ extendMs }),
   setBidResult: (result) => set({ myRank: result.rank }),
-  setEmotion: (emotionEvent) => set({ emotionEvent }),
+  setEmotion: (emotionEvent) =>
+    set((state) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const next = [...state.emotionEvents, { ...emotionEvent, id }].slice(-3);
+      return { emotionEvents: next };
+    }),
   setParticipantCount: (participantCount) => set({ participantCount }),
   setOnlineCount: (onlineCount) => set({ onlineCount }),
   setMyBid: (sessionId, amount) =>
@@ -123,7 +128,10 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
             : state.currentAuction,
       };
     }),
-  clearEmotion: () => set({ emotionEvent: null }),
+  removeEmotion: (id) =>
+    set((state) => ({
+      emotionEvents: state.emotionEvents.filter((e) => e.id !== id),
+    })),
   clearAuction: () =>
     set({
       currentAuction: null,
@@ -131,7 +139,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
       countdown: null,
       extendMs: null,
       myRank: null,
-      emotionEvent: null,
+      emotionEvents: [],
       participantCount: 0,
       myBids: {},
       roomAuctions: [],

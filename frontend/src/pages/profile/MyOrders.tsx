@@ -167,9 +167,19 @@ function OrderCard({
         </Badge>
       </div>
 
-      <p className="text-brand font-bold text-lg mt-2">
-        {formatPrice(order.finalPrice)}
-      </p>
+      <div className="flex items-center gap-3 mt-2">
+        {order.productImageUrl ? (
+          <img src={order.productImageUrl} alt={order.productName || ''} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/10">
+            <Package className="w-5 h-5 text-text-tertiary" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm truncate">{order.productName || `商品 #${order.productId}`}</p>
+          <p className="text-brand font-bold text-lg">{formatPrice(order.finalPrice)}</p>
+        </div>
+      </div>
 
       {/* Extra info */}
       <div className="mt-2 space-y-1">

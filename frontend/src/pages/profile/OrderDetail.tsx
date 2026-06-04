@@ -130,12 +130,12 @@ export default function OrderDetail() {
           <div className="flex items-center gap-3">
             <ShoppingBag className="w-4 h-4 text-text-tertiary" />
             <span className="text-text-tertiary text-sm">商品</span>
-            <span className="text-white text-sm ml-auto">商品 #{order.productId}</span>
+            <span className="text-white text-sm ml-auto">{order.productName || `商品 #${order.productId}`}</span>
           </div>
           <div className="flex items-center gap-3">
             <User className="w-4 h-4 text-text-tertiary" />
             <span className="text-text-tertiary text-sm">买家</span>
-            <span className="text-white text-sm ml-auto">#{order.buyerId}</span>
+            <span className="text-white text-sm ml-auto">{order.buyerNickname || `#${order.buyerId}`}</span>
           </div>
           <div className="flex items-center gap-3">
             <Clock className="w-4 h-4 text-text-tertiary" />

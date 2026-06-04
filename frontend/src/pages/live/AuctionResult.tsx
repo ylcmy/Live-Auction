@@ -102,6 +102,44 @@ export default function AuctionResult({ result, userParticipated, userOvertaken 
       );
     }
 
+    // Order creation failed - show pending message instead of payment button
+    if (result.orderCreated === false) {
+      return (
+        <Card className="bg-white border-brand/20">
+          <CardContent className="p-6 text-center">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+            >
+              <div className="w-20 h-20 rounded-2xl bg-brand-50 flex items-center justify-center mx-auto mb-4">
+                <Crown className="w-10 h-10 text-brand" />
+              </div>
+            </motion.div>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+              <h2 className="text-xl font-bold text-text-primary mb-1">恭喜中标！</h2>
+              <p className="text-text-secondary text-sm mb-4">您已成功拍得此商品</p>
+
+              <div className="bg-gray-50 rounded-2xl p-6 mb-6 inline-block border border-gray-200">
+                <p className="text-text-tertiary text-xs mb-1">成交价</p>
+                <p className="text-brand-gradient text-4xl font-bold">{formatPrice(result.winner.finalPrice)}</p>
+              </div>
+
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                <p className="text-amber-700 text-sm font-medium">订单生成中，请稍后查看</p>
+                <p className="text-amber-600 text-xs mt-1">系统正在为您生成订单，请稍后在订单列表中查看</p>
+              </div>
+            </motion.div>
+            {onDismiss && (
+              <Button onClick={onDismiss} className="mt-6 bg-brand hover:bg-brand-hover text-white">
+                返回直播间
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card className="bg-white border-brand/20">
         <CardContent className="p-6 text-center">
@@ -198,9 +236,9 @@ export default function AuctionResult({ result, userParticipated, userOvertaken 
                         }`}>
                           {entry.rank}
                         </span>
-                        <span className={entry.isCurrentUser ? 'text-brand font-medium' : 'text-text-secondary'}>
+                        <span className={entry.userId === user?.id ? 'text-brand font-medium' : 'text-text-secondary'}>
                           {entry.userNickname}
-                          {entry.isCurrentUser && ' (你)'}
+                          {entry.userId === user?.id && ' (你)'}
                         </span>
                       </div>
                       <span className="text-text-primary font-medium">{formatPrice(entry.amount)}</span>

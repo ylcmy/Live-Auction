@@ -172,7 +172,16 @@ export default function OrderList() {
                     </div>
                     <div className="flex items-center justify-between sm:col-span-2">
                       <span className="sm:hidden text-text-tertiary text-xs">商品</span>
-                      <span className="text-text-secondary text-sm">商品 #{order.productId}</span>
+                      <div className="flex items-center gap-2">
+                        {order.productImageUrl ? (
+                          <img src={order.productImageUrl} alt={order.productName || ''} className="w-8 h-8 rounded object-cover border border-slate-200" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-surface-secondary flex items-center justify-center border border-slate-200">
+                            <Package className="w-3 h-3 text-text-tertiary" />
+                          </div>
+                        )}
+                        <span className="text-text-secondary text-sm truncate max-w-[120px]">{order.productName || `商品 #${order.productId}`}</span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between sm:col-span-1">
                       <span className="sm:hidden text-text-tertiary text-xs">买家</span>
@@ -180,7 +189,7 @@ export default function OrderList() {
                         <div className="w-6 h-6 rounded-full bg-surface-secondary flex items-center justify-center border border-slate-200">
                           <Package className="w-3 h-3 text-text-tertiary" />
                         </div>
-                        <span className="text-text-secondary text-sm">#{order.buyerId}</span>
+                        <span className="text-text-secondary text-sm">{order.buyerNickname || `#${order.buyerId}`}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between sm:col-span-2">

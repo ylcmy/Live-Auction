@@ -116,9 +116,14 @@ export const productService = {
     if (!product) throw new AppError('商品不存在', 404);
     if (product.merchant_id !== merchantId) throw new AppError('无权限', 403);
 
+    // Prevent direct status change to 'active' — must go through startAuction
+    if (newStatus === 'active') {
+      throw new AppError('商品不可直接设为竞拍中，请通过发起竞拍接口操作', 409);
+    }
+
     const VALID_TRANSITIONS: Record<string, string[]> = {
       pending: ['listed', 'deleted'],
-      listed: ['pending', 'active', 'deleted'],
+      listed: ['pending', 'deleted'],
       active: ['listed', 'ended', 'unsold', 'deleted'],
       ended: ['deleted'],
       unsold: ['listed', 'deleted'],

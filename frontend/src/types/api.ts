@@ -98,6 +98,9 @@ export interface Order {
   expireAt: string;
   paymentMethod: string | null;
   transactionId: string | null;
+  productName: string | null;
+  productImageUrl: string | null;
+  buyerNickname: string | null;
 }
 
 export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled' | 'completed';

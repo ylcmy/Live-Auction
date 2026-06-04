@@ -18,6 +18,7 @@ import {
 } from '../../services/bid.service.js';
 import { auctionService } from '../../services/auction.service.js';
 import { auctionSessionRepo } from '../../repositories/auction-session.repo.js';
+import { cache } from '../../infrastructure/cache/redis.js';
 import { broadcastToRoom } from '../rooms.js';
 import { broadcastRoomListUpdate } from '../index.js';
 
@@ -26,6 +27,18 @@ export function registerBidHandlers(io: Server, socket: Socket) {
 
   socket.on('bid:submit', async (data: { sessionId: number; idempotencyKey: string }) => {
     const { sessionId, idempotencyKey } = data;
+
+    // Get previous top bidder BEFORE processing the bid
+    let previousTopBidderId: number | null = null;
+    try {
+      const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
+      if (topBidRaw) {
+        const topBid = JSON.parse(topBidRaw);
+        if (topBid.userId && topBid.userId !== 0) {
+          previousTopBidderId = topBid.userId;
+        }
+      }
+    } catch {}
 
     const result: BidProcessResult = await bidService.processBid(
       sessionId,
@@ -78,33 +91,43 @@ export function registerBidHandlers(io: Server, socket: Socket) {
 
     // ---- Broadcast updated leaderboard with real nicknames ----
     const leaderboard = await bidService.getLeaderboard(sessionId, userId);
-    broadcastToRoom(io, roomId, 'rank:update', leaderboard.map((entry) => ({
-      ...entry,
-      isCurrentUser: entry.userId === userId,
-    })));
+    broadcastToRoom(io, roomId, 'rank:update', leaderboard);
 
     // ---- Emotion events ----
     if (result.isLeading) {
+      // New bidder is now the leader
       socket.emit('emotion:lead', {
         sessionId,
         userId,
         amount: result.amount,
       });
-    } else {
-      socket.emit('emotion:overtaken', {
-        sessionId,
-        userId,
-        newAmount: result.amount,
-      });
+      // Notify the previous leader they've been outbid
+      if (previousTopBidderId !== null && previousTopBidderId !== userId) {
+        const roomSockets = io.sockets.adapter.rooms.get(roomId);
+        if (roomSockets) {
+          for (const socketId of roomSockets) {
+            const s = io.sockets.sockets.get(socketId);
+            if (s && (s as any).userId === previousTopBidderId) {
+              s.emit('emotion:overtaken', {
+                sessionId,
+                userId: previousTopBidderId,
+                newAmount: result.amount,
+              });
+              break;
+            }
+          }
+        }
+      }
     }
+    // If not leading, no emotion event needed (bidder was never leading)
 
     // ---- Check for auction extension ----
-    const extension = await auctionService.extendAuction(sessionId);
-    if (extension) {
+    if (result.extensionResult) {
+      auctionService.rescheduleSettlement(sessionId, result.extensionResult.remainingMs);
       broadcastToRoom(io, roomId, 'countdown:extend', {
         sessionId,
-        extendSeconds: Math.round(extension.remainingMs / 1000),
-        remainingExtensions: extension.extensionCount,
+        extendSeconds: Math.round(result.extensionResult.remainingMs / 1000),
+        remainingExtensions: result.extensionResult.extensionCount,
       });
     }
 
