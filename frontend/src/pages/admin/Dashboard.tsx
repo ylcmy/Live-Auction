@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { PRODUCT_STATUS_STYLES, ORDER_STATUS_STYLES } from '../../lib/statusConfig';
+import { formatPrice } from '../../lib/format';
 import type { Product, Order } from '../../types/api';
 
 interface MyRoom {
@@ -49,15 +50,15 @@ export default function Dashboard() {
           api.get<{ data: { items: Product[]; total: number } }>('/products', { page: '1', limit: '100' }),
           api.get<{ data: { items: Order[]; total: number } }>('/orders', { page: '1', limit: '10' }),
         ]);
-        const productItems = productsRes?.data?.items ?? [];
-        const orderItems = ordersRes?.data?.items ?? [];
-        setProducts(productItems);
-        setOrders(orderItems);
+        const productData = productsRes?.data ?? { items: [], total: 0 };
+        const orderData = ordersRes?.data ?? { items: [], total: 0 };
+        setProducts(productData.items);
+        setOrders(orderData.items);
         setStats({
-          totalProducts: productItems.length,
-          activeProducts: productItems.filter((p) => p.status === 'active').length,
-          totalOrders: orderItems.length,
-          revenue: orderItems.filter((o) => o.status === 'paid').reduce((sum, o) => sum + o.finalPrice, 0),
+          totalProducts: productData.total,
+          activeProducts: productData.items.filter((p) => p.status === 'active').length,
+          totalOrders: orderData.total,
+          revenue: orderData.items.filter((o) => o.status === 'paid' || o.status === 'completed').reduce((sum, o) => sum + Number(o.finalPrice), 0),
         });
       } finally {
         setLoading(false);
@@ -301,7 +302,7 @@ export default function Dashboard() {
                     <p className="text-text-tertiary text-xs mt-0.5">商品 #{order.productId}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-brand font-semibold text-sm">¥{order.finalPrice.toLocaleString()}</p>
+                    <p className="text-brand font-semibold text-sm">{formatPrice(order.finalPrice)}</p>
                     <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
                       {status.label}
                     </span>

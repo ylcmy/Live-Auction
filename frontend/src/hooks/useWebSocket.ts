@@ -13,6 +13,14 @@ export function useWebSocket(roomId: number | null) {
   const socketRef = useRef<Socket | null>(null);
   const myRoomRef = useRef<number | null>(null);
 
+  // Re-join room and request full state (used on reconnect and manually)
+  const requestState = useCallback(() => {
+    const currentSocket = socketRef.current || getSocket();
+    if (currentSocket && myRoomRef.current !== null) {
+      currentSocket.emit('auction:join', { roomId: myRoomRef.current });
+    }
+  }, []);
+
   useEffect(() => {
     if (!token || !roomId) return;
 
@@ -30,9 +38,10 @@ export function useWebSocket(roomId: number | null) {
     const onReconnect = () => {
       setIsConnected(true);
       setIsReconnecting(false);
-      if (myRoomRef.current !== null) {
-        socket.emit('auction:join', { roomId: myRoomRef.current });
-      }
+      // Re-join room to trigger full state recovery from server.
+      // Server will respond with 'auction:state' if there's an active session,
+      // even if Redis cache was lost (falls back to MySQL).
+      requestState();
     };
 
     socket.on('connect', onConnect);
@@ -58,7 +67,7 @@ export function useWebSocket(roomId: number | null) {
       socket.off('reconnect', onReconnect);
       // Don't disconnect - socket shared across components
     };
-  }, [token, roomId]);
+  }, [token, roomId, requestState]);
 
   const subscribe = useCallback(<T>(event: string, handler: (data: T) => void) => {
     // Use the shared socket instance directly to avoid stale ref issues
@@ -69,5 +78,5 @@ export function useWebSocket(roomId: number | null) {
     };
   }, []);
 
-  return { socket: socketRef.current, isConnected, isReconnecting, subscribe };
+  return { socket: socketRef.current, isConnected, isReconnecting, subscribe, requestState };
 }

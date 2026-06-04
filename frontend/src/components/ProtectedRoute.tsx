@@ -14,8 +14,12 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
     return <Navigate to="/login" replace />;
   }
 
-  const payload = decodeJwtPayload<{ role: string }>(token);
+  const payload = decodeJwtPayload<{ role: string; exp: number }>(token);
   if (!payload || (requiredRole && payload.role !== requiredRole)) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
     return <Navigate to="/login" replace />;
   }
 

@@ -37,6 +37,17 @@ export const productRepo = {
 
     let rowsQuery = db('products')
       .leftJoin('auction_rules', 'products.id', 'auction_rules.product_id')
+      .leftJoin('auction_sessions as s', function () {
+        this.on('s.product_id', 'products.id').andOnVal('s.status', 'active');
+      })
+      .leftJoin(
+        db('bid_records')
+          .select('session_id', db.raw('COUNT(*) as bid_count'))
+          .groupBy('session_id')
+          .as('br'),
+        'br.session_id',
+        's.id',
+      )
       .select(
         'products.*',
         'auction_rules.id as rule_id',
@@ -46,6 +57,8 @@ export const productRepo = {
         'auction_rules.duration_seconds as rule_durationSeconds',
         'auction_rules.extend_seconds as rule_extendSeconds',
         'auction_rules.max_extensions as rule_maxExtensions',
+        's.current_price as session_currentPrice',
+        db.raw('COALESCE(br.bid_count, 0) as bidCount'),
       );
 
     if (merchant_id) rowsQuery = rowsQuery.where({ 'products.merchant_id': merchant_id });
@@ -74,6 +87,8 @@ export const productRepo = {
           maxExtensions: row.rule_maxExtensions ?? 10,
         };
       }
+      product.currentPrice = row.session_currentPrice != null ? Number(row.session_currentPrice) : null;
+      product.bidCount = Number(row.bidCount ?? 0);
       delete product.rule_id;
       delete product.rule_startPrice;
       delete product.rule_bidIncrement;
@@ -81,6 +96,7 @@ export const productRepo = {
       delete product.rule_durationSeconds;
       delete product.rule_extendSeconds;
       delete product.rule_maxExtensions;
+      delete product.session_currentPrice;
       return product;
     });
 

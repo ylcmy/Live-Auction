@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { formatPrice, formatTime } from '../../lib/format';
 import { Card, CardContent } from '../../design-system/components/ui/card';
 import { Badge } from '../../design-system/components/ui/badge';
@@ -91,7 +91,7 @@ export default function HistoryList() {
             <div className="space-y-3">
               {orders.map((order, index) => {
                 const statusCfg = ORDER_STATUS_CONFIG[order.status] || ORDER_STATUS_CONFIG.pending_payment;
-                const isWin = order.status === 'pending_payment' || order.status === 'paid';
+                const isWin = order.status === 'pending_payment' || order.status === 'paid' || order.status === 'completed';
                 return (
                   <motion.div
                     key={order.id}

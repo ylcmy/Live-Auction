@@ -9,6 +9,8 @@ import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
+import { redis } from './infrastructure/cache/redis.js';
+import { db } from './infrastructure/db/knex.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -39,12 +41,36 @@ export async function buildApp() {
   await app.register(orderRoutes);
   await app.register(userRoutes);
 
-  app.get('/api/health', async () => ({
-    code: 0,
-    message: 'ok',
-    data: { status: 'healthy' },
-    timestamp: Date.now(),
-  }));
+  app.get('/api/health', async (_request, reply) => {
+    const checks: Record<string, string> = {};
+    let isHealthy = true;
+
+    try {
+      await redis.ping();
+      checks.redis = 'ok';
+    } catch {
+      checks.redis = 'error';
+      isHealthy = false;
+    }
+
+    try {
+      await db.raw('SELECT 1');
+      checks.mysql = 'ok';
+    } catch {
+      checks.mysql = 'error';
+      isHealthy = false;
+    }
+
+    checks.status = isHealthy ? 'healthy' : 'unhealthy';
+
+    reply.code(isHealthy ? 200 : 503);
+    return {
+      code: isHealthy ? 0 : 1,
+      message: isHealthy ? 'ok' : 'unhealthy',
+      data: checks,
+      timestamp: Date.now(),
+    };
+  });
 
   return app;
 }

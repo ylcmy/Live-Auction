@@ -41,7 +41,7 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
   const { bidAmount, setValue, reset, snapToMin } =
     useBidAmount(currentPrice, bidIncrement);
 
-  const { submitBid } = useBid(item?.sessionId ?? null);
+  const { submitBid, bidError, clearBidError } = useBid(item?.sessionId ?? null);
 
   // Reset state when sheet opens with a new item
   useEffect(() => {
@@ -49,8 +49,16 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
       reset();
       setBidSuccess(false);
       setIsSubmitting(false);
+      clearBidError();
     }
-  }, [open, item?.sessionId, reset]);
+  }, [open, item?.sessionId, reset, clearBidError]);
+
+  // Auto-clear bid error after 3 seconds
+  useEffect(() => {
+    if (!bidError) return;
+    const timer = setTimeout(clearBidError, 3000);
+    return () => clearTimeout(timer);
+  }, [bidError, clearBidError]);
 
   // Subscribe to bid:accepted
   useEffect(() => {
@@ -93,14 +101,11 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
     if (!socket) return;
 
     const handler = (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
-      if (data.sessionId === item.sessionId && data.newTopBid) {
-        // Update price in store
+      if (data.sessionId === item.sessionId) {
         updateAuctionPrice(data.sessionId, data.amount);
-        // Snap bid amount to new minimum if outbid
         snapToMin(data.amount);
 
-        // Flash outbid indicator if the new bid is not from us
-        if (myLastBid == null || data.amount > myLastBid) {
+        if (myLastBid != null && data.amount > myLastBid) {
           setIsOutbid(true);
           setTimeout(() => setIsOutbid(false), 800);
         }
@@ -235,6 +240,20 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
 
           {/* Action section */}
           <div className="px-5 pt-2 pb-6 mt-auto">
+            {/* Bid error message */}
+            <AnimatePresence>
+              {bidError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="mb-3 text-center text-red-500 text-sm font-medium bg-red-50 rounded-xl py-2 px-3"
+                  onClick={clearBidError}
+                >
+                  {bidError}
+                </motion.div>
+              )}
+            </AnimatePresence>
             <AnimatePresence mode="wait">
               {bidSuccess ? (
                 <motion.div

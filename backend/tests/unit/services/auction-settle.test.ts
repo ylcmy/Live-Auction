@@ -14,7 +14,6 @@ describe('Auction settlement flow (unit)', () => {
       currentPrice: 100,
       bidIncrement: 10,
       ceilingPrice: null,
-      lastBidUserId: null,
       idempotencyKeyExists: false,
       rateLimitExceeded: false,
     };
@@ -27,7 +26,6 @@ describe('Auction settlement flow (unit)', () => {
       currentPrice: 100,
       bidIncrement: 10,
       ceilingPrice: null,
-      lastBidUserId: null,
       idempotencyKeyExists: false,
       rateLimitExceeded: false,
     };

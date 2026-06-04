@@ -136,11 +136,16 @@ export default function AdminOrderDetail() {
             </div>
             <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-lg border border-slate-100">
               <span className="text-text-tertiary text-xs">商品</span>
-              <span className="text-text-primary text-sm font-medium">商品 #{order.productId}</span>
+              <div className="flex items-center gap-2">
+                {order.productImageUrl && (
+                  <img src={order.productImageUrl} alt={order.productName || ''} className="w-8 h-8 rounded object-cover border border-slate-200" />
+                )}
+                <span className="text-text-primary text-sm font-medium">{order.productName || `商品 #${order.productId}`}</span>
+              </div>
             </div>
             <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-lg border border-slate-100">
               <span className="text-text-tertiary text-xs">买家</span>
-              <span className="text-text-primary text-sm font-medium">#{order.buyerId}</span>
+              <span className="text-text-primary text-sm font-medium">{order.buyerNickname || `#${order.buyerId}`}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-lg border border-slate-100">
               <span className="text-text-tertiary text-xs">成交价</span>

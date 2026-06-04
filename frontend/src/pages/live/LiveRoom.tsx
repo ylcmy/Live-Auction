@@ -1,19 +1,22 @@
 import { useParams } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuctionStore } from '../../store/auctionStore';
+import { useAuthStore } from '../../store/authStore';
 import { useCart } from '../../hooks/useCart';
+import { useAudio } from '../../hooks/useAudio';
 
 import SimulatedStream from '../../components/auction/SimulatedStream';
 import CartButton from '../../components/auction/CartButton';
 import CartPanel from '../../components/auction/CartPanel';
 import BidSheet from '../../components/auction/BidSheet';
+import AuctionResult from './AuctionResult';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Users, Radio, Wifi, WifiOff, X, ShoppingBag } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
-import type { AuctionState, CountdownSync, ChatMessage } from '../../types/ws';
+import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
 
 interface LiveRoomData {
@@ -56,8 +59,11 @@ export default function LiveRoom() {
   const lastSyncRef = useRef<CountdownSync | null>(null);
 
   const { isOpen: isCartOpen, openCart, closeCart, productCount } = useCart(roomAuctions);
+  const { playDing } = useAudio();
   const [bidSheetOpen, setBidSheetOpen] = useState(false);
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
+  const [auctionResult, setAuctionResult] = useState<AuctionEndResult | null>(null);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
     if (!id) return;
@@ -148,6 +154,7 @@ export default function LiveRoom() {
           currentPrice: data.currentPrice,
           leaderboard: [],
           myRank: null,
+          myBidAmount: null,
           remainingMs: data.rule.durationSeconds * 1000,
           startedAt: data.startedAt,
           participantCount: 0,
@@ -161,25 +168,25 @@ export default function LiveRoom() {
           });
         }
       }),
-      subscribe<any>('auction:ended', (data: any) => {
+      subscribe<any>('auction:ended', (data: AuctionEndResult) => {
         setEmotion({ ...data, type: 'ended' });
         updateAuctionStatus(data.sessionId, data.status);
+        setAuctionResult(data);
       }),
       subscribe<any>('auction:cancelled', (data: any) => setEmotion({ ...data, type: 'cancelled' })),
       subscribe<any>('bid:new', (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
-        if (data.newTopBid) {
-          updateAuctionPrice(data.sessionId, data.amount);
-        }
+        updateAuctionPrice(data.sessionId, data.amount);
       }),
       subscribe<any>('bid:accepted', (data: { sessionId: number; amount: number }) => {
         setMyBid(data.sessionId, data.amount);
+        playDing();
       }),
       subscribe<any>('chat:broadcast', (data: ChatMessage) => {
         addChatMessage(data);
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [isConnected, subscribe, setAuction, setLeaderboard, setOnlineCount, setParticipantCount, setCountdown, triggerExtend, setEmotion, updateAuctionPrice, updateAuctionStatus, setMyBid, addChatMessage, id]);
+  }, [isConnected, subscribe, setAuction, setLeaderboard, setOnlineCount, setParticipantCount, setCountdown, triggerExtend, setEmotion, updateAuctionPrice, updateAuctionStatus, setMyBid, addChatMessage, id, playDing]);
 
   useEffect(() => {
     if (isConnected && wasDisconnectedRef.current && !isReconnecting) {
@@ -337,6 +344,7 @@ export default function LiveRoom() {
             </div>
 
             {/* Cart button with auction bubble wrapper */}
+            {roomAuctions.length > 0 && (
             <div className="relative flex-shrink-0">
               {/* Active auction bubble */}
               {currentAuction?.status === 'active' && currentAuction.product && !bubbleDismissed && (
@@ -406,6 +414,7 @@ export default function LiveRoom() {
 
               <CartButton productCount={productCount} onClick={openCart} />
             </div>
+            )}
           </>
         )}
       </div>
@@ -434,6 +443,33 @@ export default function LiveRoom() {
         } as RoomAuctionItem : null}
         myLastBid={currentAuction ? myBids[currentAuction.sessionId] ?? null : null}
       />
+
+      {/* Auction result overlay */}
+      <AnimatePresence>
+        {auctionResult && (
+          <motion.div
+            key="auction-result"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm"
+            >
+              <AuctionResult
+                result={auctionResult}
+                userParticipated={auctionResult.sessionId != null && myBids[auctionResult.sessionId] != null}
+                userOvertaken={auctionResult.winner != null && user != null && auctionResult.winner.userId !== user.id && myBids[auctionResult.sessionId] != null}
+                onDismiss={() => setAuctionResult(null)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

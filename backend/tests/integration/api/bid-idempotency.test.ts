@@ -8,7 +8,6 @@ describe('Bid idempotency', () => {
       currentPrice: 0,
       bidIncrement: 10,
       ceilingPrice: null,
-      lastBidUserId: null,
       idempotencyKeyExists: true,
       rateLimitExceeded: false,
     };
@@ -26,7 +25,6 @@ describe('Bid idempotency', () => {
       currentPrice: 0,
       bidIncrement: 10,
       ceilingPrice: null,
-      lastBidUserId: null,
       idempotencyKeyExists: false,
       rateLimitExceeded: false,
     };

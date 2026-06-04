@@ -1,20 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
+import { ORDER_STATUS_MAP, useOrderCountdown } from '../../lib/order-utils';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import { ArrowLeft, Package, Clock, Timer, CreditCard, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '../../design-system/hooks/use-toast';
 import type { ApiResponse, Order, OrderStatus } from '../../types/api';
-
-const STATUS_MAP: Record<OrderStatus, { label: string; className: string }> = {
-  pending_payment: { label: '待付款', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  paid: { label: '已付款', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  completed: { label: '已完成', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  cancelled: { label: '已取消', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
-};
 
 const FILTER_OPTIONS: { value: OrderStatus | 'all'; label: string }[] = [
   { value: 'all', label: '全部' },
@@ -28,32 +22,6 @@ const fadeUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 };
-
-function useCountdown(targetDate: string | null) {
-  const [remaining, setRemaining] = useState('');
-
-  useEffect(() => {
-    if (!targetDate) return;
-    const target = new Date(targetDate).getTime();
-
-    const update = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) {
-        setRemaining('已超时');
-        return;
-      }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setRemaining(`${m}分${s}秒`);
-    };
-
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [targetDate]);
-
-  return remaining;
-}
 
 export default function MyOrders() {
   const navigate = useNavigate();
@@ -183,8 +151,8 @@ function OrderCard({
   const navigate = useNavigate();
   const isExpired = order.status === 'pending_payment' && new Date(order.expireAt) < new Date();
   const displayStatus = isExpired ? 'expired' : order.status;
-  const statusConfig = STATUS_MAP[displayStatus as OrderStatus] ?? STATUS_MAP.pending_payment;
-  const countdown = useCountdown(order.status === 'pending_payment' && !isExpired ? order.expireAt : null);
+  const statusConfig = ORDER_STATUS_MAP[displayStatus as OrderStatus] ?? ORDER_STATUS_MAP.pending_payment;
+  const countdown = useOrderCountdown(order.status === 'pending_payment' && !isExpired ? order.expireAt : null);
 
   return (
     <motion.div
@@ -199,9 +167,19 @@ function OrderCard({
         </Badge>
       </div>
 
-      <p className="text-brand font-bold text-lg mt-2">
-        {formatPrice(order.finalPrice)}
-      </p>
+      <div className="flex items-center gap-3 mt-2">
+        {order.productImageUrl ? (
+          <img src={order.productImageUrl} alt={order.productName || ''} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/10">
+            <Package className="w-5 h-5 text-text-tertiary" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm truncate">{order.productName || `商品 #${order.productId}`}</p>
+          <p className="text-brand font-bold text-lg">{formatPrice(order.finalPrice)}</p>
+        </div>
+      </div>
 
       {/* Extra info */}
       <div className="mt-2 space-y-1">

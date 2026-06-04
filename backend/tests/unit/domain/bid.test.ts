@@ -4,10 +4,10 @@ import { validateBid } from '../../../src/domain/bid.js';
 describe('validateBid', () => {
   const baseCtx = {
     auctionStatus: 'active',
+    sellerId: 99,
     currentPrice: 0,
     bidIncrement: 10,
     ceilingPrice: null,
-    lastBidUserId: null,
     idempotencyKeyExists: false,
     rateLimitExceeded: false,
   };
@@ -35,10 +35,19 @@ describe('validateBid', () => {
     expect(result!.code).toBe(42900);
   });
 
-  it('should reject consecutive self-bid', () => {
-    const result = validateBid(1, { ...baseCtx, lastBidUserId: 1 });
+  it('should allow consecutive self-bid', () => {
+    expect(validateBid(1, baseCtx)).toBeNull();
+  });
+
+  it('should reject when seller bids on own product', () => {
+    const result = validateBid(99, baseCtx);
     expect(result).not.toBeNull();
-    expect(result!.message).toContain('等待他人');
+    expect(result!.code).toBe(40300);
+    expect(result!.message).toContain('不能竞拍自己的商品');
+  });
+
+  it('should allow non-seller to bid', () => {
+    expect(validateBid(1, baseCtx)).toBeNull();
   });
 
   it('should reject when bid exceeds ceiling price', () => {

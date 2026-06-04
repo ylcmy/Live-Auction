@@ -19,7 +19,7 @@ export default function BottomTabBar() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 h-14 bg-[#161823]/95 backdrop-blur-md border-t border-white/10 flex items-center justify-around z-50">
       {tabs.map((tab) => {
-        const active = location.pathname === tab.path;
+        const active = location.pathname.startsWith(tab.path);
         return (
           <button
             key={tab.path}

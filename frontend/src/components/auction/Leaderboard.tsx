@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuctionStore } from '../../store/auctionStore';
+import { useAuthStore } from '../../store/authStore';
 import { formatPrice } from '../../lib/format';
 import { ScrollArea } from '../../design-system/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../../design-system/components/ui/avatar';
@@ -9,6 +10,7 @@ import { Crown, Medal, Award } from 'lucide-react';
 export default function Leaderboard() {
   const leaderboard = useAuctionStore((s) => s.leaderboard);
   const myRank = useAuctionStore((s) => s.myRank);
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   if (leaderboard.length === 0) {
     return (
@@ -64,7 +66,9 @@ export default function Leaderboard() {
       <ScrollArea className="max-h-60">
         <div className="space-y-1.5 pr-1">
           <AnimatePresence>
-            {leaderboard.slice(0, 10).map((entry) => (
+            {leaderboard.slice(0, 10).map((entry, idx) => {
+              const gap = idx > 0 ? leaderboard[idx - 1].amount - entry.amount : null;
+              return (
               <motion.div
                 key={entry.userId}
                 layout
@@ -72,7 +76,7 @@ export default function Leaderboard() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm border ${getRankStyle(entry.rank, entry.isCurrentUser)}`}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm border ${getRankStyle(entry.rank, entry.userId === currentUserId)}`}
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-6 flex items-center justify-center">
@@ -80,29 +84,37 @@ export default function Leaderboard() {
                   </div>
                   <Avatar className="h-7 w-7">
                     <AvatarFallback className={`text-[10px] ${
-                      entry.isCurrentUser
+                      entry.userId === currentUserId
                         ? 'bg-brand/20 text-brand'
                         : 'bg-surface-secondary text-text-secondary'
                     }`}>
-                      {entry.userNickname.charAt(0)}
+                      {entry.userNickname.charAt(0) || '?'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex items-center gap-1.5">
-                    <span className={`truncate text-sm ${entry.isCurrentUser ? 'text-brand font-medium' : 'text-text-secondary'}`}>
+                    <span className={`truncate text-sm ${entry.userId === currentUserId ? 'text-brand font-medium' : 'text-text-secondary'}`}>
                       {entry.userNickname}
                     </span>
-                    {entry.isCurrentUser && (
+                    {entry.userId === currentUserId && (
                       <Badge variant="outline" className="text-[10px] px-1 py-0 border-brand/30 text-brand">
                         你
                       </Badge>
                     )}
                   </div>
                 </div>
-                <span className={`font-semibold text-sm ${entry.isCurrentUser ? 'text-brand' : 'text-text-primary'}`}>
-                  {formatPrice(entry.amount)}
-                </span>
+                <div className="text-right">
+                  <span className={`font-semibold text-sm ${entry.userId === currentUserId ? 'text-brand' : 'text-text-primary'}`}>
+                    {formatPrice(entry.amount)}
+                  </span>
+                  {gap != null && gap > 0 && (
+                    <div className="text-text-tertiary text-[10px]">
+                      差 ¥{formatPrice(gap)}
+                    </div>
+                  )}
+                </div>
               </motion.div>
-            ))}
+              );
+            })}
           </AnimatePresence>
         </div>
       </ScrollArea>

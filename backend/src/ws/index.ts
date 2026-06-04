@@ -6,6 +6,7 @@ import { joinRoom, leaveRoom, getOnlineCount, broadcastToRoom } from './rooms.js
 import { registerBidHandlers } from './handlers/bid.js';
 import { registerAuctionHandlers } from './handlers/auction.js';
 import { auctionService, initializeDefaultAuctionService } from '../services/auction.service.js';
+import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { cache } from '../infrastructure/cache/redis.js';
 import type { AuthPayload } from '../middleware/auth.js';
 
@@ -37,6 +38,14 @@ export function initWebSocket(httpServer: HttpServer) {
   io.on('connection', async (socket) => {
     const userId = (socket as any).userId as number;
 
+    socket.on('room-list:subscribe', () => {
+      socket.join('room-list');
+    });
+
+    socket.on('room-list:unsubscribe', () => {
+      socket.leave('room-list');
+    });
+
     socket.on('auction:join', async ({ roomId }: { roomId: number }) => {
       const rid = String(roomId);
       joinRoom(socket, rid);
@@ -51,7 +60,18 @@ export function initWebSocket(httpServer: HttpServer) {
         participantCount,
       });
 
-      const activeSessionId = await cache.get(`room:${rid}:active_session`);
+      let activeSessionId = await cache.get(`room:${rid}:active_session`);
+
+      // Fallback to MySQL if Redis key is missing (e.g., after Redis restart or key eviction)
+      if (!activeSessionId) {
+        const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
+        if (activeSession) {
+          activeSessionId = String(activeSession.id);
+          // Restore Redis cache for future lookups
+          await cache.set(`room:${rid}:active_session`, activeSessionId);
+        }
+      }
+
       if (activeSessionId) {
         const state = await auctionService.buildAuctionState(Number(activeSessionId), userId);
         if (state) {
@@ -96,6 +116,11 @@ export function initWebSocket(httpServer: HttpServer) {
 export function broadcastRoomStatus(roomId: number, status: string) {
   if (!io) return;
   broadcastToRoom(io, String(roomId), 'room:status', { roomId, status });
+}
+
+export function broadcastRoomListUpdate(event: string, data: any) {
+  if (!io) return;
+  io.to('room-list').emit(event, data);
 }
 
 export async function broadcastAuctionState(roomId: number, sessionId: number) {

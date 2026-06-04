@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../services/api';
+import api from '../services/api';
 import { decodeJwtPayload } from '../lib/jwt';
 import type { User } from '../types/api';
 

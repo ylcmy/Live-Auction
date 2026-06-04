@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
+import { ORDER_STATUS_MAP, useOrderCountdown } from '../../lib/order-utils';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import {
@@ -18,40 +19,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../design-system/hooks/use-toast';
 import type { ApiResponse, Order } from '../../types/api';
-
-const STATUS_MAP: Record<string, { label: string; className: string }> = {
-  pending_payment: { label: '待付款', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  paid: { label: '已付款', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  completed: { label: '已完成', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  cancelled: { label: '已取消', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
-  expired: { label: '已超时', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
-};
-
-function useCountdown(targetDate: string | null) {
-  const [remaining, setRemaining] = useState('');
-
-  useEffect(() => {
-    if (!targetDate) return;
-    const target = new Date(targetDate).getTime();
-
-    const update = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) {
-        setRemaining('已超时');
-        return;
-      }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setRemaining(`${m}分${s}秒`);
-    };
-
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [targetDate]);
-
-  return remaining;
-}
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -96,8 +63,8 @@ export default function OrderDetail() {
 
   const isExpired = order?.status === 'pending_payment' && order?.expireAt ? new Date(order.expireAt) < new Date() : false;
   const displayStatus = isExpired ? 'expired' : (order?.status ?? 'pending_payment');
-  const statusConfig = STATUS_MAP[displayStatus] ?? STATUS_MAP.pending_payment;
-  const countdown = useCountdown(order?.status === 'pending_payment' && !isExpired ? order.expireAt : null);
+  const statusConfig = ORDER_STATUS_MAP[displayStatus] ?? ORDER_STATUS_MAP.pending_payment;
+  const countdown = useOrderCountdown(order?.status === 'pending_payment' && !isExpired ? order.expireAt : null);
 
   if (loading) {
     return (
@@ -163,12 +130,12 @@ export default function OrderDetail() {
           <div className="flex items-center gap-3">
             <ShoppingBag className="w-4 h-4 text-text-tertiary" />
             <span className="text-text-tertiary text-sm">商品</span>
-            <span className="text-white text-sm ml-auto">商品 #{order.productId}</span>
+            <span className="text-white text-sm ml-auto">{order.productName || `商品 #${order.productId}`}</span>
           </div>
           <div className="flex items-center gap-3">
             <User className="w-4 h-4 text-text-tertiary" />
             <span className="text-text-tertiary text-sm">买家</span>
-            <span className="text-white text-sm ml-auto">#{order.buyerId}</span>
+            <span className="text-white text-sm ml-auto">{order.buyerNickname || `#${order.buyerId}`}</span>
           </div>
           <div className="flex items-center gap-3">
             <Clock className="w-4 h-4 text-text-tertiary" />

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Gavel, X } from 'lucide-react';
+import { Clock, Gavel } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -109,13 +109,6 @@ export default function ProductDetailSheet({
             <SheetTitle className="text-gray-900 text-base font-semibold">
               商品详情
             </SheetTitle>
-            <button
-              onClick={handleClose}
-              className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-              aria-label="关闭"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
             <SheetDescription className="sr-only">
               查看商品详细信息和出价
             </SheetDescription>

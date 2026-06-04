@@ -18,6 +18,7 @@ export interface AuctionState {
   currentPrice: number;
   leaderboard: LeaderboardEntry[];
   myRank: number | null;
+  myBidAmount: number | null;
   remainingMs: number;
   startedAt: string;
   participantCount: number;
@@ -31,7 +32,7 @@ export interface LeaderboardEntry {
   avatarUrl: string | null;
   amount: number;
   timestamp: string;
-  isCurrentUser: boolean;
+  isCurrentUser?: boolean;
 }
 
 export interface BidBroadcast {
@@ -62,6 +63,7 @@ export interface AuctionEndResult {
   } | null;
   leaderboard: LeaderboardEntry[];
   orderId: number | null;
+  orderCreated?: boolean;
 }
 
 export interface CountdownSync {
@@ -71,6 +73,7 @@ export interface CountdownSync {
 }
 
 export interface EmotionEvent {
+  id?: string;
   sessionId: number;
   userId?: number;
   amount?: number;
