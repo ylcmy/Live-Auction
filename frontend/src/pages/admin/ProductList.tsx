@@ -15,11 +15,17 @@ import {
   SquareCheck,
   Square,
   PlayCircle,
+  Timer,
+  Clock,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
 import { PRODUCT_STATUS_STYLES } from '../../lib/statusConfig';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { useCountdown } from '../../hooks/useCountdown';
+import { useAuctionStore } from '../../store/auctionStore';
+import { formatMsCompact } from '../../lib/format';
 import type { Product, PaginatedData } from '../../types/api';
 
 type StatusFilter = 'all' | 'pending' | 'listed' | 'active' | 'ended' | 'unsold' | 'deleted';
@@ -36,6 +42,8 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
 interface ProductRow extends Product {
   currentPrice?: number | null;
   bidCount?: number;
+  sessionId?: number | null;
+  startedAt?: string | null;
 }
 
 export default function ProductList() {
@@ -51,6 +59,8 @@ export default function ProductList() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [sortField, setSortField] = useState<'name' | 'startPrice' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [roomId, setRoomId] = useState<number | null>(null);
+  const [elapsedTimes, setElapsedTimes] = useState<Record<number, number>>({});
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -75,6 +85,142 @@ export default function ProductList() {
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
+
+  // Fetch merchant's room on mount
+  useEffect(() => {
+    api
+      .get<{ data: { items: Array<{ id: number }> } }>('/rooms')
+      .then((res: any) => {
+        const items = res?.data?.items ?? [];
+        if (items.length > 0) setRoomId(items[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  // WebSocket and auction store
+  const { isConnected, subscribe } = useWebSocket(roomId);
+  const {
+    setAuction,
+    setCountdown,
+    updateAuctionPrice,
+    updateAuctionStatus,
+    updateCountdownTick,
+    setLeaderboard,
+    setOnlineCount,
+    setParticipantCount,
+    triggerExtend,
+  } = useAuctionStore();
+  const countdownSync = useAuctionStore((s) => s.countdown);
+  const extendMs = useAuctionStore((s) => s.extendMs);
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
+  const storeAuction = useAuctionStore((s) => s.currentAuction);
+
+  const { sync, extend } = useCountdown({ onTick: updateCountdownTick });
+
+  useEffect(() => {
+    if (countdownSync && countdownSync.remainingMs > 0) sync(countdownSync);
+  }, [countdownSync, sync]);
+
+  useEffect(() => {
+    if (extendMs && extendMs > 0) {
+      extend(extendMs);
+      useAuctionStore.setState({ extendMs: null });
+    }
+  }, [extendMs, extend]);
+
+  // Subscribe to auction events and refetch on changes
+  useEffect(() => {
+    if (!isConnected || !roomId) return;
+    const unsubs = [
+      subscribe<any>('auction:state', (data: any) => {
+        if (data.status === 'active') {
+          setAuction(data);
+          if (data.remainingMs != null) {
+            setCountdown({ sessionId: data.sessionId, remainingMs: data.remainingMs, serverTime: Date.now() });
+          }
+        }
+        fetchProducts();
+      }),
+      subscribe<any>('bid:new', (data: { sessionId: number; amount: number }) => {
+        updateAuctionPrice(data.sessionId, data.amount);
+        fetchProducts();
+      }),
+      subscribe<any>('rank:update', (data: any) => setLeaderboard(data)),
+      subscribe<any>('countdown:sync', (data: any) => setCountdown(data)),
+      subscribe<any>('countdown:extend', (data: any) => triggerExtend(data.extendSeconds * 1000)),
+      subscribe<any>('room:count', (data: any) => {
+        setOnlineCount(data.onlineCount);
+        setParticipantCount(data.participantCount);
+      }),
+      subscribe<any>('auction:started', (data: any) => {
+        setAuction({
+          sessionId: data.sessionId,
+          status: 'active',
+          product: data.product,
+          rule: data.rule,
+          currentPrice: data.currentPrice,
+          leaderboard: [],
+          myRank: null,
+          myBidAmount: null,
+          remainingMs: data.rule.durationSeconds * 1000,
+          startedAt: data.startedAt,
+          participantCount: 0,
+          extensionCount: 0,
+        });
+        if (data.rule.durationSeconds != null) {
+          setCountdown({
+            sessionId: data.sessionId,
+            remainingMs: data.rule.durationSeconds * 1000,
+            serverTime: Date.now(),
+          });
+        }
+        fetchProducts();
+      }),
+      subscribe<any>('auction:ended', (data: any) => {
+        updateAuctionStatus(data.sessionId, data.status);
+        fetchProducts();
+      }),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [
+    isConnected,
+    roomId,
+    subscribe,
+    fetchProducts,
+    setAuction,
+    setLeaderboard,
+    setCountdown,
+    triggerExtend,
+    setParticipantCount,
+    setOnlineCount,
+    updateAuctionPrice,
+    updateAuctionStatus,
+  ]);
+
+  // Track elapsed time for active auctions (updates every second)
+  useEffect(() => {
+    const activeProducts = products.filter((p) => p.status === 'active' && p.startedAt);
+    if (activeProducts.length === 0) {
+      if (Object.keys(elapsedTimes).length > 0) setElapsedTimes({});
+      return;
+    }
+
+    const update = () => {
+      const now = Date.now();
+      const times: Record<number, number> = {};
+      for (const p of activeProducts) {
+        if (p.startedAt) {
+          times[p.id] = now - new Date(p.startedAt).getTime();
+        }
+      }
+      setElapsedTimes(times);
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [products]);
 
   const filteredProducts = products.filter((p) =>
     searchQuery
@@ -368,7 +514,7 @@ export default function ProductList() {
               <div className="col-span-1 text-right">封顶价</div>
               <div className="col-span-1 text-right">当前出价</div>
               <div className="col-span-1 text-right">出价次数</div>
-              <div className="col-span-1 text-center">状态</div>
+              <div className="col-span-1 text-center">状态/倒计时</div>
               <div className="col-span-1 text-right">操作</div>
             </div>
 
@@ -458,13 +604,29 @@ export default function ProductList() {
                       <span className="text-text-secondary text-sm">{product.bidCount ?? 0}</span>
                     </div>
 
-                    {/* Status */}
-                    <div className="lg:col-span-1 lg:text-center flex items-center justify-between lg:block w-full">
-                      <span className="lg:hidden text-text-tertiary text-xs">状态</span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
-                        <span className={`w-1 h-1 rounded-full ${status.dot}`} />
-                        {status.label}
-                      </span>
+                    {/* Status / Countdown */}
+                    <div className="lg:col-span-1 lg:text-center flex flex-col items-center gap-0.5 w-full">
+                      <div className="flex items-center justify-between lg:justify-center w-full lg:w-auto">
+                        <span className="lg:hidden text-text-tertiary text-xs">状态</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+                          <span className={`w-1 h-1 rounded-full ${status.dot}`} />
+                          {status.label}
+                        </span>
+                      </div>
+                      {product.status === 'active' &&
+                        (storeAuction?.sessionId === product.sessionId && countdownRemainingMs > 0 ? (
+                          <span
+                            className={`inline-flex items-center gap-0.5 text-[10px] font-mono font-medium ${countdownIsUrgent ? 'text-red-500' : 'text-amber-600'}`}
+                          >
+                            <Timer className={`w-3 h-3 ${countdownIsUrgent ? 'animate-pulse' : ''}`} />
+                            {formatMsCompact(countdownRemainingMs)}
+                          </span>
+                        ) : elapsedTimes[product.id] ? (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary">
+                            <Clock className="w-3 h-3" />
+                            {Math.floor(elapsedTimes[product.id] / 60000)}m
+                          </span>
+                        ) : null)}
                     </div>
 
                     {/* Actions */}
