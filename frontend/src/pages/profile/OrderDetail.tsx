@@ -61,6 +61,17 @@ export default function OrderDetail() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!id || !window.confirm('确定要取消此订单吗？')) return;
+    try {
+      await api.put(`/orders/${id}/status`, { status: 'cancelled' });
+      toast({ title: '订单已取消' });
+      fetchOrder();
+    } catch (err: any) {
+      toast({ title: '取消失败', description: err?.message || '请稍后重试', variant: 'destructive' });
+    }
+  };
+
   const isExpired = order?.status === 'pending_payment' && order?.expireAt ? new Date(order.expireAt) < new Date() : false;
   const displayStatus = isExpired ? 'expired' : (order?.status ?? 'pending_payment');
   const statusConfig = ORDER_STATUS_MAP[displayStatus] ?? ORDER_STATUS_MAP.pending_payment;
@@ -216,13 +227,22 @@ export default function OrderDetail() {
 
         {/* Action */}
         {order.status === 'pending_payment' && !isExpired && (
-          <Button
-            onClick={handlePay}
-            disabled={paying}
-            className="w-full bg-brand hover:bg-brand/90 text-white h-11 text-sm font-medium cursor-pointer"
-          >
-            {paying ? '支付中...' : '立即支付'}
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={handleCancel}
+              variant="outline"
+              className="flex-1 bg-white/5 text-text-tertiary border border-white/10 hover:bg-white/10 h-11 text-sm font-medium cursor-pointer"
+            >
+              取消订单
+            </Button>
+            <Button
+              onClick={handlePay}
+              disabled={paying}
+              className="flex-1 bg-brand hover:bg-brand/90 text-white h-11 text-sm font-medium cursor-pointer"
+            >
+              {paying ? '支付中...' : '立即支付'}
+            </Button>
+          </div>
         )}
       </div>
     </div>
