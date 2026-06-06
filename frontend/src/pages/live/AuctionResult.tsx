@@ -22,8 +22,23 @@ export default function AuctionResult({ result, userParticipated, userOvertaken 
   const [isPaying, setIsPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const isWinner = result.winner && user && result.winner.userId === user.id;
+
+  const handleCancel = async () => {
+    if (!result.orderId) return;
+    if (!window.confirm('确定要放弃支付吗？订单将被取消')) return;
+    setIsCancelling(true);
+    try {
+      await api.put(`/orders/${result.orderId}/status`, { status: 'cancelled' });
+      onDismiss?.();
+    } catch {
+      // ignore
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   const handlePay = async () => {
     if (!result.orderId) return;
@@ -176,11 +191,27 @@ export default function AuctionResult({ result, userParticipated, userOvertaken 
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    确认地址并支付
+                    去支付
                     <ArrowRight className="w-4 h-4" />
                   </span>
                 )}
               </Button>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-200 text-text-tertiary hover:text-red-500 hover:border-red-200"
+                >
+                  {isCancelling ? '取消中...' : '放弃支付'}
+                </Button>
+                {onDismiss && (
+                  <Button onClick={onDismiss} variant="outline" size="sm" className="border-gray-200 text-text-tertiary hover:text-text-secondary">
+                    关闭
+                  </Button>
+                )}
+              </div>
             </div>
           </motion.div>
         </CardContent>

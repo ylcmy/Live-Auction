@@ -86,6 +86,16 @@ export default function ProductList() {
     fetchProducts();
   }, [fetchProducts]);
 
+  // Poll for updates when there are active auctions (fallback for missed WS events)
+  useEffect(() => {
+    const hasActive = products.some((p) => p.status === 'active');
+    if (!hasActive) return;
+    const interval = setInterval(() => {
+      fetchProducts();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [products, fetchProducts]);
+
   // Fetch merchant's room on mount
   useEffect(() => {
     api
