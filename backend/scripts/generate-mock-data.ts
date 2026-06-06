@@ -36,8 +36,9 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function randomPrice(min: number, max: number, decimals = 2): number {
-  return parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
+/** 生成 [min, max] 范围内的整数价格（单位：元），保留两位小数格式 */
+function randomIntPrice(min: number, max: number): number {
+  return randomInt(min, max);
 }
 
 function randomTimestamp(daysBack: number): Date {
@@ -121,24 +122,50 @@ async function generateProducts(merchantIds: number[]): Promise<{ productIds: nu
   return { productIds, productMerchantMap };
 }
 
-async function generateAuctionRules(productIds: number[]): Promise<number[]> {
+interface AuctionRule {
+  ruleId: number;
+  productId: number;
+  startPrice: number;
+  bidIncrement: number;
+  ceilingPrice: number | null;
+  durationSeconds: number;
+}
+
+async function generateAuctionRules(productIds: number[]): Promise<{ ruleIds: number[]; ruleMap: Map<number, AuctionRule> }> {
   console.log(`\n生成竞拍规则 (${PRODUCT_COUNT})...`);
 
   const rows: Record<string, unknown>[] = [];
   for (const pid of productIds) {
+    const increment = randomItem([5, 10, 20, 50, 100]);
+    const ceiling = Math.random() > 0.3 ? randomIntPrice(20, 200) * increment : null;
     rows.push({
       product_id: pid,
       start_price: 0.0,
-      bid_increment: randomItem([5, 10, 20, 50, 100]),
-      ceiling_price: Math.random() > 0.3 ? randomPrice(200, 2000) : null,
+      bid_increment: increment,
+      ceiling_price: ceiling,
       duration_seconds: randomItem([60, 120, 180, 300]),
       extend_seconds: 20,
       max_extensions: randomItem([5, 10, 15]),
       created_at: new Date(),
+      updated_at: new Date(),
     });
   }
 
-  return batchInsert('auction_rules', rows);
+  const ruleIds = await batchInsert('auction_rules', rows);
+
+  const ruleMap = new Map<number, AuctionRule>();
+  rows.forEach((r, idx) => {
+    ruleMap.set(r.product_id as number, {
+      ruleId: ruleIds[idx],
+      productId: r.product_id as number,
+      startPrice: r.start_price as number,
+      bidIncrement: r.bid_increment as number,
+      ceilingPrice: r.ceiling_price as number | null,
+      durationSeconds: r.duration_seconds as number,
+    });
+  });
+
+  return { ruleIds, ruleMap };
 }
 
 async function generateLiveRooms(merchantIds: number[]): Promise<{ roomIds: number[]; merchantRoomMap: Map<number, number> }> {
@@ -171,12 +198,14 @@ async function generateAuctionSessions(
   productIds: number[],
   productMerchantMap: Map<number, number>,
   merchantRoomMap: Map<number, number>,
+  ruleMap: Map<number, AuctionRule>,
   userIds: number[],
-): Promise<{ sessionIds: number[]; endedSessionIds: number[]; sessionProductMap: Map<number, string> }> {
+): Promise<{ sessionIds: number[]; endedSessionIds: number[]; sessionRuleMap: Map<number, AuctionRule>; sessionProductMap: Map<number, string> }> {
   console.log(`\n生成竞拍场次 (${SESSION_COUNT})...`);
 
   const endedSessionIds: number[] = [];
   const sessionProductMap = new Map<number, string>();
+  const sessionRuleMap = new Map<number, AuctionRule>();
   const rows: Record<string, unknown>[] = [];
   const usedProducts = new Set<number>();
 
@@ -187,11 +216,13 @@ async function generateAuctionSessions(
     } while (usedProducts.has(productId));
     usedProducts.add(productId);
 
+    const rule = ruleMap.get(productId);
+    if (!rule) continue;
+
     const status = randomItem(['pending', 'active', 'active', 'ended', 'ended', 'ended', 'unsold']);
     const startedAt = randomTimestamp(7);
     const endedAt = status === 'ended' || status === 'unsold' ? new Date(startedAt.getTime() + randomInt(60, 300) * 1000) : null;
     const winnerId = status === 'ended' ? randomItem(userIds) : null;
-    const endsAt = status === 'active' ? new Date(Date.now() + randomInt(30, 300) * 1000) : endedAt;
 
     const productStatus = status === 'pending' || status === 'active' ? 'active'
       : status === 'cancelled' ? 'listed'
@@ -202,14 +233,28 @@ async function generateAuctionSessions(
     const roomId = merchantId != null ? merchantRoomMap.get(merchantId) : undefined;
     if (roomId == null) continue;
 
+    // 根据竞拍规则计算合理的 current_price
+    const maxBids = rule.ceilingPrice != null
+      ? Math.floor((rule.ceilingPrice - rule.startPrice) / rule.bidIncrement)
+      : 200;
+    let currentPrice: number;
+    if (status === 'pending') {
+      currentPrice = rule.startPrice;
+    } else if (status === 'active') {
+      const bids = randomInt(1, Math.min(maxBids, 20));
+      currentPrice = rule.startPrice + bids * rule.bidIncrement;
+    } else {
+      const bids = randomInt(1, maxBids);
+      currentPrice = rule.startPrice + bids * rule.bidIncrement;
+    }
+
     rows.push({
       product_id: productId,
-      rule_id: productId,
+      rule_id: rule.ruleId,
       room_id: roomId,
       status,
-      current_price: status === 'ended' ? randomPrice(50, 1000) : randomPrice(0, 200),
+      current_price: currentPrice,
       winner_id: winnerId,
-      ends_at: endsAt,
       started_at: startedAt,
       ended_at: endedAt,
       extension_count: randomInt(0, 5),
@@ -221,13 +266,15 @@ async function generateAuctionSessions(
 
   rows.forEach((r, idx) => {
     if (r.status === 'ended') endedSessionIds.push(sessionIds[idx]);
+    sessionRuleMap.set(sessionIds[idx], ruleMap.get(r.product_id as number)!);
   });
 
-  return { sessionIds, endedSessionIds, sessionProductMap };
+  return { sessionIds, endedSessionIds, sessionRuleMap, sessionProductMap };
 }
 
 async function generateBidRecords(
   sessionIds: number[],
+  sessionRuleMap: Map<number, AuctionRule>,
   userIds: number[],
 ): Promise<void> {
   console.log(`\n生成出价记录 (${BID_COUNT})...`);
@@ -238,6 +285,20 @@ async function generateBidRecords(
   for (let i = 0; i < BID_COUNT; i++) {
     const sessionId = randomItem(sessionIds);
     const userId = randomItem(userIds);
+    const rule = sessionRuleMap.get(sessionId);
+
+    // 根据规则计算出价金额：start_price + N * bid_increment，不超 ceiling_price
+    let bidAmount: number;
+    if (rule) {
+      const maxBids = rule.ceilingPrice != null
+        ? Math.floor((rule.ceilingPrice - rule.startPrice) / rule.bidIncrement)
+        : 200;
+      const n = randomInt(1, Math.max(maxBids, 1));
+      bidAmount = rule.startPrice + n * rule.bidIncrement;
+    } else {
+      bidAmount = randomInt(1, 200) * 10;
+    }
+
     let idempotencyKey: string;
     do {
       idempotencyKey = randomUUID().replace(/-/g, '').substring(0, 16);
@@ -247,7 +308,7 @@ async function generateBidRecords(
     rows.push({
       session_id: sessionId,
       user_id: userId,
-      amount: randomPrice(10, 2000),
+      bid_amount: bidAmount,
       idempotency_key: idempotencyKey,
       created_at: randomTimestamp(7),
     });
@@ -264,8 +325,8 @@ async function generateBidRecords(
 
 async function generateOrders(
   endedSessionIds: number[],
+  sessionRuleMap: Map<number, AuctionRule>,
   userIds: number[],
-  productIds: number[],
 ): Promise<void> {
   console.log(`\n生成订单 (${ORDER_COUNT})...`);
 
@@ -279,6 +340,19 @@ async function generateOrders(
     } while (usedSessions.has(sessionId));
     usedSessions.add(sessionId);
 
+    const rule = sessionRuleMap.get(sessionId);
+    // final_price 取自会话对应的竞拍规则的合理价格
+    let finalPrice: number;
+    if (rule) {
+      const maxBids = rule.ceilingPrice != null
+        ? Math.floor((rule.ceilingPrice - rule.startPrice) / rule.bidIncrement)
+        : 200;
+      const n = randomInt(1, maxBids);
+      finalPrice = rule.startPrice + n * rule.bidIncrement;
+    } else {
+      finalPrice = randomInt(1, 200) * 10;
+    }
+
     const orderStatus = randomItem(['pending_payment', 'paid', 'paid', 'paid', 'cancelled']);
     const createdAt = randomTimestamp(7);
     const expireAt = new Date(createdAt.getTime() + 30 * 60 * 1000);
@@ -287,8 +361,8 @@ async function generateOrders(
     rows.push({
       session_id: sessionId,
       buyer_id: randomItem(userIds),
-      product_id: randomItem(productIds),
-      final_price: randomPrice(50, 2000),
+      product_id: rule?.productId ?? 0,
+      final_price: finalPrice,
       status: orderStatus,
       created_at: createdAt,
       updated_at: new Date(),
@@ -322,12 +396,12 @@ async function main() {
 
   const { productIds, productMerchantMap } = await generateProducts(merchantIds);
 
-  const ruleIds = await generateAuctionRules(productIds);
+  const { ruleIds, ruleMap } = await generateAuctionRules(productIds);
 
   const { roomIds, merchantRoomMap } = await generateLiveRooms(merchantIds);
 
-  const { sessionIds, endedSessionIds, sessionProductMap } = await generateAuctionSessions(
-    productIds, productMerchantMap, merchantRoomMap, userIds,
+  const { sessionIds, endedSessionIds, sessionRuleMap, sessionProductMap } = await generateAuctionSessions(
+    productIds, productMerchantMap, merchantRoomMap, ruleMap, userIds,
   );
 
   console.log('\n同步商品状态...');
@@ -336,9 +410,9 @@ async function main() {
   }
   console.log(`  已同步 ${sessionProductMap.size} 个商品状态`);
 
-  await generateBidRecords(sessionIds, userIds);
+  await generateBidRecords(sessionIds, sessionRuleMap, userIds);
 
-  await generateOrders(endedSessionIds, userIds, productIds);
+  await generateOrders(endedSessionIds, sessionRuleMap, userIds);
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n========================================`);

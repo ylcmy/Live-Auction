@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { env } from '../../config/env.js';
+import { CircuitBreaker } from './circuit-breaker.js';
 
 const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 3,
@@ -12,27 +13,123 @@ const redis = new Redis(env.REDIS_URL, {
 redis.on('error', (err) => console.error('Redis error:', err));
 redis.on('connect', () => console.log('Redis connected'));
 
+// Circuit breaker instance for Redis
+export const redisCircuitBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  openDurationMs: 5000,
+});
+
+/**
+ * Check if Redis is currently available based on circuit breaker state.
+ * Use this to decide which code path (Redis vs MySQL fallback) to take.
+ */
+export function isRedisAvailable(): boolean {
+  return redisCircuitBreaker.isAvailable();
+}
+
+/**
+ * Get the current Redis mode for health checks and logging.
+ */
+export function getRedisMode(): 'primary' | 'fallback' {
+  return redisCircuitBreaker.isAvailable() ? 'primary' : 'fallback';
+}
+
 export const cache = {
-  get: (key: string) => redis.get(key),
-  set: (key: string, value: string, ttl?: number) => ttl ? redis.set(key, value, 'EX', ttl) : redis.set(key, value),
-  del: (key: string) => redis.del(key),
-  setnx: (key: string, value: string, ttl?: number) => ttl ? redis.set(key, value, 'EX', ttl, 'NX') : redis.set(key, value, 'NX'),
+  get: (key: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.get(key),
+      () => Promise.resolve(null),
+    ),
 
-  zadd: (key: string, score: number, member: string) => redis.zadd(key, score, member),
-  zrevrange: (key: string, start: number, stop: number) => redis.zrevrange(key, start, stop, 'WITHSCORES'),
-  zrank: (key: string, member: string) => redis.zrank(key, member),
-  zrevrank: (key: string, member: string) => redis.zrevrank(key, member),
-  zscore: (key: string, member: string) => redis.zscore(key, member),
-  zcard: (key: string) => redis.zcard(key),
+  set: (key: string, value: string, ttl?: number) =>
+    redisCircuitBreaker.execute(
+      () => ttl ? redis.set(key, value, 'EX', ttl) : redis.set(key, value),
+      () => Promise.resolve('OK' as const),
+    ),
 
-  sadd: (key: string, ...members: string[]) => redis.sadd(key, ...members),
-  srem: (key: string, ...members: string[]) => redis.srem(key, ...members),
-  scard: (key: string) => redis.scard(key),
+  del: (key: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.del(key),
+      () => Promise.resolve(0),
+    ),
 
-  expire: (key: string, seconds: number) => redis.expire(key, seconds),
+  setnx: (key: string, value: string, ttl?: number) =>
+    redisCircuitBreaker.execute(
+      () => ttl ? redis.set(key, value, 'EX', ttl, 'NX') : redis.set(key, value, 'NX'),
+      () => Promise.resolve(null as string | null),  // Fallback: act as if lock not acquired
+    ),
+
+  zadd: (key: string, score: number, member: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zadd(key, score, member),
+      () => Promise.resolve(0),
+    ),
+
+  zrevrange: (key: string, start: number, stop: number) =>
+    redisCircuitBreaker.execute(
+      () => redis.zrevrange(key, start, stop, 'WITHSCORES'),
+      () => Promise.resolve([] as string[]),
+    ),
+
+  zrank: (key: string, member: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zrank(key, member),
+      () => Promise.resolve(null as number | null),
+    ),
+
+  zrevrank: (key: string, member: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zrevrank(key, member),
+      () => Promise.resolve(null as number | null),
+    ),
+
+  zscore: (key: string, member: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zscore(key, member),
+      () => Promise.resolve(null as string | null),
+    ),
+
+  zcard: (key: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zcard(key),
+      () => Promise.resolve(0),
+    ),
+
+  zremrangebyscore: (key: string, min: number | string, max: number | string) =>
+    redisCircuitBreaker.execute(
+      () => redis.zremrangebyscore(key, min, max),
+      () => Promise.resolve(0),
+    ),
+
+  sadd: (key: string, ...members: string[]) =>
+    redisCircuitBreaker.execute(
+      () => redis.sadd(key, ...members),
+      () => Promise.resolve(0),
+    ),
+
+  srem: (key: string, ...members: string[]) =>
+    redisCircuitBreaker.execute(
+      () => redis.srem(key, ...members),
+      () => Promise.resolve(0),
+    ),
+
+  scard: (key: string) =>
+    redisCircuitBreaker.execute(
+      () => redis.scard(key),
+      () => Promise.resolve(0),
+    ),
+
+  expire: (key: string, seconds: number) =>
+    redisCircuitBreaker.execute(
+      () => redis.expire(key, seconds),
+      () => Promise.resolve(0),
+    ),
 
   eval: (script: string, keys: string[], args: (string | number)[]): Promise<any> =>
-    redis.eval(script, keys.length, ...keys, ...args),
+    redisCircuitBreaker.execute(
+      () => redis.eval(script, keys.length, ...keys, ...args),
+      () => Promise.resolve(null),
+    ),
 };
 
 export { redis };

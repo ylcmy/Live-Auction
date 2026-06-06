@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Crown } from 'lucide-react';
 import {
@@ -11,13 +11,13 @@ import {
 import { Button } from '../../design-system/components/ui/button';
 import { useBidAmount } from '../../hooks/useBidAmount';
 import { useBid } from '../../hooks/useBid';
+import { useAuctionEvents } from '../../hooks/useAuctionEvents';
+import { useTimers } from '../../hooks/useTimers';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatPrice } from '../../lib/format';
-import { getSocket } from '../../services/socket';
 import BidStepper from './BidStepper';
 import BidHint from './BidHint';
 import type { RoomAuctionItem } from '../../types/api';
-import type { BidResult } from '../../types/ws';
 
 interface BidSheetProps {
   open: boolean;
@@ -30,8 +30,6 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
   const [bidSuccess, setBidSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOutbid, setIsOutbid] = useState(false);
-  const successTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const endedTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const setMyBid = useAuctionStore((s) => s.setMyBid);
   const updateAuctionPrice = useAuctionStore((s) => s.updateAuctionPrice);
 
@@ -43,15 +41,53 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
 
   const { submitBid, bidError, clearBidError } = useBid(item?.sessionId ?? null);
 
+  const { setTimer, clearAllTimers } = useTimers();
+
+  const handleClose = useCallback(() => {
+    setBidSuccess(false);
+    setIsSubmitting(false);
+    clearAllTimers();
+    onClose();
+  }, [onClose, clearAllTimers]);
+
+  // All auction WS event handlers in one place — uses ref internally so
+  // handlers always see latest closures without re-subscribing.
+  const handlers = useMemo(() => ({
+    onBidAccepted: (data: { sessionId: number; amount: number }) => {
+      setMyBid(data.sessionId, data.amount);
+      setBidSuccess(true);
+      setIsSubmitting(false);
+      setIsOutbid(false);
+      updateAuctionPrice(data.sessionId, data.amount);
+      setTimer('bidSuccess', () => setBidSuccess(false), 1500);
+    },
+    onBidNew: (data: { sessionId: number; amount: number }) => {
+      updateAuctionPrice(data.sessionId, data.amount);
+      snapToMin(data.amount);
+      if (myLastBid != null && data.amount > myLastBid) {
+        setIsOutbid(true);
+        setTimer('outbid', () => setIsOutbid(false), 800);
+      }
+    },
+    onAuctionEnded: () => {
+      setTimer('auctionEnded', () => handleClose(), 3000);
+    },
+  }), [setMyBid, updateAuctionPrice, snapToMin, myLastBid, setTimer, handleClose]);
+
+  useAuctionEvents(item?.sessionId ?? null, open, handlers);
+
   // Reset state when sheet opens with a new item
+  // Use ref to track open transitions, avoiding re-trigger on reset() ref change
+  const prevOpenRef = useRef(false);
   useEffect(() => {
-    if (open && item) {
+    if (open && !prevOpenRef.current && item) {
       reset();
       setBidSuccess(false);
       setIsSubmitting(false);
       clearBidError();
     }
-  }, [open, item?.sessionId, reset, clearBidError]);
+    prevOpenRef.current = open;
+  }, [open, item?.sessionId]);
 
   // Auto-clear bid error after 3 seconds
   useEffect(() => {
@@ -59,96 +95,6 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
     const timer = setTimeout(clearBidError, 3000);
     return () => clearTimeout(timer);
   }, [bidError, clearBidError]);
-
-  // Subscribe to bid:accepted
-  useEffect(() => {
-    if (!open || !item) return;
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handler = (data: BidResult) => {
-      if (data.sessionId === item.sessionId) {
-        setMyBid(data.sessionId, data.amount);
-        setBidSuccess(true);
-        setIsSubmitting(false);
-        setIsOutbid(false);
-
-        // Update price in room auctions
-        updateAuctionPrice(data.sessionId, data.amount);
-
-        // Auto-dismiss success after 1.5s
-        clearTimeout(successTimerRef.current);
-        successTimerRef.current = setTimeout(() => {
-          setBidSuccess(false);
-        }, 1500);
-      }
-    };
-
-    socket.on('bid:accepted', handler);
-
-    return () => {
-      socket.off('bid:accepted', handler);
-      clearTimeout(successTimerRef.current);
-    };
-  }, [open, item, setMyBid, updateAuctionPrice]);
-
-  // Subscribe to bid:new for real-time price updates and outbid detection
-  useEffect(() => {
-    if (!open || !item) return;
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handler = (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
-      if (data.sessionId === item.sessionId) {
-        updateAuctionPrice(data.sessionId, data.amount);
-        snapToMin(data.amount);
-
-        if (myLastBid != null && data.amount > myLastBid) {
-          setIsOutbid(true);
-          setTimeout(() => setIsOutbid(false), 800);
-        }
-      }
-    };
-
-    socket.on('bid:new', handler);
-
-    return () => {
-      socket.off('bid:new', handler);
-    };
-  }, [open, item, updateAuctionPrice, snapToMin, myLastBid]);
-
-  const handleClose = useCallback(() => {
-    setBidSuccess(false);
-    setIsSubmitting(false);
-    onClose();
-  }, [onClose]);
-
-  // Subscribe to auction:ended
-  useEffect(() => {
-    if (!open || !item) return;
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handler = (data: { sessionId: number; status: string; winner?: { userNickname: string; finalPrice: number } }) => {
-      if (data.sessionId === item.sessionId) {
-        // Auto-dismiss after 3s
-        clearTimeout(endedTimerRef.current);
-        endedTimerRef.current = setTimeout(() => {
-          handleClose();
-        }, 3000);
-      }
-    };
-
-    socket.on('auction:ended', handler);
-
-    return () => {
-      socket.off('auction:ended', handler);
-      clearTimeout(endedTimerRef.current);
-    };
-  }, [open, item, handleClose]);
 
   const handleSubmit = useCallback(() => {
     if (!item || isSubmitting) return;

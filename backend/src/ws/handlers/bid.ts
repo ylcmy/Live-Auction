@@ -49,6 +49,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
     if (!result.success) {
       socket.emit('bid:rejected', {
         sessionId,
+        idempotencyKey,
         reason: result.error?.message,
         code: result.error?.code,
       });
@@ -66,6 +67,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
     // ---- Notify the bidder of acceptance ----
     socket.emit('bid:accepted', {
       sessionId,
+      idempotencyKey,
       bidId: 0,
       amount: result.amount,
       rank: result.rank,
@@ -143,14 +145,8 @@ export function registerBidHandlers(io: Server, socket: Socket) {
 
     // ---- Ceiling price triggered — settle the auction ----
     if (result.shouldEnd) {
-      const settlement = await auctionService.settleAuction(sessionId);
-      broadcastToRoom(io, roomId, 'auction:ended', {
-        sessionId,
-        status: settlement.winner ? 'ended' : 'unsold',
-        winner: settlement.winner,
-        leaderboard: settlement.leaderboard,
-        orderId: settlement.orderId,
-      });
+      await auctionService.settleAuction(sessionId);
+      // Note: settleAuction already broadcasts auction:ended to the room
     }
   });
 }
