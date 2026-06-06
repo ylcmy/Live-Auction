@@ -25,8 +25,8 @@ import { broadcastRoomListUpdate } from '../index.js';
 export function registerBidHandlers(io: Server, socket: Socket) {
   const userId = (socket as any).userId as number;
 
-  socket.on('bid:submit', async (data: { sessionId: number; idempotencyKey: string }) => {
-    const { sessionId, idempotencyKey } = data;
+  socket.on('bid:submit', async (data: { sessionId: number; amount?: number; idempotencyKey: string }) => {
+    const { sessionId, amount, idempotencyKey } = data;
 
     // Get previous top bidder BEFORE processing the bid
     let previousTopBidderId: number | null = null;
@@ -44,6 +44,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       sessionId,
       userId,
       idempotencyKey,
+      amount,
     );
 
     if (!result.success) {
