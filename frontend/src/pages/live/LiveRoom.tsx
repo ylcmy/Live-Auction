@@ -11,12 +11,13 @@ import CartButton from '../../components/auction/CartButton';
 import CartPanel from '../../components/auction/CartPanel';
 import BidSheet from '../../components/auction/BidSheet';
 import AuctionResult from './AuctionResult';
+import LeaderboardSheet from '../../components/auction/LeaderboardSheet';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
-import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock } from 'lucide-react';
+import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock, Trophy } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
 import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
@@ -86,6 +87,7 @@ export default function LiveRoom() {
   const [bidSheetOpen, setBidSheetOpen] = useState(false);
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
   const [auctionResult, setAuctionResult] = useState<AuctionEndResult | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
@@ -366,6 +368,22 @@ export default function LiveRoom() {
               <ChatInput onSend={handleSendMessage} />
             </div>
 
+            {/* Leaderboard toggle button */}
+            {currentAuction?.status === 'active' && (
+              <button
+                onClick={() => setLeaderboardOpen(true)}
+                className="relative flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white/80 hover:text-white hover:bg-black/60 transition-all"
+                title="出价排行榜"
+              >
+                <Trophy className="w-5 h-5" />
+                {leaderboard.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                    {leaderboard.length > 9 ? '9+' : leaderboard.length}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Cart button with auction bubble wrapper */}
             {roomAuctions.length > 0 && (
             <div className="relative flex-shrink-0">
@@ -501,6 +519,12 @@ export default function LiveRoom() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Leaderboard sheet */}
+      <LeaderboardSheet
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+      />
     </div>
   );
 }
