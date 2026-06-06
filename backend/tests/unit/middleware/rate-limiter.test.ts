@@ -34,6 +34,7 @@ const { sortedSets, mockCache, mockRedis } = vi.hoisted(() => {
 vi.mock('../../../src/infrastructure/cache/redis.js', () => ({
   cache: mockCache,
   redis: mockRedis,
+  isRedisAvailable: vi.fn(() => true),
 }));
 
 import { rateLimiter } from '../../../src/middleware/rateLimiter.js';

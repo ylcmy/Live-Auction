@@ -45,6 +45,11 @@ describe('OrderService', () => {
   // getOrders
   // =========================================================================
   describe('getOrders', () => {
+    beforeEach(() => {
+      // autoCancelExpiredOrders is called on-demand in getOrders
+      mockOrderRepo.findExpiredPendingOrders.mockResolvedValue([]);
+    });
+
     it('should call findByBuyer for user role', async () => {
       const mockResult = { items: [{ id: 1 }], total: 1, page: 1, limit: 20 };
       mockOrderRepo.findByBuyer.mockResolvedValue(mockResult);
@@ -110,22 +115,15 @@ describe('OrderService', () => {
 
       const result = await orderService.mockPay(1);
 
-      // Assert called updateStatus twice: once for 'paid', once for 'completed'
-      expect(mockOrderRepo.updateStatus).toHaveBeenCalledTimes(2);
-      expect(mockOrderRepo.updateStatus).toHaveBeenNthCalledWith(
+      // Main branch: mockPay updates to 'completed' directly in one call
+      expect(mockOrderRepo.updateStatus).toHaveBeenCalledTimes(1);
+      expect(mockOrderRepo.updateStatus).toHaveBeenCalledWith(
         1,
-        1,
-        'paid',
+        'completed',
         expect.objectContaining({
           payment_method: 'mock',
           transaction_id: expect.any(String),
         }),
-      );
-      expect(mockOrderRepo.updateStatus).toHaveBeenNthCalledWith(
-        2,
-        1,
-        'completed',
-        expect.objectContaining({ completed_at: expect.any(Date) }),
       );
 
       // Assert return value

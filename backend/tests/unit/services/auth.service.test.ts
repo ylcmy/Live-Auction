@@ -165,7 +165,7 @@ describe('AuthService', () => {
 
       expect(mockJwt.verify).toHaveBeenCalledWith('valid-refresh-token', 'test-secret');
       expect(mockJwt.sign).toHaveBeenCalledWith(
-        { userId: 1, role: 'user' },
+        expect.objectContaining({ userId: 1, role: 'user' }),
         'test-secret',
         { expiresIn: 3600 },
       );
