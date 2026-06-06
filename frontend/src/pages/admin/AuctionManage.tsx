@@ -8,11 +8,22 @@ import {
   Package,
   ArrowRight,
   Loader2,
+  Clock,
+  Users,
+  TrendingUp,
+  Trophy,
+  Timer,
+  Gavel,
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from '../../design-system/hooks/use-toast';
 import { ROOM_STATUS_STYLES } from '../../lib/statusConfig';
 import type { LiveRoom, Product } from '../../types/api';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { useCountdown } from '../../hooks/useCountdown';
+import { useAuctionStore } from '../../store/auctionStore';
+import { formatMsCompact, formatPrice } from '../../lib/format';
+import { Badge } from '../../design-system/components/ui/badge';
 
 interface AuctionSession {
   id: number;
@@ -38,6 +49,115 @@ export default function AuctionManage() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // WebSocket connection (auto-joins selectedRoom)
+  const { isConnected, subscribe } = useWebSocket(selectedRoom);
+
+  // Real-time auction data from Zustand store
+  const storeAuction = useAuctionStore((s) => s.currentAuction);
+  const countdownSync = useAuctionStore((s) => s.countdown);
+  const extendMs = useAuctionStore((s) => s.extendMs);
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
+  const leaderboard = useAuctionStore((s) => s.leaderboard);
+  const participantCount = useAuctionStore((s) => s.participantCount);
+  const onlineCount = useAuctionStore((s) => s.onlineCount);
+  const {
+    setAuction,
+    setLeaderboard,
+    setCountdown,
+    triggerExtend,
+    setParticipantCount,
+    setOnlineCount,
+    updateAuctionPrice,
+    updateAuctionStatus,
+    updateCountdownTick,
+  } = useAuctionStore();
+
+  // Countdown engine
+  const { sync, extend } = useCountdown({
+    onTick: updateCountdownTick,
+  });
+
+  useEffect(() => {
+    if (countdownSync && countdownSync.remainingMs > 0) {
+      sync(countdownSync);
+    }
+  }, [countdownSync, sync]);
+
+  useEffect(() => {
+    if (extendMs && extendMs > 0) {
+      extend(extendMs);
+      useAuctionStore.setState({ extendMs: null });
+    }
+  }, [extendMs, extend]);
+
+  // Subscribe to real-time auction events
+  useEffect(() => {
+    if (!isConnected || !selectedRoom) return;
+    const unsubs = [
+      subscribe<any>('auction:state', (data: any) => {
+        if (data.status === 'active') {
+          setAuction(data);
+          if (data.remainingMs != null) {
+            setCountdown({
+              sessionId: data.sessionId,
+              remainingMs: data.remainingMs,
+              serverTime: Date.now(),
+            });
+          }
+        }
+      }),
+      subscribe<any>('bid:new', (data: { sessionId: number; amount: number }) => {
+        updateAuctionPrice(data.sessionId, data.amount);
+      }),
+      subscribe<any>('rank:update', (data: any) => setLeaderboard(data)),
+      subscribe<any>('countdown:sync', (data: any) => setCountdown(data)),
+      subscribe<any>('countdown:extend', (data: any) => {
+        triggerExtend(data.extendSeconds * 1000);
+      }),
+      subscribe<any>('room:count', (data: any) => {
+        setOnlineCount(data.onlineCount);
+        setParticipantCount(data.participantCount);
+      }),
+      subscribe<any>('auction:started', (data: any) => {
+        setCurrentAuction({
+          id: data.sessionId,
+          productId: data.product?.id ?? 0,
+          roomId: selectedRoom!,
+          status: 'active',
+          currentPrice: data.currentPrice,
+          createdAt: data.startedAt,
+        });
+        setAuction({
+          sessionId: data.sessionId,
+          status: 'active',
+          product: data.product,
+          rule: data.rule,
+          currentPrice: data.currentPrice,
+          leaderboard: [],
+          myRank: null,
+          myBidAmount: null,
+          remainingMs: data.rule.durationSeconds * 1000,
+          startedAt: data.startedAt,
+          participantCount: 0,
+          extensionCount: 0,
+        });
+        if (data.rule.durationSeconds != null) {
+          setCountdown({
+            sessionId: data.sessionId,
+            remainingMs: data.rule.durationSeconds * 1000,
+            serverTime: Date.now(),
+          });
+        }
+      }),
+      subscribe<any>('auction:ended', (data: any) => {
+        updateAuctionStatus(data.sessionId, data.status);
+        setCurrentAuction((prev) => prev ? { ...prev, status: data.status } : null);
+      }),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [isConnected, selectedRoom, subscribe, setAuction, setLeaderboard, setCountdown, triggerExtend, setParticipantCount, setOnlineCount, updateAuctionPrice, updateAuctionStatus]);
+
   useEffect(() => {
     async function init() {
       try {
@@ -60,7 +180,7 @@ export default function AuctionManage() {
           setSelectedRoom(roomItems[0].id);
         }
       } catch {
-        // ignore
+        toast({ title: '加载失败', description: '无法获取直播间或商品列表', variant: 'destructive' });
       } finally {
         setPageLoading(false);
       }
@@ -303,48 +423,107 @@ export default function AuctionManage() {
         )}
       </button>
 
-      {/* Current Auction Card */}
+      {/* 实时竞拍数据面板 */}
       {currentAuction && (
-        <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-emerald-50 rounded-lg">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+        <div className="bg-surface-card border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 rounded-lg">
+                <Gavel className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-text-primary">实时竞拍监控</h2>
+                <p className="text-text-tertiary text-xs">
+                  {storeAuction?.product?.name ?? products.find((p) => p.id === currentAuction.productId)?.name ?? `商品 #${currentAuction.productId}`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-text-primary">进行中的竞拍</h2>
-              <p className="text-text-tertiary text-xs">竞拍已创建成功</p>
+            <Badge variant="outline" className={`${isConnected ? 'border-emerald-500/30 text-emerald-600 bg-emerald-50' : 'border-red-500/30 text-red-500 bg-red-50'} text-xs`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'} mr-1.5`} />
+              {isConnected ? '已连接' : '连接中...'}
+            </Badge>
+          </div>
+
+          {/* Countdown + Price */}
+          <div className="text-center py-3 bg-gradient-to-b from-surface-secondary to-transparent rounded-xl border border-surface-border">
+            <div className="text-text-tertiary text-xs mb-1">当前最高价</div>
+            <div className="text-brand text-3xl font-bold tracking-tight">
+              {formatPrice(storeAuction?.currentPrice ?? currentAuction.currentPrice)}
+            </div>
+            {countdownRemainingMs > 0 ? (
+              <div className="mt-2 flex items-center justify-center gap-2">
+                <Timer className={`w-4 h-4 ${countdownIsUrgent ? 'text-red-500' : 'text-amber-500'}`} />
+                <span className={`font-mono text-lg font-bold ${countdownIsUrgent ? 'text-red-500 animate-pulse' : 'text-amber-600'}`}>
+                  {formatMsCompact(countdownRemainingMs)}
+                </span>
+              </div>
+            ) : storeAuction?.status === 'active' ? (
+              <div className="mt-2 flex items-center justify-center gap-1.5 text-text-tertiary text-xs">
+                <Clock className="w-3.5 h-3.5" />
+                等待倒计时同步...
+              </div>
+            ) : (
+              <div className="mt-2">
+                <Badge variant="outline" className="border-slate-300 text-text-tertiary text-xs">竞拍已结束</Badge>
+              </div>
+            )}
+          </div>
+
+          {/* Stats cards */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200 text-center">
+              <Users className="w-4 h-4 text-text-secondary mx-auto mb-1" />
+              <p className="text-text-tertiary text-[10px]">在线</p>
+              <p className="text-text-primary font-semibold text-base">{onlineCount}</p>
+            </div>
+            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200 text-center">
+              <TrendingUp className="w-4 h-4 text-brand mx-auto mb-1" />
+              <p className="text-text-tertiary text-[10px]">参与竞拍</p>
+              <p className="text-text-primary font-semibold text-base">{participantCount}</p>
+            </div>
+            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200 text-center">
+              <Trophy className="w-4 h-4 text-amber-500 mx-auto mb-1" />
+              <p className="text-text-tertiary text-[10px]">出价人数</p>
+              <p className="text-text-primary font-semibold text-base">{leaderboard.length}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200">
-              <p className="text-text-tertiary text-xs mb-1">竞拍 ID</p>
-              <p className="text-text-primary font-mono text-sm font-medium">
-                #{currentAuction.id}
-              </p>
+
+          {/* Leaderboard */}
+          {leaderboard.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-text-secondary text-xs font-medium">
+                <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                出价排行
+                <span className="text-text-tertiary font-normal ml-auto">{leaderboard.length} 人</span>
+              </div>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {leaderboard.slice(0, 10).map((entry, idx) => (
+                  <div
+                    key={entry.userId}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                      idx === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-surface-secondary border border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-5 text-center text-xs font-bold ${idx === 0 ? 'text-amber-500' : 'text-text-tertiary'}`}>
+                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${entry.rank}`}
+                      </span>
+                      <span className="text-text-primary text-sm truncate max-w-[120px]">{entry.userNickname}</span>
+                    </div>
+                    <span className={`font-semibold text-sm ${idx === 0 ? 'text-amber-600' : 'text-text-primary'}`}>
+                      {formatPrice(entry.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200">
-              <p className="text-text-tertiary text-xs mb-1">状态</p>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">
-                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                进行中
-              </span>
-            </div>
-            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200">
-              <p className="text-text-tertiary text-xs mb-1">直播间</p>
-              <p className="text-text-primary text-sm font-medium">
-                {rooms.find((r) => r.id === currentAuction.roomId)?.title ?? `ID: ${currentAuction.roomId}`}
-              </p>
-            </div>
-            <div className="bg-surface-secondary/50 rounded-lg p-3 border border-slate-200">
-              <p className="text-text-tertiary text-xs mb-1">商品</p>
-              <p className="text-text-primary text-sm font-medium">
-                {products.find((p) => p.id === currentAuction.productId)?.name ?? `ID: ${currentAuction.productId}`}
-              </p>
-            </div>
-          </div>
+          )}
+
+          {/* Actions */}
           <button
             onClick={() => navigate(`/live/${currentAuction.roomId}`)}
-            className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface-secondary hover:bg-slate-100 border border-slate-200 rounded-lg text-text-secondary hover:text-text-primary text-sm font-medium transition-all"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface-secondary hover:bg-slate-100 border border-slate-200 rounded-lg text-text-secondary hover:text-text-primary text-sm font-medium transition-all"
           >
             进入直播间
             <ArrowRight className="w-4 h-4" />

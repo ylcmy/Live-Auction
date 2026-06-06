@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useAuctionStore } from '../../store/auctionStore';
-import { useCountdown } from '../../hooks/useCountdown';
 import { useAudio } from '../../hooks/useAudio';
 import { formatPrice } from '../../lib/format';
 import BidButton from '../../components/auction/BidButton';
@@ -18,30 +17,17 @@ export default function AuctionPanel() {
   const currentAuction = useAuctionStore((s) => s.currentAuction);
   const onlineCount = useAuctionStore((s) => s.onlineCount);
   const participantCount = useAuctionStore((s) => s.participantCount);
-  const countdownSync = useAuctionStore((s) => s.countdown);
-  const extendMs = useAuctionStore((s) => s.extendMs);
-  const { remainingMs, isUrgent, sync, extend } = useCountdown();
+  const remainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const isUrgent = useAuctionStore((s) => s.countdownIsUrgent);
   const { playTick } = useAudio();
   const tickPlayedRef = useRef(false);
 
   useEffect(() => {
-    if (countdownSync && countdownSync.remainingMs > 0) {
-      sync(countdownSync);
-    }
-  }, [countdownSync, sync]);
-
-  useEffect(() => {
-    if (extendMs && extendMs > 0) {
-      extend(extendMs);
-    }
-  }, [extendMs, extend]);
-
-  useEffect(() => {
-    if (remainingMs > 0 && remainingMs <= 5000 && !tickPlayedRef.current) {
+    if (remainingMs > 0 && remainingMs <= 10000 && !tickPlayedRef.current) {
       tickPlayedRef.current = true;
       playTick();
     }
-    if (remainingMs > 5000) {
+    if (remainingMs > 10000) {
       tickPlayedRef.current = false;
     }
   }, [remainingMs, playTick]);

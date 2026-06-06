@@ -7,7 +7,7 @@
  */
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { cache, redis } from '../infrastructure/cache/redis.js';
+import { cache, redis, isRedisAvailable } from '../infrastructure/cache/redis.js';
 
 /**
  * Create a rate limiter middleware.
@@ -19,6 +19,9 @@ export function rateLimiter(maxRequests: number, windowSeconds: number) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     const userId = (req as any).auth?.userId;
     if (!userId) return; // Skip if no user (auth middleware handles this)
+
+    // Redis 不可用时限流器降级跳过（fail open）
+    if (!isRedisAvailable()) return;
 
     const key = `ratelimit:${userId}`;
     const now = Date.now();

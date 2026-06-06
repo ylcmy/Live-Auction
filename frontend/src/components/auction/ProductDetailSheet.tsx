@@ -10,7 +10,8 @@ import {
 } from '../../design-system/components/ui/sheet';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
-import { formatPrice, getPriceLabel } from '../../lib/format';
+import { formatPrice, formatMsCompact, getPriceLabel } from '../../lib/format';
+import { useAuctionStore } from '../../store/auctionStore';
 import { AUCTION_STATUS_CONFIG } from '../../lib/statusConfig';
 import type { RoomAuctionItem } from '../../types/api';
 
@@ -73,6 +74,13 @@ export default function ProductDetailSheet({
   const imageUrl = item?.product?.imageUrl;
   const productDescription = item?.product?.description;
   const isActive = item?.status === 'active';
+
+  const currentAuction = useAuctionStore((s) => s.currentAuction);
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
+
+  const isCurrentActive = isActive && currentAuction?.sessionId === item?.sessionId;
+  const showCountdown = isCurrentActive && countdownRemainingMs > 0;
 
   const priceInfo = useMemo(() => {
     if (!item) return null;
@@ -181,12 +189,12 @@ export default function ProductDetailSheet({
                         </div>
                       </div>
 
-                      {/* Countdown placeholder */}
+                      {/* Countdown */}
                       {isActive && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100">
-                          <Clock className="w-3.5 h-3.5 text-red-500" />
-                          <span className="text-red-500 text-sm font-medium font-mono">
-                            --:--
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${showCountdown && countdownIsUrgent ? 'bg-red-100 border-red-200' : 'bg-red-50 border-red-100'}`}>
+                          <Clock className={`w-3.5 h-3.5 ${showCountdown && countdownIsUrgent ? 'text-red-600 animate-pulse' : 'text-red-500'}`} />
+                          <span className={`text-sm font-medium font-mono ${showCountdown && countdownIsUrgent ? 'text-red-600' : 'text-red-500'}`}>
+                            {showCountdown ? formatMsCompact(countdownRemainingMs) : '等待中'}
                           </span>
                         </div>
                       )}

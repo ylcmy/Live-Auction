@@ -57,5 +57,25 @@ export function useAudio() {
     }
   }, [getContext]);
 
-  return { playTick, playDing };
+  /** Alert (400 Hz, 400 ms with fade-out) — suitable for outbid / overtaken warning. */
+  const playAlert = useCallback(() => {
+    try {
+      const ctx = getContext();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 400;
+      osc.type = 'triangle';
+      gain.gain.value = 0.2;
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.stop(ctx.currentTime + 0.4);
+    } catch {
+      /* Audio not supported */
+    }
+  }, [getContext]);
+
+  return { playTick, playDing, playAlert };
 }

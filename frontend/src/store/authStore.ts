@@ -15,8 +15,26 @@ interface AuthState {
   clearError: () => void;
 }
 
+// Restore user from JWT on page reload so auction-result comparison
+// (`result.winner.userId === user.id`) works after a refresh.
+function restoreUserFromToken(): User | null {
+  const t = localStorage.getItem('accessToken');
+  if (!t) return null;
+  const payload = decodeJwtPayload<{ userId?: number; sub?: number; role?: string; nickname?: string }>(t);
+  if (!payload) return null;
+  const userId = payload.userId ?? payload.sub;
+  if (userId == null) return null;
+  return {
+    id: userId,
+    username: '',
+    role: (payload.role as User['role']) || 'user',
+    nickname: payload.nickname || '',
+    avatarUrl: null,
+  } as User;
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
+  user: restoreUserFromToken(),
   token: localStorage.getItem('accessToken'),
   isLoading: false,
   error: null,

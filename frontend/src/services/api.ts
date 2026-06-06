@@ -69,9 +69,10 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
     if (query) url += `?${query}`;
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
   const token = localStorage.getItem('accessToken');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;

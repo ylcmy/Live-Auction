@@ -10,6 +10,38 @@ import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import type { AuthPayload } from '../middleware/auth.js';
+import { bidEventBus } from './bid-event-bus.js';
+
+async function getRoomUserCounts(
+  io: Server,
+  roomId: string,
+  userId: number,
+  direction: 'join' | 'leave',
+): Promise<{ onlineCount: number; participantCount: number }> {
+  let onlineCount: number;
+  let participantCount: number;
+
+  if (isRedisAvailable()) {
+    if (direction === 'join') {
+      await cache.sadd(`room:${roomId}:online`, String(userId));
+    } else {
+      await cache.srem(`room:${roomId}:online`, String(userId));
+    }
+    onlineCount = getOnlineCount(io, roomId);
+    participantCount = (await cache.scard(`room:${roomId}:participants`)) || 0;
+  } else {
+    onlineCount = io.sockets.adapter.rooms.get(roomId)?.size || 0;
+    const activeSession = await auctionSessionRepo.findActiveByRoom(Number(roomId));
+    if (activeSession) {
+      const lb = await bidRepo.findLeaderboard(activeSession.id, 1000);
+      participantCount = lb.length;
+    } else {
+      participantCount = 0;
+    }
+  }
+
+  return { onlineCount, participantCount };
+}
 
 let io: Server;
 
@@ -22,6 +54,10 @@ export function initWebSocket(httpServer: HttpServer) {
 
   // Inject io instance into auction service for settlement broadcasts
   initializeDefaultAuctionService(io);
+
+  // 初始化事件总线
+  bidEventBus.setIO(io);
+  bidEventBus.registerHandlers();
 
   io.use((socket, next) => {
     // Support both handshake.auth.token (Socket.IO client) and query token (raw WebSocket / k6)
@@ -54,31 +90,8 @@ export function initWebSocket(httpServer: HttpServer) {
       const rid = String(roomId);
       joinRoom(socket, rid);
 
-      let onlineCount: number;
-      let participantCount: number;
-
-      if (isRedisAvailable()) {
-        await cache.sadd(`room:${rid}:online`, String(userId));
-        onlineCount = getOnlineCount(io, rid);
-        participantCount = (await cache.scard(`room:${rid}:participants`)) || 0;
-      } else {
-        // Redis unavailable: use Socket.IO in-memory count for online,
-        // MySQL for participant count
-        onlineCount = io.sockets.adapter.rooms.get(rid)?.size || 0;
-        const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
-        if (activeSession) {
-          const lb = await bidRepo.findLeaderboard(activeSession.id, 1000);
-          participantCount = lb.length;
-        } else {
-          participantCount = 0;
-        }
-      }
-
-      broadcastToRoom(io, rid, 'room:count', {
-        roomId,
-        onlineCount,
-        participantCount,
-      });
+      const { onlineCount, participantCount } = await getRoomUserCounts(io, rid, userId, 'join');
+      broadcastToRoom(io, rid, 'room:count', { roomId, onlineCount, participantCount });
 
       let activeSessionId = await cache.get(`room:${rid}:active_session`);
 
@@ -104,31 +117,8 @@ export function initWebSocket(httpServer: HttpServer) {
       const rid = String(roomId);
       leaveRoom(socket, rid);
 
-      let onlineCount: number;
-      let participantCount: number;
-
-      if (isRedisAvailable()) {
-        await cache.srem(`room:${rid}:online`, String(userId));
-        onlineCount = getOnlineCount(io, rid);
-        participantCount = (await cache.scard(`room:${rid}:participants`)) || 0;
-      } else {
-        // Redis unavailable: use Socket.IO in-memory count for online,
-        // MySQL for participant count
-        onlineCount = io.sockets.adapter.rooms.get(rid)?.size || 0;
-        const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
-        if (activeSession) {
-          const lb = await bidRepo.findLeaderboard(activeSession.id, 1000);
-          participantCount = lb.length;
-        } else {
-          participantCount = 0;
-        }
-      }
-
-      broadcastToRoom(io, rid, 'room:count', {
-        roomId,
-        onlineCount,
-        participantCount,
-      });
+      const { onlineCount, participantCount } = await getRoomUserCounts(io, rid, userId, 'leave');
+      broadcastToRoom(io, rid, 'room:count', { roomId, onlineCount, participantCount });
     });
 
     socket.on('disconnect', async () => {
@@ -136,26 +126,7 @@ export function initWebSocket(httpServer: HttpServer) {
       for (const roomId of rooms) {
         if (roomId === socket.id) continue;
 
-        let onlineCount: number;
-        let participantCount: number;
-
-        if (isRedisAvailable()) {
-          await cache.srem(`room:${roomId}:online`, String(userId));
-          onlineCount = getOnlineCount(io, roomId);
-          participantCount = (await cache.scard(`room:${roomId}:participants`)) || 0;
-        } else {
-          // Redis unavailable: use Socket.IO in-memory count for online,
-          // MySQL for participant count
-          onlineCount = io.sockets.adapter.rooms.get(roomId)?.size || 0;
-          const activeSession = await auctionSessionRepo.findActiveByRoom(Number(roomId));
-          if (activeSession) {
-            const lb = await bidRepo.findLeaderboard(activeSession.id, 1000);
-            participantCount = lb.length;
-          } else {
-            participantCount = 0;
-          }
-        }
-
+        const { onlineCount, participantCount } = await getRoomUserCounts(io, roomId, userId, 'leave');
         broadcastToRoom(io, roomId, 'room:count', {
           roomId: Number(roomId),
           onlineCount,

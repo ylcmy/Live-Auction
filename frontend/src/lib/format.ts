@@ -34,3 +34,13 @@ export function getPriceLabel(item: { status: string; currentPrice: number; rule
       return { label: '起拍价', price: item.rule.startPrice };
   }
 }
+
+/**
+ * 将毫秒格式化为紧凑的 MM:SS 形式（用于小尺寸 UI）。
+ */
+export function formatMsCompact(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}

@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { CountdownSync } from '../types/ws';
 
-export function useCountdown(initialMs?: number) {
-  const [remainingMs, setRemainingMs] = useState(initialMs || 0);
+export interface UseCountdownOptions {
+  onTick?: (remainingMs: number, isUrgent: boolean) => void;
+}
+
+export function useCountdown(options?: UseCountdownOptions) {
+  const [remainingMs, setRemainingMs] = useState(0);
   const [isUrgent, setIsUrgent] = useState(false);
   const endTimeRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
   const [syncCounter, setSyncCounter] = useState(0);
+  const onTickRef = useRef(options?.onTick);
+  onTickRef.current = options?.onTick;
 
   useEffect(() => {
     if (endTimeRef.current === null) return;
@@ -14,7 +20,9 @@ export function useCountdown(initialMs?: number) {
     const tick = () => {
       const remaining = Math.max(0, endTimeRef.current! - Date.now());
       setRemainingMs(remaining);
-      setIsUrgent(remaining < 10000 && remaining > 0);
+      const urgent = remaining < 10000 && remaining > 0;
+      setIsUrgent(urgent);
+      onTickRef.current?.(remaining, urgent);
       if (remaining > 0) {
         rafRef.current = requestAnimationFrame(tick);
       }

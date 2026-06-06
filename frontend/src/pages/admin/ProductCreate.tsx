@@ -81,7 +81,7 @@ export default function ProductCreate() {
       toast({ title: '商品已创建，请上架后开始竞拍', variant: 'success' });
       navigate('/admin/products');
     } catch (err: any) {
-      toast({ title: err?.response?.data?.message || '创建失败，请重试', variant: 'error' });
+      toast({ title: err?.response?.data?.message || '创建失败，请重试', variant: 'destructive' });
     } finally {
       setSaving(false);
     }

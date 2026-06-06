@@ -24,7 +24,9 @@ export async function auctionRoutes(app: FastifyInstance) {
       const { productId, roomId } = req.body as any;
       const data = await auctionService.startAuction(req.auth.userId, productId, roomId);
       if (data.sessionId != null) {
-        broadcastAuctionState(roomId, data.sessionId).catch(() => {});
+        broadcastAuctionState(roomId, data.sessionId).catch((err) => {
+          console.error('Failed to broadcast auction state:', err);
+        });
       }
       return replySuccess(reply, data, 201);
     },

@@ -68,9 +68,20 @@ export class AuctionService {
     await cache.set(`auction:${sessionId}:room_id`, String(roomId), ttlSeconds);
     await cache.set(
       `auction:${sessionId}:top_bid`,
-      JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: Date.now() }),
+      JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: new Date().toISOString() }),
       ttlSeconds,
     );
+    await cache.set(
+      `auction:${sessionId}:rule`,
+      JSON.stringify({
+        bid_increment: Number(rule.bid_increment),
+        ceiling_price: rule.ceiling_price ? Number(rule.ceiling_price) : null,
+        max_extensions: rule.max_extensions,
+        extend_seconds: rule.extend_seconds,
+      }),
+      ttlSeconds,
+    );
+    await cache.set(`auction:${sessionId}:merchant_id`, String(merchantId), ttlSeconds);
     // Map room to active session for WS join lookups
     await cache.set(`room:${roomId}:active_session`, String(sessionId), ttlSeconds);
 
@@ -631,7 +642,7 @@ export class AuctionService {
           const topBidData = JSON.stringify({
             userId: topBid.user_id,
             amount: Number(topBid.bid_amount),
-            timestamp: new Date(topBid.created_at).getTime(),
+            timestamp: new Date(topBid.created_at).toISOString(),
           });
           await cache.setnx(`auction:${sessionId}:top_bid`, topBidData, ttlSeconds);
         } else {
@@ -639,7 +650,7 @@ export class AuctionService {
           const topBidData = JSON.stringify({
             userId: 0,
             amount: Number(rule.start_price),
-            timestamp: Date.now(),
+            timestamp: new Date().toISOString(),
           });
           await cache.setnx(`auction:${sessionId}:top_bid`, topBidData, ttlSeconds);
         }

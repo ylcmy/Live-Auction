@@ -234,7 +234,13 @@ export async function roomRoutes(app: FastifyInstance) {
       );
 
     const sessionMap = new Map();
-    existingSessions.forEach((s: any) => sessionMap.set(s.productId, s));
+    existingSessions.forEach((s: any) => {
+      const existing = sessionMap.get(s.productId);
+      // Prefer active sessions over ended/cancelled/unsold ones
+      if (!existing || (s.status === 'active' && existing.status !== 'active')) {
+        sessionMap.set(s.productId, s);
+      }
+    });
 
     const auctionListPromises = allProducts.map(async (row: any) => {
       const sess = sessionMap.get(row.productId);
