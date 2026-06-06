@@ -57,7 +57,9 @@ export const productRepo = {
         'auction_rules.duration_seconds as rule_durationSeconds',
         'auction_rules.extend_seconds as rule_extendSeconds',
         'auction_rules.max_extensions as rule_maxExtensions',
+        's.id as session_id',
         's.current_price as session_currentPrice',
+        's.started_at as session_startedAt',
         db.raw('COALESCE(br.bid_count, 0) as bidCount'),
       );
 
@@ -89,6 +91,8 @@ export const productRepo = {
       }
       product.currentPrice = row.session_currentPrice != null ? Number(row.session_currentPrice) : null;
       product.bidCount = Number(row.bidCount ?? 0);
+      product.sessionId = row.session_id ?? null;
+      product.startedAt = row.session_startedAt ?? null;
       delete product.rule_id;
       delete product.rule_startPrice;
       delete product.rule_bidIncrement;
@@ -97,6 +101,8 @@ export const productRepo = {
       delete product.rule_extendSeconds;
       delete product.rule_maxExtensions;
       delete product.session_currentPrice;
+      delete product.session_id;
+      delete product.session_startedAt;
       return product;
     });
 

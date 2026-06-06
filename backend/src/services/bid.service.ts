@@ -155,11 +155,12 @@ export const bidService = {
     sessionId: number,
     userId: number,
     idempotencyKey: string,
+    clientAmount?: number,
   ): Promise<BidProcessResult> {
     if (isRedisAvailable()) {
-      return this._processBidRedis(sessionId, userId, idempotencyKey);
+      return this._processBidRedis(sessionId, userId, idempotencyKey, clientAmount);
     }
-    return this._processBidMySQL(sessionId, userId, idempotencyKey);
+    return this._processBidMySQL(sessionId, userId, idempotencyKey, clientAmount);
   },
 
   /**
@@ -170,6 +171,7 @@ export const bidService = {
     sessionId: number,
     userId: number,
     idempotencyKey: string,
+    clientAmount?: number,
   ): Promise<BidProcessResult> {
     // ---- 1. Idempotency check (first line of defense) ----
     const idemKey = `idempotent:bid:${sessionId}:${idempotencyKey}`;
@@ -234,6 +236,8 @@ export const bidService = {
       const rateLimitExceeded = rateCount >= 5;
 
       // ---- 4. Domain validation ----
+      const lbKey = `auction:${sessionId}:leaderboard`;
+
       const error = validateBid(userId, {
         auctionStatus: session.status,
         sellerId: product.merchant_id,
@@ -266,7 +270,16 @@ export const bidService = {
       }
 
       // ---- 7. Calculate bid amount ----
-      let bidAmount = currentPrice + Number(rule.bid_increment);
+      const minBid = currentPrice + Number(rule.bid_increment);
+      let bidAmount = clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid;
+      // Snap to increment grid
+      const increment = Number(rule.bid_increment);
+      bidAmount = Math.round((bidAmount - currentPrice) / increment) * increment + currentPrice;
+      bidAmount = Math.max(bidAmount, minBid);
+      // Check ceiling price
+      if (rule.ceiling_price != null && bidAmount > Number(rule.ceiling_price)) {
+        bidAmount = Number(rule.ceiling_price);
+      }
 
       // ---- 8. Ceiling price truncation ----
       const ceilingPrice = rule.ceiling_price
@@ -282,7 +295,6 @@ export const bidService = {
       const previousTopBid = topBidRaw || '';
 
       // ---- 10. Atomic Redis write via Lua ----
-      const lbKey = `auction:${sessionId}:leaderboard`;
       const participantsKey = `room:${session.room_id}:participants`;
       const topBidKey = `auction:${sessionId}:top_bid`;
       const topBidData = JSON.stringify({
@@ -339,13 +351,13 @@ export const bidService = {
       const myRank = rank !== null ? rank + 1 : null;
 
       // ---- 14. Determine leader status ----
-      const topBidders = await cache.zrevrange(lbKey, 0, 0);
+      const topBidEntries = await cache.zrevrange(lbKey, 0, 0);
       let isLeading = false;
       let gapToLeader = -1;
-      if (topBidders.length >= 2) {
-        isLeading = topBidders[0] === String(userId);
+      if (topBidEntries.length >= 2) {
+        isLeading = topBidEntries[0] === String(userId);
         if (!isLeading) {
-          const leaderAmount = Number(topBidders[1]);
+          const leaderAmount = Number(topBidEntries[1]);
           gapToLeader = leaderAmount - bidAmount;
         }
       } else {
@@ -378,6 +390,7 @@ export const bidService = {
     sessionId: number,
     userId: number,
     idempotencyKey: string,
+    clientAmount?: number,
   ): Promise<BidProcessResult> {
     logger.info({ event: 'bid_attempt_mysql', sessionId, userId, idempotencyKey }, 'Bid processing started (MySQL path)');
 
@@ -433,7 +446,16 @@ export const bidService = {
     }
 
     // ---- 4. Calculate bid amount ----
-    let bidAmount = Number(productCheck.current_price) + Number(rule.bid_increment);
+    const minBid = Number(productCheck.current_price) + Number(rule.bid_increment);
+    let bidAmount = clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid;
+    // Snap to increment grid
+    const increment = Number(rule.bid_increment);
+    bidAmount = Math.round((bidAmount - Number(productCheck.current_price)) / increment) * increment + Number(productCheck.current_price);
+    bidAmount = Math.max(bidAmount, minBid);
+    // Check ceiling price
+    if (rule.ceiling_price != null && bidAmount > Number(rule.ceiling_price)) {
+      bidAmount = Number(rule.ceiling_price);
+    }
 
     const ceilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
     const shouldEnd = ceilingPrice !== null && bidAmount >= ceilingPrice;
@@ -459,12 +481,18 @@ export const bidService = {
 
         // Re-validate with locked data
         const lockedCurrentPrice = Number(session.current_price);
-        const lockedBidAmount = lockedCurrentPrice + Number(rule.bid_increment);
+        const lockedIncrement = Number(rule.bid_increment);
+        const lockedMinBid = lockedCurrentPrice + lockedIncrement;
+        let lockedBidAmount = clientAmount != null && clientAmount >= lockedMinBid ? Number(clientAmount) : lockedMinBid;
+        // Snap to increment grid
+        lockedBidAmount = Math.round((lockedBidAmount - lockedCurrentPrice) / lockedIncrement) * lockedIncrement + lockedCurrentPrice;
+        lockedBidAmount = Math.max(lockedBidAmount, lockedMinBid);
         const lockedCeilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
+        if (lockedCeilingPrice != null && lockedBidAmount > lockedCeilingPrice) {
+          lockedBidAmount = lockedCeilingPrice;
+        }
         const lockedShouldEnd = lockedCeilingPrice !== null && lockedBidAmount >= lockedCeilingPrice;
-        const finalBidAmount = (lockedCeilingPrice !== null && lockedBidAmount > lockedCeilingPrice)
-          ? lockedCeilingPrice
-          : lockedBidAmount;
+        const finalBidAmount = lockedBidAmount;
 
         // INSERT bid_record (idempotency via unique constraint)
         bidId = await bidRepo.create({

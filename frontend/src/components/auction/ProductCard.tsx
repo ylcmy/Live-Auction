@@ -1,5 +1,7 @@
+import { Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { formatPrice, getPriceLabel } from '../../lib/format';
+import { formatMsCompact, formatPrice, getPriceLabel } from '../../lib/format';
+import { useAuctionStore } from '../../store/auctionStore';
 import type { RoomAuctionItem } from '../../types/api';
 
 interface ProductCardProps {
@@ -37,6 +39,10 @@ function AudioWaveform() {
 export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, onSelect, onBid, index }: ProductCardProps) {
   const { label: priceLabel, price: displayPrice } = getPriceLabel(item);
   const isActive = item.status === 'active';
+
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const currentAuction = useAuctionStore((s) => s.currentAuction);
+  const isCurrentActive = isCurrent && isActive && currentAuction?.sessionId === item.sessionId;
 
   // 状态标签颜色映射
   const statusColors: Record<string, { bg: string; text: string }> = {
@@ -107,20 +113,26 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
               {item.product?.name ?? `商品 #${item.sessionId}`}
             </h3>
 
-            {/* 状态标签 */}
-            <div className="mt-1.5">
+            {/* 状态标签 + 倒计时 */}
+            <div className="mt-1.5 flex items-center gap-1.5">
               <span className={`${colors.bg} ${colors.text} text-[10px] px-1.5 py-0.5 rounded font-medium`}>
                 {statusLabel}
               </span>
+              {isCurrentActive && countdownRemainingMs > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium text-red-500">
+                  <Clock className="w-3 h-3" />
+                  {formatMsCompact(countdownRemainingMs)}
+                </span>
+              )}
             </div>
           </div>
 
           {/* 价格和操作 */}
           <div className="flex items-end justify-between mt-2">
             <div className="flex items-baseline gap-1">
-              <span className="text-red-500 font-bold text-base">¥{formatPrice(displayPrice).replace('¥', '')}</span>
-              <span className="text-gray-400 text-[11px]">{priceLabel}</span>
-            </div>
+                <span className="text-red-500 font-bold text-base">¥{formatPrice(displayPrice).replace('¥', '')}</span>
+                <span className="text-gray-400 text-[11px]">{priceLabel}</span>
+              </div>
 
             {/* 操作按钮：竞拍中显示"去出价"，其他所有状态显示"去看看" */}
             {isActive ? (

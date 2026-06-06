@@ -22,7 +22,12 @@ export function useWebSocket(roomId: number | null) {
   }, []);
 
   useEffect(() => {
-    if (!token || !roomId) return;
+    if (!token || !roomId) {
+      // Sync disconnect state when roomId becomes null
+      setIsConnected(false);
+      setIsReconnecting(false);
+      return;
+    }
 
     const socket = connectSocket(token);
     socketRef.current = socket;
@@ -54,6 +59,12 @@ export function useWebSocket(roomId: number | null) {
       joinedRooms.add(roomId);
     }
     myRoomRef.current = roomId;
+
+    // If socket is already connected (e.g., shared from another page),
+    // sync state immediately since the 'connect' event already fired.
+    if (socket.connected) {
+      onConnect();
+    }
 
     // Listen for browser online/offline events to detect disconnection immediately
     // (Socket.IO heartbeat can take 25+ seconds to detect a broken connection)

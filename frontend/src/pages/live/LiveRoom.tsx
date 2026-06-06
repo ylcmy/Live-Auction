@@ -4,17 +4,20 @@ import { useAuctionStore } from '../../store/auctionStore';
 import { useAuthStore } from '../../store/authStore';
 import { useCart } from '../../hooks/useCart';
 import { useAudio } from '../../hooks/useAudio';
+import { useCountdown } from '../../hooks/useCountdown';
 
 import SimulatedStream from '../../components/auction/SimulatedStream';
 import CartButton from '../../components/auction/CartButton';
 import CartPanel from '../../components/auction/CartPanel';
 import BidSheet from '../../components/auction/BidSheet';
 import AuctionResult from './AuctionResult';
+import LeaderboardSheet from '../../components/auction/LeaderboardSheet';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
-import { Users, Radio, Wifi, WifiOff, X, ShoppingBag } from 'lucide-react';
+import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock, Trophy } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
 import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
@@ -51,6 +54,7 @@ export default function LiveRoom() {
     chatMessages,
     leaderboard,
     myBids,
+    updateCountdownTick,
   } = useAuctionStore();
   const [wasReconnected, setWasReconnected] = useState(false);
   const [roomStatus, setRoomStatus] = useState<string>('live');
@@ -60,9 +64,32 @@ export default function LiveRoom() {
 
   const { isOpen: isCartOpen, openCart, closeCart, productCount } = useCart(roomAuctions);
   const { playDing } = useAudio();
+
+  const countdownSync = useAuctionStore((s) => s.countdown);
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
+  const extendMs = useAuctionStore((s) => s.extendMs);
+  const { sync, extend } = useCountdown({
+    onTick: updateCountdownTick,
+  });
+
+  useEffect(() => {
+    if (countdownSync && countdownSync.remainingMs > 0) {
+      sync(countdownSync);
+    }
+  }, [countdownSync, sync]);
+
+  useEffect(() => {
+    if (extendMs && extendMs > 0) {
+      extend(extendMs);
+      useAuctionStore.setState({ extendMs: null });
+    }
+  }, [extendMs, extend]);
+
   const [bidSheetOpen, setBidSheetOpen] = useState(false);
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
   const [auctionResult, setAuctionResult] = useState<AuctionEndResult | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
@@ -343,6 +370,22 @@ export default function LiveRoom() {
               <ChatInput onSend={handleSendMessage} />
             </div>
 
+            {/* Leaderboard toggle button */}
+            {currentAuction?.status === 'active' && (
+              <button
+                onClick={() => setLeaderboardOpen(true)}
+                className="relative flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white/80 hover:text-white hover:bg-black/60 transition-all"
+                title="出价排行榜"
+              >
+                <Trophy className="w-5 h-5" />
+                {leaderboard.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                    {leaderboard.length > 9 ? '9+' : leaderboard.length}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Cart button with auction bubble wrapper */}
             {roomAuctions.length > 0 && (
             <div className="relative flex-shrink-0">
@@ -389,6 +432,14 @@ export default function LiveRoom() {
                           </span>
                         )}
                       </div>
+                      {countdownRemainingMs > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-red-400" />
+                          <span className={`text-xs font-mono font-medium ${countdownIsUrgent ? 'text-red-400 animate-pulse' : 'text-white/80'}`}>
+                            {formatMsCompact(countdownRemainingMs)}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Go bid button */}
@@ -470,6 +521,12 @@ export default function LiveRoom() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Leaderboard sheet */}
+      <LeaderboardSheet
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+      />
     </div>
   );
 }

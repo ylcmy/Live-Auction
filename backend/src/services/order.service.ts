@@ -9,6 +9,9 @@ function generateTransactionId(): string {
 
 export const orderService = {
   async getOrders(userId: number, role: 'merchant' | 'user', page = 1, limit = 20, status?: string) {
+    // Cancel expired pending orders on-demand before returning
+    await this.autoCancelExpiredOrders();
+
     if (role === 'user') return orderRepo.findByBuyer(userId, page, limit, status);
     const products = await productRepo.findAll({ merchant_id: userId, limit: 1000 });
     const productIds = products.items.map((p: any) => p.id);
@@ -18,6 +21,14 @@ export const orderService = {
   async getOrderDetail(orderId: number) {
     const order = await orderRepo.findById(orderId);
     if (!order) throw new AppError('订单不存在', 404);
+
+    // On-demand expiry check: if order is pending but past its deadline, cancel it now
+    if (order.status === 'pending_payment' && order.expire_at && new Date(order.expire_at) < new Date()) {
+      await orderRepo.updateStatus(orderId, 'cancelled', { cancelled_at: new Date() });
+      order.status = 'cancelled';
+      order.cancelled_at = new Date();
+    }
+
     return order;
   },
 
@@ -29,14 +40,11 @@ export const orderService = {
     const now = new Date();
     const transactionId = generateTransactionId();
 
-    await orderRepo.updateStatus(orderId, 'paid', {
+    await orderRepo.updateStatus(orderId, 'completed', {
       paid_at: now,
+      completed_at: now,
       payment_method: 'mock',
       transaction_id: transactionId,
-    });
-
-    await orderRepo.updateStatus(orderId, 'completed', {
-      completed_at: now,
     });
 
     logger.info({ event: 'order_paid', orderId, transactionId }, 'Order paid and completed');

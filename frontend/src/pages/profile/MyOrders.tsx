@@ -66,6 +66,17 @@ export default function MyOrders() {
     }
   };
 
+  const handleCancel = async (orderId: number) => {
+    if (!window.confirm('确定要取消此订单吗？取消后将无法恢复')) return;
+    try {
+      await api.put(`/orders/${orderId}/status`, { status: 'cancelled' });
+      toast({ title: '订单已取消' });
+      fetchOrders();
+    } catch (err: any) {
+      toast({ title: '取消失败', description: err?.message || '请稍后重试', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 flex items-center h-12 px-4 border-b border-white/10 bg-[#161823]/80 backdrop-blur-md">
@@ -129,6 +140,7 @@ export default function MyOrders() {
                 key={order.id}
                 order={order}
                 onPay={handlePay}
+                onCancel={handleCancel}
                 payingId={payingId}
               />
             ))}
@@ -142,10 +154,12 @@ export default function MyOrders() {
 function OrderCard({
   order,
   onPay,
+  onCancel,
   payingId,
 }: {
   order: Order;
   onPay: (id: number) => void;
+  onCancel: (id: number) => void;
   payingId: number | null;
 }) {
   const navigate = useNavigate();
@@ -227,17 +241,29 @@ function OrderCard({
           {new Date(order.createdAt).toLocaleString('zh-CN')}
         </span>
         {order.status === 'pending_payment' && !isExpired && (
-          <Button
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPay(order.id);
-            }}
-            disabled={payingId === order.id}
-            className="bg-brand/10 text-brand border border-brand/20 hover:bg-brand/20 h-7 px-3 text-xs cursor-pointer"
-          >
-            {payingId === order.id ? '支付中...' : '去支付'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel(order.id);
+              }}
+              className="bg-white/5 text-text-tertiary border border-white/10 hover:bg-white/10 h-7 px-3 text-xs cursor-pointer"
+            >
+              取消订单
+            </Button>
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPay(order.id);
+              }}
+              disabled={payingId === order.id}
+              className="bg-brand/10 text-brand border border-brand/20 hover:bg-brand/20 h-7 px-3 text-xs cursor-pointer"
+            >
+              {payingId === order.id ? '支付中...' : '去支付'}
+            </Button>
+          </div>
         )}
       </div>
     </motion.div>
