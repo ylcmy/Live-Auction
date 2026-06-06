@@ -71,6 +71,17 @@ export class AuctionService {
       JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: Date.now() }),
       ttlSeconds,
     );
+    await cache.set(
+      `auction:${sessionId}:rule`,
+      JSON.stringify({
+        bid_increment: Number(rule.bid_increment),
+        ceiling_price: rule.ceiling_price ? Number(rule.ceiling_price) : null,
+        max_extensions: rule.max_extensions,
+        extend_seconds: rule.extend_seconds,
+      }),
+      ttlSeconds,
+    );
+    await cache.set(`auction:${sessionId}:merchant_id`, String(merchantId), ttlSeconds);
     // Map room to active session for WS join lookups
     await cache.set(`room:${roomId}:active_session`, String(sessionId), ttlSeconds);
 
