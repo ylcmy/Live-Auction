@@ -14,6 +14,8 @@ interface AuctionStore {
   myBids: Record<number, number>;
   roomAuctions: RoomAuctionItem[];
   chatMessages: ChatMessage[];
+  countdownRemainingMs: number;
+  countdownIsUrgent: boolean;
 
   setAuction: (auction: AuctionState) => void;
   setLeaderboard: (lb: LeaderboardEntry[]) => void;
@@ -30,6 +32,7 @@ interface AuctionStore {
   removeEmotion: (id: string) => void;
   clearAuction: () => void;
   addChatMessage: (msg: ChatMessage) => void;
+  updateCountdownTick: (remainingMs: number, isUrgent: boolean) => void;
 }
 
 export const useAuctionStore = create<AuctionStore>((set) => ({
@@ -44,6 +47,8 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   myBids: {},
   roomAuctions: [],
   chatMessages: [],
+  countdownRemainingMs: 0,
+  countdownIsUrgent: false,
 
   setAuction: (auction) =>
     set((state) => ({
@@ -144,9 +149,13 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
       myBids: {},
       roomAuctions: [],
       chatMessages: [],
+      countdownRemainingMs: 0,
+      countdownIsUrgent: false,
     }),
   addChatMessage: (msg) =>
     set((state) => ({
       chatMessages: [...state.chatMessages.slice(-99), msg],
     })),
+  updateCountdownTick: (countdownRemainingMs, countdownIsUrgent) =>
+    set({ countdownRemainingMs, countdownIsUrgent }),
 }));
