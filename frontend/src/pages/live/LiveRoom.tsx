@@ -82,6 +82,7 @@ export default function LiveRoom() {
   useEffect(() => {
     if (extendMs && extendMs > 0) {
       extend(extendMs);
+      useAuctionStore.setState({ extendMs: null });
     }
   }, [extendMs, extend]);
 

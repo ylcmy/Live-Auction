@@ -87,6 +87,7 @@ export default function AuctionManage() {
   useEffect(() => {
     if (extendMs && extendMs > 0) {
       extend(extendMs);
+      useAuctionStore.setState({ extendMs: null });
     }
   }, [extendMs, extend]);
 
@@ -119,6 +120,14 @@ export default function AuctionManage() {
         setParticipantCount(data.participantCount);
       }),
       subscribe<any>('auction:started', (data: any) => {
+        setCurrentAuction({
+          id: data.sessionId,
+          productId: data.product?.id ?? 0,
+          roomId: selectedRoom!,
+          status: 'active',
+          currentPrice: data.currentPrice,
+          createdAt: data.startedAt,
+        });
         setAuction({
           sessionId: data.sessionId,
           status: 'active',
@@ -143,6 +152,7 @@ export default function AuctionManage() {
       }),
       subscribe<any>('auction:ended', (data: any) => {
         updateAuctionStatus(data.sessionId, data.status);
+        setCurrentAuction((prev) => prev ? { ...prev, status: data.status } : null);
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
@@ -170,7 +180,7 @@ export default function AuctionManage() {
           setSelectedRoom(roomItems[0].id);
         }
       } catch {
-        // ignore
+        toast({ title: '加载失败', description: '无法获取直播间或商品列表', variant: 'destructive' });
       } finally {
         setPageLoading(false);
       }
