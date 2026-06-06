@@ -16,8 +16,27 @@ describe('validateBid', () => {
     expect(validateBid(1, baseCtx)).toBeNull();
   });
 
-  it('should reject when auction is not active', () => {
+  it('should reject when auction status is ended', () => {
     const result = validateBid(1, { ...baseCtx, auctionStatus: 'ended' });
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe(40900);
+  });
+
+  it('should reject when auction status is pending', () => {
+    const result = validateBid(1, { ...baseCtx, auctionStatus: 'pending' });
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe(40900);
+    expect(result!.message).toContain('未开始');
+  });
+
+  it('should reject when auction status is cancelled', () => {
+    const result = validateBid(1, { ...baseCtx, auctionStatus: 'cancelled' });
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe(40900);
+  });
+
+  it('should reject when auction status is unsold', () => {
+    const result = validateBid(1, { ...baseCtx, auctionStatus: 'unsold' });
     expect(result).not.toBeNull();
     expect(result!.code).toBe(40900);
   });
@@ -167,10 +186,10 @@ describe('validateBid - extended boundary tests', () => {
     expect(result).toBeNull();
   });
 
-  it('should reject when lastBidUserId is 0 and userId is also 0', () => {
+  it('should pass when lastBidUserId is 0 and userId is also 0 (no previous bidder)', () => {
+    // lastBidUserId=0 means "no previous bidder", so self-bid check should not trigger
     const result = validateBid(0, { ...baseCtx, lastBidUserId: 0 });
-    expect(result).not.toBeNull();
-    expect(result!.code).toBe(40901);
+    expect(result).toBeNull();
   });
 
   // ─── combined edge cases ───────────────────────────────────────────────────

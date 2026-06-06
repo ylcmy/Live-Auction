@@ -101,13 +101,18 @@ export async function seedAuctionSession(data: {
   status?: string;
   currentPrice?: number;
 }): Promise<number> {
+  const status = data.status ?? 'active';
+  const roomId = data.roomId;
   const [id] = await db('auction_sessions').insert({
     product_id: data.productId,
     rule_id: data.ruleId,
-    room_id: data.roomId,
-    status: data.status ?? 'active',
+    room_id: roomId,
+    active_room_id: status === 'active' || status === 'pending' ? roomId : null,
+    status,
     current_price: data.currentPrice ?? 100,
     started_at: new Date(),
+    extension_count: 0,
+    version: 0,
   });
   return Number(id);
 }

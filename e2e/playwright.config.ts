@@ -20,7 +20,8 @@ export default defineConfig({
     navigationTimeout: 15000,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'smoke', testMatch: /smoke\/.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'full', testMatch: /^(?!.*smoke\/).*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: [
     {

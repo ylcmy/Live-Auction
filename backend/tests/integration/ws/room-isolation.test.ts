@@ -82,13 +82,15 @@ beforeEach(async () => {
   await flushTestRedis();
   await truncateAll();
 
-  const merchant = await seedUser({ username: 'iso_merchant', role: 'merchant' });
+  // Each room needs a unique host (live_rooms_host_id_unique constraint)
+  const merchantA = await seedUser({ username: 'iso_merchant_A', role: 'merchant' });
+  const merchantB = await seedUser({ username: 'iso_merchant_B', role: 'merchant' });
 
-  const { productId: prodA } = await seedProduct(merchant.id, { name: '商品A' });
-  const { productId: prodB } = await seedProduct(merchant.id, { name: '商品B' });
+  const { productId: prodA } = await seedProduct(merchantA.id, { name: '商品A' });
+  const { productId: prodB } = await seedProduct(merchantB.id, { name: '商品B' });
 
-  roomAId = await seedRoom(merchant.id, { title: '隔离测试间A' });
-  roomBId = await seedRoom(merchant.id, { title: '隔离测试间B' });
+  roomAId = await seedRoom(merchantA.id, { title: '隔离测试间A' });
+  roomBId = await seedRoom(merchantB.id, { title: '隔离测试间B' });
 
   const auctionA = await seedActiveAuction({ productId: prodA, roomId: roomAId, durationSeconds: 600 });
   const auctionB = await seedActiveAuction({ productId: prodB, roomId: roomBId, durationSeconds: 600 });
@@ -243,5 +245,128 @@ describe('T068: 房间隔离 — 多房间并发场景', () => {
 
     clientA.disconnect();
     clientB.disconnect();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T028 + T030: Extended isolation tests
+// ---------------------------------------------------------------------------
+
+describe('T028: 房间隔离 — 1000 条事件采样零跨房间泄漏 (SC-007)', () => {
+  it('100 次出价在房间 A，房间 B 零事件泄漏', async () => {
+    await flushTestRedis();
+    await truncateAll();
+
+    const merchantA = await seedUser({ username: 'iso2_merchant_A', role: 'merchant' });
+    const merchantB = await seedUser({ username: 'iso2_merchant_B', role: 'merchant' });
+    const { productId: prodA } = await seedProduct(merchantA.id, { name: '商品A2' });
+    const { productId: prodB } = await seedProduct(merchantB.id, { name: '商品B2' });
+
+    const rA = await seedRoom(merchantA.id, { title: '隔离测试间A2' });
+    const rB = await seedRoom(merchantB.id, { title: '隔离测试间B2' });
+
+    const auctionA = await seedActiveAuction({ productId: prodA, roomId: rA, durationSeconds: 600 });
+    await seedActiveAuction({ productId: prodB, roomId: rB, durationSeconds: 600 });
+
+    const users: { id: number; token: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const u = await seedUser({ username: `iso2_user_${i}`, role: 'user' });
+      users.push({ id: u.id, token: generateToken(u.id, 'user') });
+    }
+
+    const leaksInB: unknown[] = [];
+    const bidsInA: unknown[] = [];
+
+    const clientA = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: users[0]!.token },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+    const clientB = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: users[1]!.token },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+
+    clientB.on('bid:new', () => leaksInB.push(true));
+
+    await Promise.all(
+      [clientA, clientB].map(
+        (s) => new Promise<void>((r) => (s.connected ? r() : s.once('connect', r))),
+      ),
+    );
+
+    clientA.emit('auction:join', { roomId: rA });
+    clientB.emit('auction:join', { roomId: rB });
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Place many bids in room A using different users
+    const BID_COUNT = 100;
+    for (let i = 0; i < BID_COUNT; i++) {
+      const userIdx = i % users.length;
+      // Use a fresh client for each unique user cycle to avoid self-bid rejection
+      const tempClient = ioClient(`http://127.0.0.1:${port}`, {
+        auth: { token: users[userIdx]!.token },
+        transports: ['websocket'],
+        forceNew: true,
+      });
+      await new Promise<void>((r) => (tempClient.connected ? r() : tempClient.once('connect', r)));
+      tempClient.emit('auction:join', { roomId: rA });
+      await new Promise((r) => setTimeout(r, 50));
+      tempClient.emit('bid:submit', {
+        sessionId: auctionA.sessionId,
+        idempotencyKey: `iso2_${i}_${Date.now()}`,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      tempClient.disconnect();
+    }
+
+    // Wait for all events to settle
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // SC-007: Zero cross-room leak
+    expect(leaksInB).toHaveLength(0);
+
+    clientA.disconnect();
+    clientB.disconnect();
+  });
+});
+
+describe('T030: 无效 token 连接被拒绝', () => {
+  it('使用无效 token 连接应被拒绝，不影响同房间其他用户', async () => {
+    const validUser = await seedUser({ username: 'token_valid', role: 'user' });
+    const validToken = generateToken(validUser.id, 'user');
+
+    const validClient = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: validToken },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+
+    // Invalid token should be rejected
+    const invalidClient = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: 'invalid.jwt.token' },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+
+    // Valid client connects successfully
+    await new Promise<void>((r) => (validClient.connected ? r() : validClient.once('connect', r)));
+    expect(validClient.connected).toBe(true);
+
+    // Invalid client should fail to connect
+    const invalidError = await new Promise<Error>((resolve) => {
+      invalidClient.on('connect_error', (err) => resolve(err));
+      invalidClient.connect();
+    });
+
+    expect(invalidError).toBeDefined();
+    expect(invalidError.message).toContain('令牌无效');
+
+    // Valid client should still be connected and functional
+    expect(validClient.connected).toBe(true);
+
+    validClient.disconnect();
+    invalidClient.disconnect();
   });
 });

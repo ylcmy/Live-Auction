@@ -226,7 +226,7 @@ export class AuctionService {
 
     const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
     const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
-    const currentPrice = topBid ? topBid.amount : Number(session.current_price);
+    const currentPrice = topBid ? Number(topBid.amount) : Number(session.current_price);
 
     return {
       sessionId,

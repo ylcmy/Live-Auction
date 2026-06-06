@@ -188,4 +188,103 @@ describe('rateLimiter', () => {
     expect(mockCache.zadd).toHaveBeenCalledWith('ratelimit:42', 1000, '1000');
     expect(mockCache.zadd).toHaveBeenCalledWith('ratelimit:99', 1001, '1001');
   });
+
+  // =========================================================================
+  // T056: Sliding window boundary tests (FR-006 中间件层)
+  // =========================================================================
+  it('T056: should allow request exactly at the window boundary (just outside expired entries)', async () => {
+    // Arrange: 3 requests at t=1000/1001/1002 with limit=3, window=1s
+    // Then at t=2001 (window expired), a new request should pass
+    for (let i = 0; i < 3; i++) {
+      dateSpy.mockReturnValueOnce(1000 + i);
+    }
+    const handler = rateLimiter(3, 1);
+
+    for (let i = 0; i < 3; i++) {
+      await handler(createMockRequest(1), createMockReply());
+    }
+
+    // New request at t=2001 → window [2001-1000, 2001] = [1001, 2001]
+    // zremrangebyscore removes entries with score <= 1001
+    // Old entries: {1000, 1001, 1002} → 1000 and 1001 removed → 1 remaining
+    // New entry added → 2 total → under limit of 3
+    dateSpy.mockReturnValueOnce(2001);
+    const reply = createMockReply();
+    await handler(createMockRequest(1), reply);
+
+    // Assert: request allowed
+    expect(reply.code).not.toHaveBeenCalled();
+  });
+
+  it('T056: should reject when sliding window has exactly maxRequests within window', async () => {
+    // Arrange: 3 requests clustered at t=1000/1001/1002 with limit=3, window=2s
+    for (let i = 0; i < 3; i++) {
+      dateSpy.mockReturnValueOnce(1000 + i);
+    }
+    const handler = rateLimiter(3, 2); // 2-second window
+
+    for (let i = 0; i < 3; i++) {
+      await handler(createMockRequest(1), createMockReply());
+    }
+
+    // t=1500 is still within the 2s window starting at 1000
+    // All 3 old entries still valid + new request = 4 → over limit
+    dateSpy.mockReturnValueOnce(1500);
+    const reply = createMockReply();
+    await handler(createMockRequest(1), reply);
+
+    // Assert: rejected
+    expect(reply.code).toHaveBeenCalledWith(429);
+  });
+
+  it('T056: should allow request when old entries slide out of window', async () => {
+    // Arrange: 3 requests at t=1000/1001/1002 with limit=3, window=1s
+    for (let i = 0; i < 3; i++) {
+      dateSpy.mockReturnValueOnce(1000 + i);
+    }
+    const handler = rateLimiter(3, 1); // 1-second window
+
+    for (let i = 0; i < 3; i++) {
+      await handler(createMockRequest(1), createMockReply());
+    }
+
+    // t=3000 → all entries outside window → all removed → fresh start
+    dateSpy.mockReturnValueOnce(3000);
+    const reply = createMockReply();
+    await handler(createMockRequest(1), reply);
+
+    // Assert: allowed (all old entries expired)
+    expect(reply.code).not.toHaveBeenCalled();
+    expect(mockRedis.zremrangebyscore).toHaveBeenCalledWith(
+      'ratelimit:1',
+      0,
+      2000, // 3000 - 1000 (window seconds * 1000)
+    );
+  });
+
+  it('T056: should track different users independently in sliding window', async () => {
+    // Arrange: user 1 fills up the limit
+    for (let i = 0; i < 3; i++) {
+      dateSpy.mockReturnValueOnce(1000 + i);
+    }
+    const handler = rateLimiter(3, 1);
+
+    for (let i = 0; i < 3; i++) {
+      await handler(createMockRequest(1), createMockReply());
+    }
+
+    // User 2 at same time → should be allowed (separate window)
+    dateSpy.mockReturnValueOnce(1003);
+    const reply2 = createMockReply();
+    await handler(createMockRequest(2), reply2);
+
+    // Assert: user 2's request allowed
+    expect(reply2.code).not.toHaveBeenCalled();
+
+    // User 1 should still be blocked
+    dateSpy.mockReturnValueOnce(1004);
+    const reply1 = createMockReply();
+    await handler(createMockRequest(1), reply1);
+    expect(reply1.code).toHaveBeenCalledWith(429);
+  });
 });

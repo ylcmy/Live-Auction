@@ -45,7 +45,17 @@ describe('POST /api/auth/register', () => {
   });
 
   test('重复用户名返回 409', async () => {
-    await seedUser({ username: 'existing', password: 'Pass123456' });
+    // 先通过注册端点创建用户，确保用户名存在
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        username: 'existing',
+        password: 'Pass123456',
+        nickname: 'Existing',
+        role: 'user',
+      },
+    });
 
     const response = await app.inject({
       method: 'POST',
@@ -81,7 +91,17 @@ describe('POST /api/auth/register', () => {
 
 describe('POST /api/auth/login', () => {
   test('正确的用户名和密码登录成功', async () => {
-    await seedUser({ username: 'logintest', password: 'Correct123' });
+    // 通过注册端点创建用户，确保密码经过 bcrypt 哈希
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        username: 'logintest',
+        password: 'Correct123',
+        nickname: 'LoginTest',
+        role: 'user',
+      },
+    });
 
     const response = await app.inject({
       method: 'POST',
@@ -98,7 +118,17 @@ describe('POST /api/auth/login', () => {
   });
 
   test('密码错误返回 401', async () => {
-    await seedUser({ username: 'wrongpwd', password: 'Correct123' });
+    // 通过注册端点创建用户，确保密码经过 bcrypt 哈希
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        username: 'wrongpwd',
+        password: 'Correct123',
+        nickname: 'WrongPwd',
+        role: 'user',
+      },
+    });
 
     const response = await app.inject({
       method: 'POST',
@@ -149,9 +179,13 @@ describe('GET /api/users/me', () => {
   });
 
   test('过期令牌返回 401', async () => {
-    const { generateToken } = await import('../../helpers/factory');
+    const jwt = await import('jsonwebtoken');
     const user = await seedUser({ username: 'expireduser' });
-    const expiredToken = generateToken(user.id, 'user', '-1s');
+    const expiredToken = jwt.default.sign(
+      { userId: user.id, role: 'user' },
+      process.env.JWT_SECRET || 'dev-secret-change-in-production',
+      { expiresIn: '-1s' },
+    );
 
     const response = await app.inject({
       method: 'GET',

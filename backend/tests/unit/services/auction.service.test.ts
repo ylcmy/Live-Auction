@@ -5,8 +5,43 @@ import { AppError } from '../../../src/lib/app-error.js';
 // Mock all dependencies using vi.hoisted so they are available in vi.mock factories
 // ---------------------------------------------------------------------------
 
-const { mockProductRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockLiveRoomRepo, mockOrderRepo, mockCache, mockBidService, mockTimerManager, mockIO, mockBroadcastToRoom, mockCleanupAuctionCache, mockLogger } = vi.hoisted(() => ({
-  mockProductRepo: {
+const { mockProductRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockLiveRoomRepo, mockOrderRepo, mockCache, mockBidService, mockTimerManager, mockIO, mockBroadcastToRoom, mockCleanupAuctionCache, mockLogger, mockDb, mockTrx } = vi.hoisted(() => {
+  // Flexible query builder: returns self for chaining, with configurable terminal values
+  const createBuilder = (opts?: { result?: any; insertResult?: number[] }) => {
+    const builder: any = {};
+    const result = opts?.result;
+    builder.where = vi.fn(() => builder);
+    builder.whereIn = vi.fn(() => builder);
+    builder.forUpdate = vi.fn(() => builder);
+    builder.orderBy = vi.fn(() => builder);
+    builder.limit = vi.fn(() => Promise.resolve(result !== undefined ? result : []));
+    builder.first = vi.fn(() => Promise.resolve(result));
+    builder.select = vi.fn(() => Promise.resolve(result !== undefined ? result : []));
+    builder.insert = vi.fn(() => Promise.resolve(opts?.insertResult ?? [1]));
+    builder.update = vi.fn(() => Promise.resolve(1));
+    builder.increment = vi.fn(() => Promise.resolve(1));
+    builder.clone = vi.fn(() => builder);
+    builder.clearSelect = vi.fn(() => builder);
+    builder.count = vi.fn(() => builder);
+    builder.offset = vi.fn(() => builder);
+    return builder;
+  };
+
+  const mockTrx = vi.fn(async (cb: any) => {
+    const trxBuilder = createBuilder();
+    trxBuilder.fn = { now: vi.fn(() => new Date()) };
+    const trxFunction = vi.fn(() => trxBuilder);
+    trxFunction.fn = { now: vi.fn(() => new Date()) };
+    return cb(trxFunction);
+  });
+
+  const mockDb = Object.assign(
+    vi.fn(() => createBuilder()),
+    { transaction: mockTrx, fn: { now: vi.fn(() => new Date()) } },
+  );
+
+  return {
+    mockProductRepo: {
     findById: vi.fn(),
     updateStatus: vi.fn(),
     create: vi.fn(),
@@ -14,7 +49,9 @@ const { mockProductRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockLiveRo
   },
   mockAuctionSessionRepo: {
     findById: vi.fn(),
+    findByIdForUpdate: vi.fn(),
     findActiveByRoom: vi.fn(),
+    findActiveByRoomForUpdate: vi.fn(),
     create: vi.fn(),
     updateStatus: vi.fn(),
     updatePrice: vi.fn(),
@@ -71,19 +108,18 @@ const { mockProductRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockLiveRo
   mockBroadcastToRoom: vi.fn(),
   mockCleanupAuctionCache: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+  mockDb,
+  mockTrx,
+};
+});
 
 vi.mock('../../../src/repositories/product.repo.js', () => ({ productRepo: mockProductRepo }));
 vi.mock('../../../src/repositories/auction-session.repo.js', () => ({ auctionSessionRepo: mockAuctionSessionRepo }));
 vi.mock('../../../src/repositories/auction-rule.repo.js', () => ({ auctionRuleRepo: mockAuctionRuleRepo }));
 vi.mock('../../../src/repositories/live-room.repo.js', () => ({ liveRoomRepo: mockLiveRoomRepo }));
 vi.mock('../../../src/repositories/order.repo.js', () => ({ orderRepo: mockOrderRepo }));
-vi.mock('../../../src/infrastructure/cache/redis.js', () => ({ cache: mockCache, redis: mockCache }));
-vi.mock('../../../src/infrastructure/db/knex.js', () => ({
-  db: Object.assign(vi.fn(() => ({ where: vi.fn().mockReturnThis(), whereIn: vi.fn().mockReturnThis() })), {
-    fn: { now: vi.fn() },
-  }),
-}));
+vi.mock('../../../src/infrastructure/cache/redis.js', () => ({ cache: mockCache, redis: mockCache, isRedisAvailable: vi.fn(() => true) }));
+vi.mock('../../../src/infrastructure/db/knex.js', () => ({ db: mockDb }));
 vi.mock('../../../src/services/bid.service.js', () => ({ bidService: mockBidService }));
 vi.mock('../../../src/middleware/logger.js', () => ({ logger: mockLogger }));
 vi.mock('../../../src/lib/auction-cache.js', () => ({ cleanupAuctionCache: mockCleanupAuctionCache }));
@@ -158,7 +194,8 @@ describe('AuctionService', () => {
     it('should throw 409 when room already has an active auction', async () => {
       mockProductRepo.findById.mockResolvedValue({ id: productId, merchant_id: merchantId, status: 'listed' });
       mockLiveRoomRepo.findById.mockResolvedValue({ id: roomId, host_id: merchantId });
-      mockAuctionSessionRepo.findActiveByRoom.mockResolvedValue({ id: 1, status: 'active' });
+      mockAuctionRuleRepo.findByProductId.mockResolvedValue({ id: 1, product_id: productId });
+      mockAuctionSessionRepo.findActiveByRoomForUpdate.mockResolvedValue({ id: 1, status: 'active' });
 
       await expect(service.startAuction(merchantId, productId, roomId)).rejects.toMatchObject({ statusCode: 409 });
     });
@@ -176,49 +213,36 @@ describe('AuctionService', () => {
       const product = { id: productId, merchant_id: merchantId, name: 'Test', description: 'Desc', image_url: 'url', status: 'listed' };
       const room = { id: roomId, host_id: merchantId };
       const rule = { id: 1, product_id: productId, start_price: 100, bid_increment: 10, ceiling_price: 500, duration_seconds: 60, extend_seconds: 20, max_extensions: 10 };
-      const sessionId = 42;
 
       mockProductRepo.findById.mockResolvedValue(product);
       mockLiveRoomRepo.findById.mockResolvedValue(room);
-      mockAuctionSessionRepo.findActiveByRoom.mockResolvedValue(null);
+      mockAuctionSessionRepo.findActiveByRoomForUpdate.mockResolvedValue(null);
       mockAuctionRuleRepo.findByProductId.mockResolvedValue(rule);
-      mockAuctionSessionRepo.create.mockResolvedValue(sessionId);
 
       const result = await service.startAuction(merchantId, productId, roomId);
 
-      // Assert session created with correct data
-      expect(mockAuctionSessionRepo.create).toHaveBeenCalledWith({
-        product_id: productId,
-        rule_id: rule.id,
-        room_id: roomId,
-        current_price: rule.start_price,
-      });
-
-      // Assert statuses updated
-      expect(mockProductRepo.updateStatus).toHaveBeenCalledWith(productId, 'active');
-      expect(mockLiveRoomRepo.updateStatus).toHaveBeenCalledWith(roomId, 'live');
+      // The mock transaction inserts return [1] by default, so sessionId = 1
+      const expectedSessionId = 1;
 
       // Assert cache populated
-      expect(mockCache.set).toHaveBeenCalledWith(`auction:${sessionId}:status`, 'active');
-      expect(mockCache.set).toHaveBeenCalledWith(`auction:${sessionId}:extensions`, '0');
+      expect(mockCache.set).toHaveBeenCalledWith(`auction:${expectedSessionId}:status`, 'active', expect.any(Number));
+      expect(mockCache.set).toHaveBeenCalledWith(`auction:${expectedSessionId}:extensions`, '0', expect.any(Number));
 
       // Assert timer scheduled
-      expect(mockTimerManager.schedule).toHaveBeenCalledWith(sessionId, rule.duration_seconds * 1000, expect.any(Function));
+      expect(mockTimerManager.schedule).toHaveBeenCalledWith(expectedSessionId, rule.duration_seconds * 1000, expect.any(Function));
 
       // Assert broadcast to room
       expect(mockBroadcastToRoom).toHaveBeenCalledWith(
         mockIO,
         String(roomId),
         'auction:started',
-        expect.objectContaining({ sessionId, status: 'active' }),
+        expect.objectContaining({ sessionId: expectedSessionId, status: 'active' }),
       );
 
       // Assert return value
       expect(result).toMatchObject({
-        sessionId,
+        sessionId: expectedSessionId,
         status: 'active',
-        rule,
-        product,
       });
     });
   });
@@ -378,6 +402,27 @@ describe('AuctionService', () => {
       expect(result).toBeNull();
     });
 
+    it('T027: should return null when extensions equals max_extensions (boundary)', async () => {
+      // extensions = 3, max_extensions = 3 → exactly at the limit, should NOT extend
+      mockCache.get.mockImplementation(async (key: string) => {
+        if (key === `auction:${sessionId}:extensions`) return '3';
+        return null;
+      });
+      mockAuctionSessionRepo.findById.mockResolvedValue({ id: sessionId, product_id: 10 });
+      mockAuctionRuleRepo.findByProductId.mockResolvedValue({ id: 1, max_extensions: 3, extend_seconds: 20 });
+
+      const result = await service.extendAuction(sessionId);
+      expect(result).toBeNull();
+
+      // Assert no cache update (no extension happened)
+      expect(mockCache.set).not.toHaveBeenCalledWith(
+        `auction:${sessionId}:extensions`,
+        expect.any(String),
+      );
+      // Assert no timer rescheduled
+      expect(mockTimerManager.schedule).not.toHaveBeenCalled();
+    });
+
     it('should return null when remaining time exceeds extend window', async () => {
       const futureEndTime = Date.now() + 60000; // 60 seconds remaining
       mockCache.get.mockImplementation(async (key: string) => {
@@ -409,7 +454,8 @@ describe('AuctionService', () => {
       expect(result!.remainingMs).toBe(20 * 1000);
 
       // Assert cache updated
-      expect(mockCache.set).toHaveBeenCalledWith(`auction:${sessionId}:extensions`, '1');
+      expect(mockCache.set).toHaveBeenCalledWith(`auction:${sessionId}:extensions`, '1', expect.any(Number));
+      expect(mockCache.set).toHaveBeenCalledWith(`auction:${sessionId}:end_time`, expect.any(String), expect.any(Number));
 
       // Assert DB updated
       expect(mockAuctionSessionRepo.updateStatus).toHaveBeenCalledWith(sessionId, 'active', { extension_count: 1 });
@@ -450,6 +496,7 @@ describe('AuctionService', () => {
       mockProductRepo.findById.mockResolvedValue(product);
       mockAuctionRuleRepo.findByProductId.mockResolvedValue(rule);
       mockBidService.getLeaderboard.mockResolvedValue(leaderboard);
+      mockBidService.getMyRank.mockResolvedValue({ rank: 1, amount: 200 });
 
       // getAuctionTimer
       mockCache.get.mockImplementation(async (key: string) => {
@@ -507,6 +554,218 @@ describe('AuctionService', () => {
       expect(mockProductRepo.updateStatus).toHaveBeenCalledWith(10, 'listed');
       expect(mockTimerManager.clear).toHaveBeenCalledWith(sessionId);
       expect(mockCleanupAuctionCache).toHaveBeenCalledWith(sessionId, 100);
+    });
+  });
+
+  // =========================================================================
+  // T035: rebuildAuctionCache (FR-025)
+  // =========================================================================
+  describe('T035: rebuildAuctionCache', () => {
+    beforeEach(() => {
+      // Reset mockDb call count
+      mockDb.mockClear();
+
+      // Default cache mocks for rebuild
+      mockCache.setnx.mockResolvedValue(1);
+      mockCache.zadd.mockResolvedValue(1);
+      mockCache.sadd.mockResolvedValue(1);
+      mockCache.expire.mockResolvedValue(1);
+    });
+
+    it('无活跃竞拍时跳过缓存重建', async () => {
+      // db() returns empty array (no active sessions)
+      mockDb.mockReturnValue({
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      });
+
+      await service.rebuildAuctionCache();
+
+      // Only one db call (sessions query)
+      expect(mockDb).toHaveBeenCalledTimes(1);
+      // No cache writes
+      expect(mockCache.setnx).not.toHaveBeenCalled();
+    });
+
+    it('Redis 恢复后 DB 与缓存对齐: 重建 end_time, extensions, top_bid, leaderboard', async () => {
+      const sessionId = 42;
+      const ruleId = 7;
+      const roomId = 100;
+      const productId = 10;
+
+      // Set up sequential db() returns matching actual call order:
+      // Call 1: sessions query -> returns active session
+      // Call 2: rule query -> returns rule
+      // Call 3: top bid query (bid_records .orderBy().first()) -> returns top bid
+      // Call 4: all bids query (bid_records .select()) -> returns bid records
+      const sessionResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([
+          { id: sessionId, product_id: productId, rule_id: ruleId, room_id: roomId, started_at: '2026-06-05T10:00:00Z', extension_count: 1 },
+        ]),
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const ruleResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue({
+          id: ruleId,
+          duration_seconds: 300,
+          extend_seconds: 30,
+          max_extensions: 5,
+          start_price: 100,
+        }),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const topBidResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue({
+          user_id: 2,
+          bid_amount: 120,
+          created_at: '2026-06-05T10:01:00Z',
+        }),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const bidsResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([
+          { user_id: 1, bid_amount: 110 },
+          { user_id: 2, bid_amount: 120 },
+          { user_id: 1, bid_amount: 130 }, // Same user, higher bid
+        ]),
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      // Each call to mockDb returns the next result in sequence
+      mockDb
+        .mockReturnValueOnce(sessionResult)
+        .mockReturnValueOnce(ruleResult)
+        .mockReturnValueOnce(topBidResult)
+        .mockReturnValueOnce(bidsResult);
+
+      await service.rebuildAuctionCache();
+
+      // Verify setnx was called for all cache keys (except leaderboard, which uses zadd)
+      const setnxKeys = mockCache.setnx.mock.calls.map((c: any[]) => c[0]);
+      expect(setnxKeys).toContain(`auction:${sessionId}:end_time`);
+      expect(setnxKeys).toContain(`auction:${sessionId}:extensions`);
+      expect(setnxKeys).toContain(`auction:${sessionId}:product_id`);
+      expect(setnxKeys).toContain(`auction:${sessionId}:room_id`);
+      expect(setnxKeys).toContain(`auction:${sessionId}:status`);
+      expect(setnxKeys).toContain(`room:${roomId}:active_session`);
+      expect(setnxKeys).toContain(`auction:${sessionId}:top_bid`);
+
+      // Verify leaderboard was rebuilt with correct user best bids
+      // User 1 best bid: 130, User 2 best bid: 120
+      const zaddCalls = mockCache.zadd.mock.calls;
+      expect(zaddCalls.length).toBe(2);
+      const zaddEntries = zaddCalls.map((c: any[]) => ({ key: c[0], score: c[1], member: c[2] }));
+      expect(zaddEntries).toContainEqual({ key: `auction:${sessionId}:leaderboard`, score: 130, member: '1' });
+      expect(zaddEntries).toContainEqual({ key: `auction:${sessionId}:leaderboard`, score: 120, member: '2' });
+
+      // Verify participants set was rebuilt
+      expect(mockCache.sadd).toHaveBeenCalledWith(
+        `room:${roomId}:participants`,
+        '1',
+        '2',
+      );
+
+      // Verify TTL was set on leaderboard and participants
+      expect(mockCache.expire).toHaveBeenCalledWith(
+        `auction:${sessionId}:leaderboard`,
+        expect.any(Number),
+      );
+    });
+
+    it('缺失 rule 或 started_at 时跳过该 session', async () => {
+      const sessionId = 99;
+
+      const sessionResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([
+          { id: sessionId, product_id: 10, rule_id: 1, room_id: 100, started_at: null, extension_count: 0 },
+        ]),
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const ruleResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue(null), // No rule found
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      mockDb
+        .mockReturnValueOnce(sessionResult)
+        .mockReturnValueOnce(ruleResult);
+
+      await service.rebuildAuctionCache();
+
+      // Should NOT write any cache keys for this session
+      const setnxKeys = mockCache.setnx.mock.calls.map((c: any[]) => c[0]);
+      expect(setnxKeys).not.toContain(`auction:${sessionId}:status`);
+    });
+
+    it('无出价记录时使用起拍价作为 top_bid', async () => {
+      const sessionId = 50;
+
+      const sessionResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([
+          { id: sessionId, product_id: 10, rule_id: 1, room_id: 100, started_at: '2026-06-05T10:00:00Z', extension_count: 0 },
+        ]),
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const ruleResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue({
+          id: 1, duration_seconds: 300, extend_seconds: 30, max_extensions: 5, start_price: 200,
+        }),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const bidsResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]), // No bids
+        first: vi.fn().mockResolvedValue(undefined),
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      const topBidResult = {
+        where: vi.fn().mockReturnThis(),
+        select: vi.fn().mockResolvedValue([]),
+        first: vi.fn().mockResolvedValue(undefined), // No top bid
+        orderBy: vi.fn().mockReturnThis(),
+      };
+
+      mockDb
+        .mockReturnValueOnce(sessionResult)
+        .mockReturnValueOnce(ruleResult)
+        .mockReturnValueOnce(bidsResult)
+        .mockReturnValueOnce(topBidResult);
+
+      await service.rebuildAuctionCache();
+
+      // Verify top_bid was set with start_price
+      const topBidSetnxCall = mockCache.setnx.mock.calls.find(
+        (c: any[]) => c[0] === `auction:${sessionId}:top_bid`,
+      );
+      expect(topBidSetnxCall).toBeDefined();
+      const topBidData = JSON.parse(topBidSetnxCall![1]);
+      expect(topBidData.amount).toBe(200); // start_price
+      expect(topBidData.userId).toBe(0); // No bidder
     });
   });
 });

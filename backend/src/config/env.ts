@@ -1,8 +1,17 @@
 import dotenv from 'dotenv';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// In test environment, load .env.test first so its values take priority.
+// .env is loaded second but dotenv won't overwrite existing keys.
+const envTestPath = resolve(__dirname, '../../.env.test');
+const isTestEnv = process.env.NODE_ENV === 'test' || existsSync(envTestPath);
+if (isTestEnv && existsSync(envTestPath)) {
+  dotenv.config({ path: envTestPath });
+}
 dotenv.config({ path: resolve(__dirname, '../../.env') });
 
 export const env = {

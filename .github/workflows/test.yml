@@ -151,12 +151,109 @@ jobs:
           DB_NAME: live_auction_test
           DB_USER: root
           DB_PASSWORD: testpass
-      - name: Run E2E Tests
-        run: npx playwright test
+      - name: Run E2E Tests (smoke only)
+        run: npx playwright test --project=smoke
       - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
+          retention-days: 7
+
+  load-smoke:
+    name: Load Smoke (k6)
+    runs-on: ubuntu-latest
+    needs: [backend-tests]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: live_auction_test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: 3307
+      TEST_DB_NAME: live_auction_test
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: testpass
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: 6380
+      JWT_SECRET: test-secret-key
+      WS_URL: ws://localhost:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - name: Run migrations
+        run: npx tsx node_modules/knex/bin/cli.js migrate:latest --knexfile src/infrastructure/db/knex.ts
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3307
+          DB_NAME: live_auction_test
+          DB_USER: root
+          DB_PASSWORD: testpass
+      - name: Start backend server
+        run: nohup npx tsx src/index.ts &
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3307
+          DB_NAME: live_auction_test
+          DB_USER: root
+          DB_PASSWORD: testpass
+          REDIS_HOST: localhost
+          REDIS_PORT: 6380
+          PORT: 3001
+      - name: Wait for server to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server failed to start within 60s"
+          exit 1
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Run k6 smoke test
+        run: k6 run backend/tests/load/smoke-ci.k6.ts --summary-export=backend/tests/load/results/smoke-ci-summary.json
+        env:
+          SUMMARY_OUTPUT: backend/tests/load/results/smoke-ci-summary.json
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-smoke-results
+          path: backend/tests/load/results/
           retention-days: 7

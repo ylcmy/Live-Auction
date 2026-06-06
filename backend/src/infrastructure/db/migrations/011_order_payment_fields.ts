@@ -28,7 +28,7 @@ export async function up(knex: Knex): Promise<void> {
   const hasCompleted = await knex.raw(
     `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status' AND COLUMN_TYPE LIKE '%completed%'`
   );
-  if (Number(hasCompleted[0][0]?.cnt || hasCompleted[0]?.cnt) === 0) {
+  if (Number(hasCompleted[0][0]?.cnt ?? hasCompleted[0]?.cnt ?? 0) === 0) {
     await knex.raw(`ALTER TABLE orders MODIFY COLUMN status ENUM('pending_payment', 'paid', 'cancelled', 'completed') NOT NULL DEFAULT 'pending_payment'`);
   }
 }

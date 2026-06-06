@@ -285,3 +285,106 @@ describe('T069: 断线重连 — 状态同步验证', () => {
     expect(lb.some((e) => e.userId === userBidder.id)).toBe(true);
   });
 });
+
+/**
+ * T029: Reconnect with price/countdown/personal-rank sync (FR-013, SC-008).
+ *
+ * Verifies that after reconnect, the auction:state includes:
+ *   - Updated current price (reflecting bids made while disconnected)
+ *   - Remaining countdown time (remainingMs)
+ *   - Personal rank for the reconnected user
+ *   All within 3 seconds.
+ */
+describe('T029: 重连后 3s 内完整状态同步 (FR-013, SC-008)', () => {
+  it('重连后应同步: 最新价格 + 倒计时 + 个人排名', async () => {
+    // ---- Setup: both clients connect, reconnector bids first ----
+    clientReconnect = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: userReconnector.token },
+      transports: ['websocket'],
+      forceNew: true,
+      autoConnect: false,
+      reconnection: false,
+    });
+    clientBidder = ioClient(`http://127.0.0.1:${port}`, {
+      auth: { token: userBidder.token },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+
+    let reconnectorBidAccepted = false;
+    clientReconnect.on('bid:accepted', () => { reconnectorBidAccepted = true; });
+
+    clientReconnect.connect();
+    await new Promise<void>((r) => clientReconnect.once('connect', r));
+    await new Promise<void>((r) => {
+      if (clientBidder.connected) return r();
+      clientBidder.once('connect', r);
+    });
+
+    clientReconnect.emit('auction:join', { roomId });
+    clientBidder.emit('auction:join', { roomId });
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Reconnector bids first
+    clientReconnect.emit('bid:submit', {
+      sessionId,
+      idempotencyKey: `t029_reconn_${Date.now()}`,
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // ---- Disconnect reconnector ----
+    clientReconnect.disconnect();
+    await new Promise((r) => setTimeout(r, 200));
+
+    // ---- Bidder outbids while reconnector is disconnected ----
+    let bidderAccepted = false;
+    clientBidder.on('bid:accepted', () => { bidderAccepted = true; });
+
+    clientBidder.emit('bid:submit', {
+      sessionId,
+      idempotencyKey: `t029_bidder_${Date.now()}`,
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // ---- Reconnect and capture state ----
+    const statePromise = new Promise<Record<string, unknown>>((resolve) => {
+      clientReconnect.once('auction:state', (state: Record<string, unknown>) => resolve(state));
+    });
+
+    const reconnectStart = Date.now();
+    clientReconnect.connect();
+    await new Promise<void>((r) => clientReconnect.once('connect', r));
+    clientReconnect.emit('auction:join', { roomId });
+
+    const state = await Promise.race([
+      statePromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('auction:state not received')), 8_000),
+      ),
+    ]);
+
+    const recoveryMs = Date.now() - reconnectStart;
+
+    // ---- Assertions ----
+
+    // 1. SC-008: Recovery within 3 seconds
+    expect(recoveryMs).toBeLessThan(3_000);
+
+    // 2. Price updated (bidder outbid the reconnector)
+    expect(Number(state.currentPrice)).toBeGreaterThan(110);
+
+    // 3. Remaining countdown present and > 0 (auction still active)
+    expect(typeof state.remainingMs).toBe('number');
+    expect(state.remainingMs as number).toBeGreaterThan(0);
+
+    // 4. Personal rank present for reconnected user
+    const lb = state.leaderboard as { userId: number; rank: number }[];
+    expect(Array.isArray(lb)).toBe(true);
+    const reconnEntry = lb.find((e) => e.userId === userReconnector.id);
+    expect(reconnEntry).toBeDefined();
+    expect(reconnEntry!.rank).toBeGreaterThanOrEqual(1);
+
+    clientReconnect.disconnect();
+    clientBidder.disconnect();
+  });
+});

@@ -35,7 +35,7 @@ async function seedOrderContext(orderStatus = 'pending_payment'): Promise<OrderS
   const buyer = await seedUser({ username: `o_b_${Date.now()}`, role: 'user' });
   const { productId, ruleId } = await seedProduct(merchant.id, { status: 'listed' });
   const roomId = await seedRoom(merchant.id);
-  const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
+  const { sessionId } = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
   const orderId = await seedOrder({ sessionId, buyerId: buyer.id, productId, finalPrice: 200, status: orderStatus });
 
   return { merchantId: merchant.id, buyerId: buyer.id, productId, roomId, sessionId, orderId };
@@ -84,10 +84,10 @@ describe('GET /api/orders', () => {
     const buyer = await seedUser({ username: `o_page_b_${Date.now()}`, role: 'user' });
     const { productId, ruleId } = await seedProduct(merchant.id, { status: 'listed' });
     const roomId = await seedRoom(merchant.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
 
     for (let i = 0; i < 3; i++) {
-      await seedOrder({ sessionId, buyerId: buyer.id, productId, finalPrice: 100 + i * 10 });
+      const { sessionId: sid } = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
+      await seedOrder({ sessionId: sid, buyerId: buyer.id, productId, finalPrice: 100 + i * 10 });
     }
 
     const buyerHeaders = authHeader(buyer.id, 'user');

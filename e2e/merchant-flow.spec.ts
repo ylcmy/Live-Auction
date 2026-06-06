@@ -10,6 +10,35 @@ interface MerchantFixtures {
   sessionId: number;
 }
 
+/** 带重试的 API 请求辅助函数 */
+async function apiRequest(
+  request: APIRequestContext,
+  method: 'post' | 'put',
+  url: string,
+  options: { headers?: Record<string, string>; data?: any },
+  maxRetries = 3,
+): Promise<{ json: any; status: number }> {
+  let lastError: Error | null = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await request[method](url, options);
+      const json = await res.json();
+      if (json.code === 0) return { json, status: res.status() };
+      // Retry on server errors (5xx) or conflict (409) that might be transient
+      if (json.code >= 50000 || res.status() >= 500) {
+        lastError = new Error(`API error (attempt ${i + 1}/${maxRetries}): ${JSON.stringify(json)}`);
+        if (i < maxRetries - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+        continue;
+      }
+      return { json, status: res.status() };
+    } catch (e) {
+      lastError = e as Error;
+      if (i < maxRetries - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  throw lastError || new Error('API request failed after retries');
+}
+
 /** 注册一个新的商家账号，创建直播间、商品并发起竞拍 */
 async function createMerchantFixtures(request: APIRequestContext): Promise<MerchantFixtures> {
   const ts = Date.now();
@@ -49,7 +78,7 @@ async function createMerchantFixtures(request: APIRequestContext): Promise<Merch
   const userToken: string = userLoginJson.data.accessToken;
 
   // 创建商品（供后续竞拍使用）
-  const productRes = await request.post(`${API_BASE}/api/products`, {
+  const { json: productJson } = await apiRequest(request, 'post', `${API_BASE}/api/products`, {
     headers: { Authorization: `Bearer ${merchantToken}` },
     data: {
       name: `主播商品_${ts}`,
@@ -64,36 +93,39 @@ async function createMerchantFixtures(request: APIRequestContext): Promise<Merch
       },
     },
   });
-  const productJson = await productRes.json();
   const productId: number = productJson.data.productId;
 
   // 上架商品
-  await request.put(`${API_BASE}/api/products/${productId}/status`, {
+  await apiRequest(request, 'put', `${API_BASE}/api/products/${productId}/status`, {
     headers: { Authorization: `Bearer ${merchantToken}` },
     data: { status: 'listed' },
   });
 
   // 创建直播间
-  const roomRes = await request.post(`${API_BASE}/api/rooms`, {
+  const { json: roomJson } = await apiRequest(request, 'post', `${API_BASE}/api/rooms`, {
     headers: { Authorization: `Bearer ${merchantToken}` },
     data: { title: `主播测试间_${ts}` },
   });
-  const roomJson = await roomRes.json();
-  const roomId: number = roomJson.data.roomId;
+  const roomId: number = roomJson?.data?.roomId;
+  if (!roomId) {
+    throw new Error(`Failed to create room: ${JSON.stringify(roomJson)}`);
+  }
 
   // 开启直播间
-  await request.put(`${API_BASE}/api/rooms/${roomId}/status`, {
+  await apiRequest(request, 'put', `${API_BASE}/api/rooms/${roomId}/status`, {
     headers: { Authorization: `Bearer ${merchantToken}` },
     data: { status: 'live' },
   });
 
   // 发起竞拍
-  const auctionRes = await request.post(`${API_BASE}/api/auctions`, {
+  const { json: auctionJson } = await apiRequest(request, 'post', `${API_BASE}/api/auctions`, {
     headers: { Authorization: `Bearer ${merchantToken}` },
     data: { productId, roomId },
   });
-  const auctionJson = await auctionRes.json();
-  const sessionId: number = auctionJson.data.sessionId;
+  const sessionId: number = auctionJson?.data?.sessionId;
+  if (!sessionId) {
+    throw new Error(`Failed to create auction: ${JSON.stringify(auctionJson)}`);
+  }
 
   return { merchantToken, userToken, roomId, productId, sessionId };
 }
@@ -117,8 +149,8 @@ test.describe('主播端操作流程', () => {
     await loginAsMerchant(page, fixtures.merchantToken);
     await page.goto('/admin');
 
-    // 应看到数据看板标题
-    await expect(page.getByText('数据看板')).toBeVisible({ timeout: 10000 });
+    // 应看到数据看板标题（侧边栏按钮和标题都有此文本，用 heading 定位）
+    await expect(page.getByRole('heading', { name: '数据看板' })).toBeVisible({ timeout: 10000 });
 
     // 应看到直播间状态卡片
     await expect(page.getByText('我的直播间')).toBeVisible();
@@ -138,33 +170,33 @@ test.describe('主播端操作流程', () => {
     await page.goto('/admin/products/create');
 
     // 确认页面已加载
-    await expect(page.getByText('添加商品')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: '添加商品' })).toBeVisible({ timeout: 10000 });
 
     // 填写基本信息
     const productName = `E2E新商品_${Date.now()}`;
     const nameInput = page.locator('input[placeholder="请输入商品名称"]');
+    await nameInput.click();
     await nameInput.fill(productName);
 
     const categoryInput = page.locator('input[placeholder*="艺术品"]');
+    await categoryInput.click();
     await categoryInput.fill('电子产品');
 
     const descInput = page.locator('textarea[placeholder="请输入商品描述"]');
+    await descInput.click();
     await descInput.fill('通过 E2E 自动化测试创建的商品');
 
-    // 填写竞拍规则（页面默认已填充部分值）
-    // 起拍价
-    const startPriceInput = page.locator('input[placeholder="0"]').first();
-    await startPriceInput.fill('1000');
-
-    // 加价幅度
-    const incrementInput = page.locator('input[placeholder="0"]').nth(1);
-    await incrementInput.fill('100');
+    // 填写竞拍规则 — 使用 input[type="number"] 按顺序定位
+    // 顺序: startPrice(0), bidIncrement(1), ceilingPrice(2,disabled), durationSeconds(3), extendSeconds(4), maxExtensions(5)
+    const numberInputs = page.locator('input[type="number"]');
+    await numberInputs.nth(0).fill('1000');  // 起拍价
+    await numberInputs.nth(1).fill('100');   // 加价幅度
 
     // 点击保存
     await page.getByRole('button', { name: '保存商品' }).click();
 
-    // 应跳转到商品列表页
-    await expect(page).toHaveURL('/admin/products', { timeout: 10000 });
+    // 应跳转到商品列表页（或显示错误提示）
+    await expect(page).toHaveURL('/admin/products', { timeout: 15000 });
 
     // 商品列表中应能看到新创建的商品
     await expect(page.getByText(productName)).toBeVisible({ timeout: 10000 });
@@ -226,7 +258,8 @@ test.describe('主播端操作流程', () => {
     await expect(page.getByText('未开播')).toBeVisible();
 
     // 点击开关按钮（Toggle）开启直播间
-    const toggleButton = page.locator('button.relative.rounded-full').first();
+    // Dashboard 组件中的 Toggle 是一个 w-14 h-8 rounded-full 的 button
+    const toggleButton = page.locator('button[class*="rounded-full"][class*="w-14"]').first();
     await toggleButton.click();
 
     // 应变为"在线"/"直播中"状态
@@ -245,7 +278,10 @@ test.describe('主播端操作流程', () => {
     await page.goto('/admin/products');
 
     // 应看到商品管理标题或至少有商品条目
-    await expect(page.getByText('商品管理').or(page.getByText('暂无商品'))).toBeVisible({
+    await expect(
+      page.getByRole('heading', { name: '商品管理' })
+        .or(page.getByText('暂无商品'))
+    ).toBeVisible({
       timeout: 10000,
     });
 

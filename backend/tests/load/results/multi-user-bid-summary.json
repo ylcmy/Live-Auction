@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-06-06T09:22:42.340Z",
+  "scenario": "multi-user-bid-quick",
+  "vus": 20,
+  "duration": "30s",
+  "latency": {
+    "bid_response_ms": {
+      "p50": 0,
+      "p95": 3936,
+      "p99": 0
+    },
+    "bid_total_response_ms": {
+      "p50": 0,
+      "p95": 3912.8,
+      "p99": 0,
+      "note": "Includes both accepted and rejected bids (industry standard response time)"
+    },
+    "rank_sync_ms": {
+      "p50": 0,
+      "p95": 995.95,
+      "p99": 0
+    },
+    "bid_to_broadcast_ms": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    }
+  },
+  "bidding": {
+    "submitted": 455,
+    "accepted": 91,
+    "rejected": 4,
+    "throughput_per_second": 2.26,
+    "success_rate_pct": 95.79,
+    "business_error_rate_pct": 0
+  },
+  "consistency_check": {
+    "session_id": 4,
+    "note": "Run consistency-checker separately: npx tsx backend/scripts/check-consistency.ts --session-id=4"
+  },
+  "assertions": {
+    "bid_response_p95_lt_5000ms": true,
+    "bid_response_p99_lt_10000ms": true,
+    "rank_sync_p95_lt_1500ms": true,
+    "auction_success_rate_gt_0": true,
+    "business_error_rate_lt_0_1": true
+  }
+}

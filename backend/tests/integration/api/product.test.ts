@@ -141,7 +141,7 @@ describe('GET /api/products/:id', () => {
     expect(body.code).toBe(0);
     expect(body.data.name).toBe('DetailProd');
     expect(body.data.rule).toBeDefined();
-    expect(body.data.rule.startPrice).toBe(100);
+    expect(Number(body.data.rule.startPrice)).toBe(100);
   });
 
   test('商品不存在返回 404', async () => {

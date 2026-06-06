@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-06-06T07:18:47.117Z",
+  "scenario": "smoke-ci",
+  "vus": 200,
+  "duration": "2m",
+  "results": {
+    "ws_connect_success": 9690,
+    "ws_connect_error": 0,
+    "ws_connect_success_rate": 100,
+    "ws_connect_latency_p95_ms": 8,
+    "ws_connect_latency_p99_ms": 0,
+    "non_business_error_rate": 0
+  },
+  "assertions": {
+    "connect_success_rate_gte_99": true,
+    "non_business_error_lt_0_1": true,
+    "latency_p95_lt_500ms": true
+  },
+  "passed": true
+}

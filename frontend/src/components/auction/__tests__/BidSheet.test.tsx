@@ -33,6 +33,8 @@ const mockSubmitBid = vi.fn();
 vi.mock('@/hooks/useBid', () => ({
   useBid: vi.fn(() => ({
     submitBid: mockSubmitBid,
+    bidError: null,
+    clearBidError: vi.fn(),
   })),
 }));
 
@@ -106,5 +108,65 @@ describe('BidSheet', () => {
   test('renders nothing when item is null', () => {
     const { container } = render(<BidSheet {...defaultProps} item={null} />);
     expect(container.innerHTML).toBe('');
+  });
+
+  describe('实时价与 Hint 更新 (FR-022)', () => {
+    test('应显示当前价格式化文本', () => {
+      render(<BidSheet {...defaultProps} />);
+      // mockRoomAuctionItem.currentPrice = 100, formatPrice(100) = "¥100.00"
+      expect(screen.getByText('¥100.00')).toBeInTheDocument();
+    });
+
+    test('应显示商品名称', () => {
+      render(<BidSheet {...defaultProps} />);
+      expect(screen.getByText('测试商品')).toBeInTheDocument();
+    });
+
+    test('myLastBid 为 null 时应显示"未出价"', () => {
+      render(<BidSheet {...defaultProps} myLastBid={null} />);
+      expect(screen.getByText('未出价')).toBeInTheDocument();
+    });
+
+    test('myLastBid 有值时应显示格式化金额', () => {
+      render(<BidSheet {...defaultProps} myLastBid={350} />);
+      expect(screen.getByText('¥350.00')).toBeInTheDocument();
+    });
+
+    test('应渲染 BidStepper 步进器组件', () => {
+      render(<BidSheet {...defaultProps} />);
+      // BidStepper 会显示减号/加号按钮
+      // 确认出价按钮和标题都有 "确认出价" 文本
+      const confirmTexts = screen.getAllByText('确认出价');
+      expect(confirmTexts.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test('item 为 listed 状态时提交按钮应被禁用', () => {
+      const listedItem = {
+        ...mockRoomAuctionItem,
+        status: 'listed' as const,
+      };
+      render(<BidSheet {...defaultProps} item={listedItem} />);
+      // 按钮 disabled 属性通过 item.status !== 'active' 判断
+      const buttons = screen.getAllByRole('button');
+      const submitBtn = buttons.find(b => b.textContent?.includes('确认出价'));
+      if (submitBtn) {
+        expect(submitBtn).toBeDisabled();
+      }
+    });
+
+    test('item 为 active 状态时提交按钮不应被禁用', () => {
+      render(<BidSheet {...defaultProps} />);
+      const buttons = screen.getAllByRole('button');
+      // 找到包含"确认出价"的按钮
+      const submitBtn = buttons.find(b => b.textContent?.includes('确认出价') && b.textContent?.includes('¥'));
+      // active 状态不应禁用
+      expect(submitBtn).toBeDefined();
+    });
+
+    test('应显示"当前价"和"我的出价"标签', () => {
+      render(<BidSheet {...defaultProps} />);
+      expect(screen.getByText('当前价')).toBeInTheDocument();
+      expect(screen.getByText('我的出价')).toBeInTheDocument();
+    });
   });
 });

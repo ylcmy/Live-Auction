@@ -21,7 +21,7 @@ const initialState = {
   countdown: null,
   extendMs: null,
   myRank: null,
-  emotionEvent: null,
+  emotionEvents: [],
   participantCount: 0,
   onlineCount: 0,
   myBids: {},
@@ -42,7 +42,7 @@ describe('auctionStore', () => {
       expect(state.countdown).toBeNull();
       expect(state.extendMs).toBeNull();
       expect(state.myRank).toBeNull();
-      expect(state.emotionEvent).toBeNull();
+      expect(state.emotionEvents).toEqual([]);
       expect(state.participantCount).toBe(0);
       expect(state.onlineCount).toBe(0);
       expect(state.myBids).toEqual({});
@@ -172,18 +172,24 @@ describe('auctionStore', () => {
     });
   });
 
-  describe('setEmotion / clearEmotion', () => {
+  describe('setEmotion / removeEmotion', () => {
     test('设置情感事件', () => {
       useAuctionStore.getState().setEmotion(mockEmotionEvent);
 
-      expect(useAuctionStore.getState().emotionEvent).toEqual(mockEmotionEvent);
+      const events = useAuctionStore.getState().emotionEvents;
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject(mockEmotionEvent);
+      expect(events[0].id).toBeDefined();
     });
 
     test('清除情感事件', () => {
       useAuctionStore.getState().setEmotion(mockEmotionEvent);
-      useAuctionStore.getState().clearEmotion();
+      const events = useAuctionStore.getState().emotionEvents;
+      expect(events).toHaveLength(1);
 
-      expect(useAuctionStore.getState().emotionEvent).toBeNull();
+      useAuctionStore.getState().removeEmotion(events[0].id!);
+
+      expect(useAuctionStore.getState().emotionEvents).toHaveLength(0);
     });
   });
 
@@ -334,7 +340,7 @@ describe('auctionStore', () => {
         countdown: mockCountdownSync,
         extendMs: 5000,
         myRank: 1,
-        emotionEvent: mockEmotionEvent,
+        emotionEvents: [{ ...mockEmotionEvent, id: 'test-id' }],
         participantCount: 5,
         onlineCount: 42,
         myBids: mockMyBids,
@@ -350,7 +356,7 @@ describe('auctionStore', () => {
       expect(state.countdown).toBeNull();
       expect(state.extendMs).toBeNull();
       expect(state.myRank).toBeNull();
-      expect(state.emotionEvent).toBeNull();
+      expect(state.emotionEvents).toEqual([]);
       expect(state.participantCount).toBe(0);
       expect(state.myBids).toEqual({});
       expect(state.roomAuctions).toEqual([]);
@@ -411,6 +417,217 @@ describe('auctionStore', () => {
       expect(messages).toHaveLength(100);
       expect(messages[0].content).toBe('msg-1'); // 最早的 msg-0 被丢弃
       expect(messages[99].content).toBe('overflow');
+    });
+  });
+
+  describe('排名/差距实时更新', () => {
+    test('setBidResult 应更新 myRank', () => {
+      useAuctionStore.getState().setBidResult({
+        sessionId: 1,
+        bidId: 101,
+        amount: 200,
+        rank: 1,
+        isLeading: true,
+        gapToLeader: 0,
+      });
+
+      expect(useAuctionStore.getState().myRank).toBe(1);
+    });
+
+    test('连续多次 setBidResult 应反映最新排名', () => {
+      useAuctionStore.getState().setBidResult({
+        sessionId: 1,
+        bidId: 101,
+        amount: 200,
+        rank: 1,
+        isLeading: true,
+        gapToLeader: 0,
+      });
+
+      useAuctionStore.getState().setBidResult({
+        sessionId: 1,
+        bidId: 102,
+        amount: 180,
+        rank: 3,
+        isLeading: false,
+        gapToLeader: 50,
+      });
+
+      expect(useAuctionStore.getState().myRank).toBe(3);
+    });
+
+    test('setAuction 应同步设置 myRank（当 AuctionState 包含 myRank）', () => {
+      const auctionWithRank: AuctionState = {
+        ...mockAuctionState,
+        myRank: 2,
+      };
+
+      useAuctionStore.getState().setAuction(auctionWithRank);
+
+      expect(useAuctionStore.getState().myRank).toBe(2);
+    });
+
+    test('setAuction 的 myRank 为 null 时保留之前的状态', () => {
+      // 先设为 rank 1
+      useAuctionStore.getState().setBidResult({
+        sessionId: 1,
+        bidId: 101,
+        amount: 200,
+        rank: 1,
+        isLeading: true,
+        gapToLeader: 0,
+      });
+
+      const auctionWithoutRank: AuctionState = {
+        ...mockAuctionState,
+        myRank: null,
+      };
+
+      useAuctionStore.getState().setAuction(auctionWithoutRank);
+
+      // myRank 应保持不变（setAuction 中 myRank ?? state.myRank）
+      expect(useAuctionStore.getState().myRank).toBe(1);
+    });
+
+    test('setLeaderboard 应正确更新排行榜排名', () => {
+      useAuctionStore.getState().setLeaderboard(mockLeaderboard);
+
+      expect(useAuctionStore.getState().leaderboard).toHaveLength(3);
+      expect(useAuctionStore.getState().leaderboard[0].rank).toBe(1);
+      expect(useAuctionStore.getState().leaderboard[0].amount).toBe(200);
+    });
+
+    test('setLeaderboard 替换后排名应从新数据获取', () => {
+      useAuctionStore.getState().setLeaderboard(mockLeaderboard);
+
+      const newLeaderboard: LeaderboardEntry[] = [
+        { rank: 1, userId: 5, userNickname: '新用户', avatarUrl: null, amount: 500, timestamp: new Date().toISOString(), isCurrentUser: true },
+        { rank: 2, userId: 1, userNickname: '用户A', avatarUrl: null, amount: 400, timestamp: new Date().toISOString(), isCurrentUser: false },
+      ];
+
+      useAuctionStore.getState().setLeaderboard(newLeaderboard);
+
+      expect(useAuctionStore.getState().leaderboard).toHaveLength(2);
+      expect(useAuctionStore.getState().leaderboard[0].amount).toBe(500);
+    });
+  });
+
+  describe('50 次事件无长任务 >50ms', () => {
+    test('连续 50 次 setLeaderboard 更新耗时不超过 50ms', () => {
+      const iterations = 50;
+      const start = performance.now();
+
+      for (let i = 0; i < iterations; i++) {
+        const entries: LeaderboardEntry[] = Array.from({ length: 10 }, (_, j) => ({
+          rank: j + 1,
+          userId: j + 1,
+          userNickname: `用户${j + 1}`,
+          avatarUrl: null,
+          amount: 1000 - j * 50 + i,
+          timestamp: new Date().toISOString(),
+          isCurrentUser: j === 0,
+        }));
+        useAuctionStore.getState().setLeaderboard(entries);
+      }
+
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    test('连续 50 次 updateAuctionPrice 更新耗时不超过 50ms', () => {
+      useAuctionStore.setState({
+        roomAuctions: [...mockRoomAuctions],
+        currentAuction: { ...mockAuctionState },
+      });
+
+      const iterations = 50;
+      const start = performance.now();
+
+      for (let i = 0; i < iterations; i++) {
+        useAuctionStore.getState().updateAuctionPrice(1, 100 + i * 10);
+      }
+
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    test('连续 50 次 setBidResult 更新耗时不超过 50ms', () => {
+      const iterations = 50;
+      const start = performance.now();
+
+      for (let i = 0; i < iterations; i++) {
+        useAuctionStore.getState().setBidResult({
+          sessionId: 1,
+          bidId: 100 + i,
+          amount: 200 + i * 5,
+          rank: (i % 5) + 1,
+          isLeading: i % 5 === 0,
+          gapToLeader: i % 5 === 0 ? 0 : 10 * (i % 5),
+        });
+      }
+
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    test('连续 50 次 addChatMessage 更新耗时不超过 50ms', () => {
+      useAuctionStore.setState({ chatMessages: [] });
+      const iterations = 50;
+      const start = performance.now();
+
+      for (let i = 0; i < iterations; i++) {
+        useAuctionStore.getState().addChatMessage({
+          ...mockChatMessage,
+          content: `msg-${i}`,
+        });
+      }
+
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    test('混合 50 次事件（排行+出价+聊天）耗时不超过 50ms', () => {
+      useAuctionStore.setState({
+        roomAuctions: [...mockRoomAuctions],
+        currentAuction: { ...mockAuctionState },
+        chatMessages: [],
+      });
+
+      const iterations = 50;
+      const start = performance.now();
+
+      for (let i = 0; i < iterations; i++) {
+        // 排行更新
+        const entries: LeaderboardEntry[] = Array.from({ length: 5 }, (_, j) => ({
+          rank: j + 1,
+          userId: j + 1,
+          userNickname: `用户${j + 1}`,
+          avatarUrl: null,
+          amount: 500 - j * 50 + i,
+          timestamp: new Date().toISOString(),
+          isCurrentUser: false,
+        }));
+        useAuctionStore.getState().setLeaderboard(entries);
+
+        // 出价结果
+        useAuctionStore.getState().setBidResult({
+          sessionId: 1,
+          bidId: 200 + i,
+          amount: 200 + i * 10,
+          rank: (i % 3) + 1,
+          isLeading: i % 3 === 0,
+          gapToLeader: i % 3 === 0 ? 0 : 20,
+        });
+
+        // 聊天消息
+        useAuctionStore.getState().addChatMessage({
+          ...mockChatMessage,
+          content: `mixed-${i}`,
+        });
+      }
+
+      const elapsed = performance.now() - start;
+      expect(elapsed).toBeLessThan(50);
     });
   });
 });

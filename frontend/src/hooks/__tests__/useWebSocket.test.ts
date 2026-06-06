@@ -153,4 +153,86 @@ describe('useWebSocket', () => {
     act(() => { unsub!(); });
     expect(mockOff).toHaveBeenCalledWith('custom:event', handler);
   });
+
+  describe('重连后状态合并', () => {
+    it('reconnect 后应重新 join 房间以触发服务器端状态同步', () => {
+      let reconnectHandler: (() => void) | undefined;
+      mockOn.mockImplementation((event: string, handler: () => void) => {
+        if (event === 'reconnect') reconnectHandler = handler;
+      });
+
+      renderHook(() => useWebSocket(200));
+      expect(reconnectHandler).toBeDefined();
+
+      // 模拟 reconnect
+      act(() => { reconnectHandler!(); });
+
+      // 应再次发送 auction:join 以请求服务器全量状态
+      expect(mockEmit).toHaveBeenCalledWith('auction:join', { roomId: 200 });
+    });
+
+    it('reconnect 后应更新 isConnected 为 true', () => {
+      let connectHandler: (() => void) | undefined;
+      let disconnectHandler: (() => void) | undefined;
+      let reconnectHandler: (() => void) | undefined;
+
+      mockOn.mockImplementation((event: string, handler: () => void) => {
+        if (event === 'connect') connectHandler = handler;
+        if (event === 'disconnect') disconnectHandler = handler;
+        if (event === 'reconnect') reconnectHandler = handler;
+      });
+
+      const { result } = renderHook(() => useWebSocket(201));
+
+      // 先连接
+      act(() => { connectHandler!(); });
+      expect(result.current.isConnected).toBe(true);
+
+      // 断开
+      act(() => { disconnectHandler!(); });
+      expect(result.current.isConnected).toBe(false);
+
+      // 重连
+      act(() => { reconnectHandler!(); });
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    it('reconnect 后 isReconnecting 应恢复为 false', () => {
+      let reconnectAttemptHandler: (() => void) | undefined;
+      let reconnectHandler: (() => void) | undefined;
+
+      mockOn.mockImplementation((event: string, handler: () => void) => {
+        if (event === 'reconnect_attempt') reconnectAttemptHandler = handler;
+        if (event === 'reconnect') reconnectHandler = handler;
+      });
+
+      const { result } = renderHook(() => useWebSocket(202));
+
+      // 模拟重连尝试中
+      act(() => { reconnectAttemptHandler!(); });
+      expect(result.current.isReconnecting).toBe(true);
+
+      // 重连成功
+      act(() => { reconnectHandler!(); });
+      expect(result.current.isReconnecting).toBe(false);
+    });
+
+    it('disconnect 后通过 subscribe 注册的监听器应仍可接收事件', () => {
+      let disconnectHandler: (() => void) | undefined;
+
+      mockOn.mockImplementation((event: string, handler: () => void) => {
+        if (event === 'disconnect') disconnectHandler = handler;
+      });
+
+      const { result } = renderHook(() => useWebSocket(203));
+      const bidHandler = vi.fn();
+      act(() => { result.current.subscribe('bid:new', bidHandler); });
+
+      // 断开连接
+      act(() => { disconnectHandler!(); });
+
+      // subscribe 仍调用了 mockOn，说明 handler 已注册
+      expect(mockOn).toHaveBeenCalledWith('bid:new', bidHandler);
+    });
+  });
 });

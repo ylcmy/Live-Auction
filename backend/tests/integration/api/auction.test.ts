@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { setupTestApp, teardownTestApp } from '../setup';
-import { truncateAll, seedUser, seedProduct, seedRoom, seedAuctionSession, authHeader } from '../../helpers/factory';
+import { truncateAll, seedUser, seedProduct, seedRoom, seedAuctionSession, seedActiveAuction, authHeader } from '../../helpers/factory';
 import { initializeDefaultAuctionService } from '../../../src/services/auction.service';
 import type { FastifyInstance } from 'fastify';
 
@@ -116,9 +116,9 @@ describe('POST /api/auctions/:id/cancel', () => {
   test('商户取消进行中的竞拍成功', async () => {
     const merchant = await seedUser({ username: 'c_merchant', role: 'merchant' });
     const headers = authHeader(merchant.id, 'merchant');
-    const { productId, ruleId } = await seedProduct(merchant.id, { name: 'CancelProd', status: 'listed' });
+    const { productId } = await seedProduct(merchant.id, { name: 'CancelProd', status: 'listed' });
     const roomId = await seedRoom(merchant.id, { title: 'RoomCancel' });
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'active' });
+    const { sessionId } = await seedActiveAuction({ productId, roomId });
 
     const response = await app.inject({
       method: 'POST',
@@ -136,9 +136,9 @@ describe('POST /api/auctions/:id/cancel', () => {
     const owner = await seedUser({ username: 'c_owner', role: 'merchant' });
     const other = await seedUser({ username: 'c_other', role: 'merchant' });
     const otherHeaders = authHeader(other.id, 'merchant');
-    const { productId, ruleId } = await seedProduct(owner.id, { status: 'listed' });
+    const { productId } = await seedProduct(owner.id, { status: 'listed' });
     const roomId = await seedRoom(owner.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'active' });
+    const { sessionId } = await seedActiveAuction({ productId, roomId });
 
     const response = await app.inject({
       method: 'POST',
@@ -160,7 +160,7 @@ describe('状态流转验证', () => {
     const headers = authHeader(merchant.id, 'merchant');
     const { productId, ruleId } = await seedProduct(merchant.id, { status: 'listed' });
     const roomId = await seedRoom(merchant.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
+    const { sessionId } = await seedAuctionSession({ productId, ruleId, roomId, status: 'ended' });
 
     const response = await app.inject({
       method: 'POST',
@@ -176,7 +176,7 @@ describe('状态流转验证', () => {
     const headers = authHeader(merchant.id, 'merchant');
     const { productId, ruleId } = await seedProduct(merchant.id, { status: 'listed' });
     const roomId = await seedRoom(merchant.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'cancelled' });
+    const { sessionId } = await seedAuctionSession({ productId, ruleId, roomId, status: 'cancelled' });
 
     const response = await app.inject({
       method: 'POST',
@@ -190,9 +190,9 @@ describe('状态流转验证', () => {
   test('取消竞拍后商品状态恢复为 listed', async () => {
     const merchant = await seedUser({ username: 's_restore', role: 'merchant' });
     const headers = authHeader(merchant.id, 'merchant');
-    const { productId, ruleId } = await seedProduct(merchant.id, { name: 'RestoreProd', status: 'listed' });
+    const { productId } = await seedProduct(merchant.id, { name: 'RestoreProd', status: 'listed' });
     const roomId = await seedRoom(merchant.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'active' });
+    const { sessionId } = await seedActiveAuction({ productId, roomId });
 
     // Cancel the auction
     await app.inject({
@@ -217,7 +217,7 @@ describe('状态流转验证', () => {
     const headers = authHeader(merchant.id, 'merchant');
     const { productId, ruleId } = await seedProduct(merchant.id, { status: 'listed' });
     const roomId = await seedRoom(merchant.id);
-    const sessionId = await seedAuctionSession({ productId, ruleId, roomId, status: 'active', currentPrice: 250 });
+    const { sessionId } = await seedAuctionSession({ productId, ruleId, roomId, status: 'active', currentPrice: 250 });
 
     const response = await app.inject({
       method: 'GET',

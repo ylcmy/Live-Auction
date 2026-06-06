@@ -11,8 +11,12 @@ import { userRoutes } from './routes/user.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
 import { redis, getRedisMode } from './infrastructure/cache/redis.js';
 import { db } from './infrastructure/db/knex.js';
+import { initializeDefaultAuctionService } from './services/auction.service.js';
 
 export async function buildApp() {
+  // Ensure AuctionService singleton is initialized (no WS server in API-only mode)
+  initializeDefaultAuctionService(null as any);
+
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',

@@ -260,7 +260,7 @@ export const bidService = {
       const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
       if (topBidRaw) {
         const topBid = JSON.parse(topBidRaw);
-        currentPrice = topBid.amount;
+        currentPrice = Number(topBid.amount);
       } else {
         currentPrice = Number(session.current_price);
       }
@@ -475,7 +475,7 @@ export const bidService = {
         }, trx);
 
         // UPDATE auction_sessions.current_price
-        const updateData: any = { current_price: finalBidAmount, updated_at: new Date().toISOString() };
+        const updateData: any = { current_price: finalBidAmount, updated_at: db.fn.now() };
         if (lockedShouldEnd) {
           updateData.winner_id = userId;
         }
@@ -494,7 +494,7 @@ export const bidService = {
                 await trx('auction_sessions').where({ id: sessionId }).update({
                   ended_at: newEndTime,
                   extension_count: newExtensions,
-                  updated_at: new Date().toISOString(),
+                  updated_at: trx.fn.now(),
                 });
                 extensionResult = { remainingMs: rule.extend_seconds * 1000, extensionCount: newExtensions };
                 logger.info({ event: 'bid_extension_mysql', sessionId, extensions: newExtensions }, 'Auction extended during bid processing (MySQL path)');

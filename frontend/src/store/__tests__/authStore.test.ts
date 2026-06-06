@@ -1,12 +1,15 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { api } from '@/services/api';
 import { useAuthStore } from '../authStore';
 import type { User } from '@/types/api';
 
+const { mockApiObj } = vi.hoisted(() => {
+  const mockApiObj = { post: vi.fn() };
+  return { mockApiObj };
+});
+
 vi.mock('@/services/api', () => ({
-  api: {
-    post: vi.fn(),
-  },
+  default: mockApiObj,
+  api: mockApiObj,
 }));
 
 vi.mock('@/lib/jwt', () => ({
@@ -14,7 +17,7 @@ vi.mock('@/lib/jwt', () => ({
 }));
 
 // 获取 mock 实例
-const mockApiPost = vi.mocked(api.post);
+const mockApiPost = vi.mocked(mockApiObj.post);
 const { decodeJwtPayload } = await import('@/lib/jwt');
 const mockDecodeJwt = vi.mocked(decodeJwtPayload);
 

@@ -24,8 +24,11 @@ export function initWebSocket(httpServer: HttpServer) {
   initializeDefaultAuctionService(io);
 
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error('未认证'));
+    // Support both handshake.auth.token (Socket.IO client) and query token (raw WebSocket / k6)
+    const token = socket.handshake.auth.token || socket.handshake.query.token;
+    if (!token) {
+      return next(new Error('未认证'));
+    }
     try {
       const payload = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
       (socket as any).userId = payload.userId;
