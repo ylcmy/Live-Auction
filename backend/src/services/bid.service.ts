@@ -234,10 +234,7 @@ export const bidService = {
       const rateLimitExceeded = rateCount >= 5;
 
       // ---- 4. Domain validation ----
-      // 获取当前最高出价者（用于连续自我出价防护）
       const lbKey = `auction:${sessionId}:leaderboard`;
-      const topBidders = await cache.zrevrange(lbKey, 0, 0);
-      const lastBidUserId = topBidders.length >= 1 ? Number(topBidders[0]) : null;
 
       const error = validateBid(userId, {
         auctionStatus: session.status,
@@ -249,7 +246,6 @@ export const bidService = {
           : null,
         idempotencyKeyExists: false,
         rateLimitExceeded,
-        lastBidUserId,
       });
 
       if (error) {
