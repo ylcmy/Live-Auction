@@ -29,14 +29,11 @@ export const orderService = {
     const now = new Date();
     const transactionId = generateTransactionId();
 
-    await orderRepo.updateStatus(orderId, 'paid', {
+    await orderRepo.updateStatus(orderId, 'completed', {
       paid_at: now,
+      completed_at: now,
       payment_method: 'mock',
       transaction_id: transactionId,
-    });
-
-    await orderRepo.updateStatus(orderId, 'completed', {
-      completed_at: now,
     });
 
     logger.info({ event: 'order_paid', orderId, transactionId }, 'Order paid and completed');

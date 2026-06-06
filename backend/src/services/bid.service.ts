@@ -234,6 +234,11 @@ export const bidService = {
       const rateLimitExceeded = rateCount >= 5;
 
       // ---- 4. Domain validation ----
+      // 获取当前最高出价者（用于连续自我出价防护）
+      const lbKey = `auction:${sessionId}:leaderboard`;
+      const topBidders = await cache.zrevrange(lbKey, 0, 0);
+      const lastBidUserId = topBidders.length >= 1 ? Number(topBidders[0]) : null;
+
       const error = validateBid(userId, {
         auctionStatus: session.status,
         sellerId: product.merchant_id,
@@ -244,6 +249,7 @@ export const bidService = {
           : null,
         idempotencyKeyExists: false,
         rateLimitExceeded,
+        lastBidUserId,
       });
 
       if (error) {
@@ -282,7 +288,6 @@ export const bidService = {
       const previousTopBid = topBidRaw || '';
 
       // ---- 10. Atomic Redis write via Lua ----
-      const lbKey = `auction:${sessionId}:leaderboard`;
       const participantsKey = `room:${session.room_id}:participants`;
       const topBidKey = `auction:${sessionId}:top_bid`;
       const topBidData = JSON.stringify({
@@ -339,13 +344,13 @@ export const bidService = {
       const myRank = rank !== null ? rank + 1 : null;
 
       // ---- 14. Determine leader status ----
-      const topBidders = await cache.zrevrange(lbKey, 0, 0);
+      const topBidEntries = await cache.zrevrange(lbKey, 0, 0);
       let isLeading = false;
       let gapToLeader = -1;
-      if (topBidders.length >= 2) {
-        isLeading = topBidders[0] === String(userId);
+      if (topBidEntries.length >= 2) {
+        isLeading = topBidEntries[0] === String(userId);
         if (!isLeading) {
-          const leaderAmount = Number(topBidders[1]);
+          const leaderAmount = Number(topBidEntries[1]);
           gapToLeader = leaderAmount - bidAmount;
         }
       } else {

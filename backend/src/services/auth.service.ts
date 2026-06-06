@@ -38,7 +38,7 @@ export const authService = {
       throw new AppError('用户名或密码错误', 401);
     }
 
-    const payload = { userId: user.id, role: user.role };
+    const payload = { userId: user.id, role: user.role, nickname: user.nickname };
     const accessToken = jwt.sign(payload, env.JWT_SECRET, {
       expiresIn: env.JWT_EXPIRES_IN,
     });
@@ -54,9 +54,11 @@ export const authService = {
       const payload = jwt.verify(
         token,
         env.JWT_SECRET,
-      ) as { userId: number; role: string };
+      ) as { userId: number; role: string; nickname: string };
+      const user = await userRepo.findById(payload.userId);
+      const nickname = user?.nickname || payload.nickname || '';
       const accessToken = jwt.sign(
-        { userId: payload.userId, role: payload.role },
+        { userId: payload.userId, role: payload.role, nickname },
         env.JWT_SECRET,
         { expiresIn: env.JWT_EXPIRES_IN },
       );
