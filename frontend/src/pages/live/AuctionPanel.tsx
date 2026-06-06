@@ -23,11 +23,11 @@ export default function AuctionPanel() {
   const tickPlayedRef = useRef(false);
 
   useEffect(() => {
-    if (remainingMs > 0 && remainingMs <= 5000 && !tickPlayedRef.current) {
+    if (remainingMs > 0 && remainingMs <= 10000 && !tickPlayedRef.current) {
       tickPlayedRef.current = true;
       playTick();
     }
-    if (remainingMs > 5000) {
+    if (remainingMs > 10000) {
       tickPlayedRef.current = false;
     }
   }, [remainingMs, playTick]);

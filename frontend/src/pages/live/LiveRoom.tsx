@@ -10,6 +10,7 @@ import SimulatedStream from '../../components/auction/SimulatedStream';
 import CartButton from '../../components/auction/CartButton';
 import CartPanel from '../../components/auction/CartPanel';
 import BidSheet from '../../components/auction/BidSheet';
+import EmotionToast from '../../components/auction/EmotionToast';
 import AuctionResult from './AuctionResult';
 import LeaderboardSheet from '../../components/auction/LeaderboardSheet';
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -63,12 +64,25 @@ export default function LiveRoom() {
   const lastSyncRef = useRef<CountdownSync | null>(null);
 
   const { isOpen: isCartOpen, openCart, closeCart, productCount } = useCart(roomAuctions);
-  const { playDing } = useAudio();
+  const { playDing, playTick, playAlert } = useAudio();
+  const tickPlayedRef = useRef(false);
 
   const countdownSync = useAuctionStore((s) => s.countdown);
   const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
   const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
   const extendMs = useAuctionStore((s) => s.extendMs);
+
+  // Countdown tick audio — play once when remaining <= 10s, reset on extend
+  useEffect(() => {
+    if (countdownRemainingMs > 0 && countdownRemainingMs <= 10000 && !tickPlayedRef.current) {
+      tickPlayedRef.current = true;
+      playTick();
+    }
+    if (countdownRemainingMs > 10000) {
+      tickPlayedRef.current = false;
+    }
+  }, [countdownRemainingMs, playTick]);
+
   const { sync, extend } = useCountdown({
     onTick: updateCountdownTick,
   });
@@ -146,7 +160,10 @@ export default function LiveRoom() {
         triggerExtend(data.extendSeconds * 1000);
       }),
       subscribe<any>('emotion:lead', (data: any) => setEmotion({ ...data, type: 'lead' })),
-      subscribe<any>('emotion:overtaken', (data: any) => setEmotion({ ...data, type: 'overtaken' })),
+      subscribe<any>('emotion:overtaken', (data: any) => {
+        setEmotion({ ...data, type: 'overtaken' });
+        playAlert();
+      }),
       subscribe<any>('auction:started', (data: any) => {
         setBubbleDismissed(false);
         setRoomAuctions((prev: RoomAuctionItem[]) => {
@@ -213,7 +230,7 @@ export default function LiveRoom() {
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [isConnected, subscribe, setAuction, setLeaderboard, setOnlineCount, setParticipantCount, setCountdown, triggerExtend, setEmotion, updateAuctionPrice, updateAuctionStatus, setMyBid, addChatMessage, id, playDing]);
+  }, [isConnected, subscribe, setAuction, setLeaderboard, setOnlineCount, setParticipantCount, setCountdown, triggerExtend, setEmotion, updateAuctionPrice, updateAuctionStatus, setMyBid, addChatMessage, id, playDing, playAlert]);
 
   useEffect(() => {
     if (isConnected && wasDisconnectedRef.current && !isReconnecting) {
@@ -527,6 +544,9 @@ export default function LiveRoom() {
         open={leaderboardOpen}
         onClose={() => setLeaderboardOpen(false)}
       />
+
+      {/* Emotion toasts — lead / overtaken / extended / ended */}
+      <EmotionToast />
     </div>
   );
 }
