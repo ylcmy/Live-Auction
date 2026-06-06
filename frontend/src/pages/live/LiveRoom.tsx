@@ -14,8 +14,9 @@ import AuctionResult from './AuctionResult';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
-import { Users, Radio, Wifi, WifiOff, X, ShoppingBag } from 'lucide-react';
+import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
 import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
@@ -64,6 +65,7 @@ export default function LiveRoom() {
   const { playDing } = useAudio();
 
   const countdownSync = useAuctionStore((s) => s.countdown);
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
   const extendMs = useAuctionStore((s) => s.extendMs);
   const { sync, extend } = useCountdown({
     onTick: updateCountdownTick,
@@ -410,6 +412,14 @@ export default function LiveRoom() {
                           </span>
                         )}
                       </div>
+                      {countdownRemainingMs > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-red-400" />
+                          <span className={`text-xs font-mono font-medium ${countdownRemainingMs < 10000 ? 'text-red-400 animate-pulse' : 'text-white/80'}`}>
+                            {formatMsCompact(countdownRemainingMs)}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Go bid button */}
