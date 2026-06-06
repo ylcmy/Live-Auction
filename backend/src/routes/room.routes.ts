@@ -234,7 +234,13 @@ export async function roomRoutes(app: FastifyInstance) {
       );
 
     const sessionMap = new Map();
-    existingSessions.forEach((s: any) => sessionMap.set(s.productId, s));
+    existingSessions.forEach((s: any) => {
+      const existing = sessionMap.get(s.productId);
+      // Prefer active sessions over ended/cancelled/unsold ones
+      if (!existing || (s.status === 'active' && existing.status !== 'active')) {
+        sessionMap.set(s.productId, s);
+      }
+    });
 
     const auctionListPromises = allProducts.map(async (row: any) => {
       const sess = sessionMap.get(row.productId);
@@ -244,12 +250,9 @@ export async function roomRoutes(app: FastifyInstance) {
         const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
         if (topBid) currentPrice = Number(topBid.amount);
       }
-      // Use session status only for active sessions; otherwise fall back to product status
-      // This prevents a re-listed (unsold->listed) product from showing as 'unsold' due to old session
-      const displayStatus = sess?.status === 'active' ? sess.status : row.productStatus;
       return {
         sessionId: sess?.sessionId ?? row.productId,
-        status: displayStatus,
+        status: sess?.status ?? row.productStatus,
         currentPrice,
         startedAt: sess?.startedAt ?? null,
         endedAt: sess?.endedAt ?? null,
