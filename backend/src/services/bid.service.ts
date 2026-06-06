@@ -298,7 +298,7 @@ export const bidService = {
     const topBidData = JSON.stringify({ userId, amount: bidAmount, timestamp: new Date().toISOString() });
 
     const casResult = await cache.eval(BID_CAS_SCRIPT, [topBidKey, lbKey, participantsKey], [String(userId), bidAmount, topBidData, ceilingPrice ?? 0]);
-    if (casResult === 0) {
+    if (!casResult || casResult === 0) {
       return { success: false, error: { code: 40902, message: '出价已过期，当前价格已更新，请重新出价' } };
     }
 

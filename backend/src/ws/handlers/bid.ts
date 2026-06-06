@@ -1,8 +1,11 @@
 /**
- * WebSocket Bid Handler (优化版)
+ * WebSocket Bid Handler
  *
- * 同步关键路径: 幂等检查 → CAS → MySQL 持久化 → 返回 accepted
- * 异步非关键路径: 通过 BidEventBus 广播 bid:new / rank:update / countdown:sync 等
+ * 幂等由 processBid 内部统一处理，handler 仅负责:
+ *   1. 获取前领先者 (异步通知)
+ *   2. 调用 bidService.processBid
+ *   3. 返回 accepted
+ *   4. 异步广播 bidEventBus
  */
 
 import type { Server, Socket } from 'socket.io';
@@ -17,27 +20,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
   socket.on('bid:submit', async (data: { sessionId: number; amount?: number; idempotencyKey: string }) => {
     const { sessionId, amount, idempotencyKey } = data;
 
-    // ---- 1. 三态幂等检查 ----
-    const idemKey = `idempotent:bid:${sessionId}:${idempotencyKey}`;
-    const existing = await cache.get(idemKey);
-    if (existing && existing !== 'pending') {
-      const prev = JSON.parse(existing);
-      socket.emit('bid:accepted', { sessionId, idempotencyKey, bidId: 0, ...prev });
-      return;
-    }
-    if (existing === 'pending') {
-      const lbEntry = await cache.zscore(`auction:${sessionId}:leaderboard`, String(userId));
-      if (lbEntry) {
-        const rank = await cache.zrevrank(`auction:${sessionId}:leaderboard`, String(userId));
-        const result = { amount: Number(lbEntry), rank: rank !== null ? rank + 1 : 1, isLeading: rank === 0 };
-        await cache.set(idemKey, JSON.stringify(result), 3600);
-        socket.emit('bid:accepted', { sessionId, idempotencyKey, bidId: 0, ...result });
-        return;
-      }
-      await cache.del(idemKey);
-    }
-
-    // ---- 2. 获取前领先者 (异步通知需要) ----
+    // ---- 1. 获取前领先者 (异步通知需要) ----
     let previousTopBidderId: number | null = null;
     try {
       const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
@@ -47,19 +30,15 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       }
     } catch {}
 
-    // ---- 3. 核心出价处理 (Redis CAS + MySQL 同步持久化) ----
+    // ---- 2. 核心出价处理 (Redis CAS + MySQL 同步持久化) ----
     const result: BidProcessResult = await bidService.processBid(sessionId, userId, idempotencyKey, amount);
 
     if (!result.success) {
-      await cache.del(idemKey);
       socket.emit('bid:rejected', { sessionId, idempotencyKey, reason: result.error?.message, code: result.error?.code });
       return;
     }
 
-    // ---- 4. 存储结果到幂等键 ----
-    await cache.set(idemKey, JSON.stringify({ amount: result.amount, rank: result.rank, isLeading: result.isLeading }), 3600);
-
-    // ---- 5. 立即返回 accepted ----
+    // ---- 3. 立即返回 accepted ----
     socket.emit('bid:accepted', {
       sessionId,
       idempotencyKey,
@@ -70,7 +49,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       gapToLeader: result.gapToLeader,
     });
 
-    // ---- 6. 异步广播 (不阻塞用户) ----
+    // ---- 4. 异步广播 (不阻塞用户) ----
     try {
       const session = await auctionSessionRepo.findById(sessionId);
       if (session) {
