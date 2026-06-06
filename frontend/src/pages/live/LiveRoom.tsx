@@ -4,6 +4,7 @@ import { useAuctionStore } from '../../store/auctionStore';
 import { useAuthStore } from '../../store/authStore';
 import { useCart } from '../../hooks/useCart';
 import { useAudio } from '../../hooks/useAudio';
+import { useCountdown } from '../../hooks/useCountdown';
 
 import SimulatedStream from '../../components/auction/SimulatedStream';
 import CartButton from '../../components/auction/CartButton';
@@ -51,6 +52,7 @@ export default function LiveRoom() {
     chatMessages,
     leaderboard,
     myBids,
+    updateCountdownTick,
   } = useAuctionStore();
   const [wasReconnected, setWasReconnected] = useState(false);
   const [roomStatus, setRoomStatus] = useState<string>('live');
@@ -60,6 +62,25 @@ export default function LiveRoom() {
 
   const { isOpen: isCartOpen, openCart, closeCart, productCount } = useCart(roomAuctions);
   const { playDing } = useAudio();
+
+  const countdownSync = useAuctionStore((s) => s.countdown);
+  const extendMs = useAuctionStore((s) => s.extendMs);
+  const { sync, extend } = useCountdown({
+    onTick: updateCountdownTick,
+  });
+
+  useEffect(() => {
+    if (countdownSync && countdownSync.remainingMs > 0) {
+      sync(countdownSync);
+    }
+  }, [countdownSync, sync]);
+
+  useEffect(() => {
+    if (extendMs && extendMs > 0) {
+      extend(extendMs);
+    }
+  }, [extendMs, extend]);
+
   const [bidSheetOpen, setBidSheetOpen] = useState(false);
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
   const [auctionResult, setAuctionResult] = useState<AuctionEndResult | null>(null);
