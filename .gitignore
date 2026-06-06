@@ -45,6 +45,7 @@ playwright-report/
 .cache/
 
 .superpowers/
+docs/
 .trae/
 .cursor/
 .dbg/
