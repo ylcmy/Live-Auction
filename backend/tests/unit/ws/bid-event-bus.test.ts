@@ -192,4 +192,14 @@ describe('BidEventBus', () => {
       expect.objectContaining({ sessionId: 1, userId: 50 }),
     );
   });
+
+  it('should not throw when getLeaderboard rejects', async () => {
+    (bidService.getLeaderboard as any).mockRejectedValueOnce(new Error('Redis down'));
+
+    bus.emitBidCommitted(createBidEvent());
+
+    await vi.advanceTimersByTimeAsync(55);
+
+    // No assertion needed — test passes if no unhandled rejection
+  });
 });

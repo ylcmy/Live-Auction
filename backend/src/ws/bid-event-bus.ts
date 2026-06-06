@@ -66,8 +66,12 @@ export class BidEventBus extends EventEmitter {
 
       const timer = setTimeout(async () => {
         this.leaderboardTimers.delete(event.sessionId);
-        const leaderboard = await bidService.getLeaderboard(event.sessionId, 0);
-        broadcastToRoom(this.io!, event.roomId, 'rank:update', leaderboard);
+        try {
+          const leaderboard = await bidService.getLeaderboard(event.sessionId, 0);
+          broadcastToRoom(this.io!, event.roomId, 'rank:update', leaderboard);
+        } catch {
+          // 排行榜广播失败，静默处理，下次出价会重新广播
+        }
       }, LEADERBOARD_DEBOUNCE_MS);
 
       this.leaderboardTimers.set(event.sessionId, timer);
@@ -110,13 +114,17 @@ export class BidEventBus extends EventEmitter {
 
       // Always sync countdown after each bid
       (async () => {
-        const timer = await auctionService.getAuctionTimer(event.sessionId);
-        if (timer) {
-          broadcastToRoom(this.io!, event.roomId, 'countdown:sync', {
-            sessionId: event.sessionId,
-            remainingMs: timer.remainingMs,
-            serverTime: timer.serverTime,
-          });
+        try {
+          const timer = await auctionService.getAuctionTimer(event.sessionId);
+          if (timer) {
+            broadcastToRoom(this.io!, event.roomId, 'countdown:sync', {
+              sessionId: event.sessionId,
+              remainingMs: timer.remainingMs,
+              serverTime: timer.serverTime,
+            });
+          }
+        } catch {
+          // 静默处理
         }
       })();
     });
@@ -134,6 +142,7 @@ export class BidEventBus extends EventEmitter {
       clearTimeout(timer);
     }
     this.leaderboardTimers.clear();
+    this.handlersRegistered = false;
     this.removeAllListeners();
   }
 }
