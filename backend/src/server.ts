@@ -2,7 +2,7 @@ import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './middleware/logger.js';
 import { db } from './infrastructure/db/knex.js';
-import { redis } from './infrastructure/cache/redis.js';
+import { redis, redisCircuitBreaker } from './infrastructure/cache/redis.js';
 import { initWebSocket } from './ws/index.js';
 import { orderService } from './services/order.service.js';
 import { getAuctionService } from './services/auction.service.js';
@@ -35,10 +35,11 @@ async function start() {
   // Check Redis connection
   try {
     await redis.ping();
+    redisCircuitBreaker.reset();
     logger.info('Redis connected');
   } catch (err) {
-    logger.error({ err }, 'Redis connection failed');
-    process.exit(1);
+    logger.warn({ err }, 'Redis connection failed - starting in degraded mode');
+    redisCircuitBreaker.trip();
   }
 
   const app = await buildApp();
@@ -50,6 +51,16 @@ async function start() {
   // Restore auction settlement timers after process restart
   const auctionService = getAuctionService();
   await auctionService.restoreTimers();
+
+  // Register circuit breaker callback: rebuild cache when Redis recovers
+  redisCircuitBreaker.setOnStateChange((from, to) => {
+    if ((from === 'open' || from === 'half-open') && to === 'closed') {
+      logger.info({ event: 'redis_recovered', from, to }, 'Redis recovered - triggering cache rebuild');
+      auctionService.rebuildAuctionCache().catch((err) => {
+        logger.error({ event: 'cache_rebuild_failed', err }, 'Failed to rebuild auction cache after Redis recovery');
+      });
+    }
+  });
 
   startAutoCancelTimer();
   logger.info('Order auto-cancel timer started');

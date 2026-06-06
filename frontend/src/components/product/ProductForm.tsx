@@ -22,7 +22,7 @@ interface ProductFormProps {
   isSubmitting?: boolean;
 }
 
-function validateProduct(values: ProductFormValues): ProductFormErrors {
+export function validateProduct(values: ProductFormValues): ProductFormErrors {
   const errors: ProductFormErrors = {};
 
   if (!values.name.trim()) {

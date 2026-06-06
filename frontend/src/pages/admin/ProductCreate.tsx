@@ -70,7 +70,7 @@ export default function ProductCreate() {
         rule: {
           startPrice: Number(form.startPrice),
           bidIncrement: Number(form.bidIncrement),
-          ceilingPrice: form.hasCeilingPrice ? Number(form.ceilingPrice) : null,
+          ceilingPrice: form.hasCeilingPrice ? Number(form.ceilingPrice) : undefined,
           durationSeconds: Number(form.durationSeconds),
           extendSeconds: Number(form.extendSeconds),
           maxExtensions: Number(form.maxExtensions),
@@ -80,8 +80,8 @@ export default function ProductCreate() {
       void response;
       toast({ title: '商品已创建，请上架后开始竞拍', variant: 'success' });
       navigate('/admin/products');
-    } catch {
-      // ignore
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.message || '创建失败，请重试', variant: 'destructive' });
     } finally {
       setSaving(false);
     }

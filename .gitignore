@@ -36,12 +36,18 @@ Thumbs.db
 # Coverage
 coverage/
 
+# Test output
+test-results/
+playwright-report/
+
 # Misc
 *.tmp
 .cache/
 
 .superpowers/
 .trae/
+.cursor/
 .dbg/
 .agents/
 skills-lock.json
+

@@ -44,7 +44,7 @@ async function buildCurrentAuction(roomId: number) {
 
   const topBidRaw = await cache.get(`auction:${activeAuction.sessionId}:top_bid`);
   const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
-  const currentPrice = topBid ? topBid.amount : activeAuction.currentPrice;
+  const currentPrice = topBid ? Number(topBid.amount) : activeAuction.currentPrice;
 
   return {
     sessionId: activeAuction.sessionId,
@@ -197,6 +197,7 @@ export async function roomRoutes(app: FastifyInstance) {
 
   app.get('/api/rooms/:id', async (req, reply) => {
     const roomId = Number((req.params as any).id);
+    if (!Number.isFinite(roomId)) return replyError(reply, 40000, '无效的直播间 ID', 400);
     const room = await liveRoomRepo.findById(roomId);
     if (!room) return replyError(reply, 40400, '直播间不存在', 404);
 
@@ -241,7 +242,7 @@ export async function roomRoutes(app: FastifyInstance) {
       if (sess?.sessionId && sess?.status === 'active') {
         const topBidRaw = await cache.get(`auction:${sess.sessionId}:top_bid`);
         const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
-        if (topBid) currentPrice = topBid.amount;
+        if (topBid) currentPrice = Number(topBid.amount);
       }
       return {
         sessionId: sess?.sessionId ?? row.productId,

@@ -42,7 +42,9 @@ export async function auctionRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/auctions/:id', async (req, reply) => {
-    const session = await auctionSessionRepo.findById(Number((req.params as any).id));
+    const id = Number((req.params as any).id);
+    if (!Number.isFinite(id)) return replyError(reply, 40000, '无效的竞拍 ID', 400);
+    const session = await auctionSessionRepo.findById(id);
     if (!session) return replyError(reply, 40400, '竞拍不存在', 404);
     return replySuccess(reply, session);
   });

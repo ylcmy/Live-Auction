@@ -55,6 +55,31 @@ export function useWebSocket(roomId: number | null) {
     }
     myRoomRef.current = roomId;
 
+    // Listen for browser online/offline events to detect disconnection immediately
+    // (Socket.IO heartbeat can take 25+ seconds to detect a broken connection)
+    const onBrowserOffline = () => {
+      setIsConnected(false);
+      setIsReconnecting(true);
+      // Force disconnect so Socket.IO knows it's disconnected.
+      // Without this, socket.connected remains true until heartbeat timeout (25s+),
+      // preventing onBrowserOnline from triggering reconnect.
+      const currentSocket = socketRef.current || getSocket();
+      if (currentSocket) {
+        currentSocket.disconnect();
+      }
+    };
+    const onBrowserOnline = () => {
+      // Browser is back online; force Socket.IO to reconnect immediately
+      // rather than waiting for its internal heartbeat detection.
+      const currentSocket = socketRef.current || getSocket();
+      if (currentSocket && !currentSocket.connected) {
+        currentSocket.connect();
+      }
+    };
+
+    window.addEventListener('offline', onBrowserOffline);
+    window.addEventListener('online', onBrowserOnline);
+
     return () => {
       if (myRoomRef.current === roomId) {
         socket.emit('auction:leave', { roomId });
@@ -65,6 +90,8 @@ export function useWebSocket(roomId: number | null) {
       socket.off('disconnect', onDisconnect);
       socket.off('reconnect_attempt', onReconnectAttempt);
       socket.off('reconnect', onReconnect);
+      window.removeEventListener('offline', onBrowserOffline);
+      window.removeEventListener('online', onBrowserOnline);
       // Don't disconnect - socket shared across components
     };
   }, [token, roomId, requestState]);
