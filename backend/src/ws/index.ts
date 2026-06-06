@@ -10,6 +10,7 @@ import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import type { AuthPayload } from '../middleware/auth.js';
+import { bidEventBus } from './bid-event-bus.js';
 
 async function getRoomUserCounts(
   io: Server,
@@ -53,6 +54,10 @@ export function initWebSocket(httpServer: HttpServer) {
 
   // Inject io instance into auction service for settlement broadcasts
   initializeDefaultAuctionService(io);
+
+  // 初始化事件总线
+  bidEventBus.setIO(io);
+  bidEventBus.registerHandlers();
 
   io.use((socket, next) => {
     // Support both handshake.auth.token (Socket.IO client) and query token (raw WebSocket / k6)
