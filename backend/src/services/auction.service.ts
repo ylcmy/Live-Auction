@@ -68,7 +68,7 @@ export class AuctionService {
     await cache.set(`auction:${sessionId}:room_id`, String(roomId), ttlSeconds);
     await cache.set(
       `auction:${sessionId}:top_bid`,
-      JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: Date.now() }),
+      JSON.stringify({ userId: 0, amount: rule.start_price, timestamp: new Date().toISOString() }),
       ttlSeconds,
     );
     await cache.set(
@@ -642,7 +642,7 @@ export class AuctionService {
           const topBidData = JSON.stringify({
             userId: topBid.user_id,
             amount: Number(topBid.bid_amount),
-            timestamp: new Date(topBid.created_at).getTime(),
+            timestamp: new Date(topBid.created_at).toISOString(),
           });
           await cache.setnx(`auction:${sessionId}:top_bid`, topBidData, ttlSeconds);
         } else {
@@ -650,7 +650,7 @@ export class AuctionService {
           const topBidData = JSON.stringify({
             userId: 0,
             amount: Number(rule.start_price),
-            timestamp: Date.now(),
+            timestamp: new Date().toISOString(),
           });
           await cache.setnx(`auction:${sessionId}:top_bid`, topBidData, ttlSeconds);
         }
