@@ -67,6 +67,7 @@ export default function LiveRoom() {
 
   const countdownSync = useAuctionStore((s) => s.countdown);
   const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
   const extendMs = useAuctionStore((s) => s.extendMs);
   const { sync, extend } = useCountdown({
     onTick: updateCountdownTick,
@@ -433,7 +434,7 @@ export default function LiveRoom() {
                       {countdownRemainingMs > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-red-400" />
-                          <span className={`text-xs font-mono font-medium ${countdownRemainingMs < 10000 ? 'text-red-400 animate-pulse' : 'text-white/80'}`}>
+                          <span className={`text-xs font-mono font-medium ${countdownIsUrgent ? 'text-red-400 animate-pulse' : 'text-white/80'}`}>
                             {formatMsCompact(countdownRemainingMs)}
                           </span>
                         </div>

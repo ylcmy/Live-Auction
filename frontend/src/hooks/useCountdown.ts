@@ -11,6 +11,8 @@ export function useCountdown(options?: UseCountdownOptions) {
   const endTimeRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
   const [syncCounter, setSyncCounter] = useState(0);
+  const onTickRef = useRef(options?.onTick);
+  onTickRef.current = options?.onTick;
 
   useEffect(() => {
     if (endTimeRef.current === null) return;
@@ -20,7 +22,7 @@ export function useCountdown(options?: UseCountdownOptions) {
       setRemainingMs(remaining);
       const urgent = remaining < 10000 && remaining > 0;
       setIsUrgent(urgent);
-      options?.onTick?.(remaining, urgent);
+      onTickRef.current?.(remaining, urgent);
       if (remaining > 0) {
         rafRef.current = requestAnimationFrame(tick);
       }
