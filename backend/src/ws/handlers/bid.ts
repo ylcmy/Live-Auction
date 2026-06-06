@@ -71,21 +71,25 @@ export function registerBidHandlers(io: Server, socket: Socket) {
     });
 
     // ---- 6. 异步广播 (不阻塞用户) ----
-    const session = await auctionSessionRepo.findById(sessionId);
-    if (session) {
-      const userNickname = await bidService.getUserNickname(userId);
-      bidEventBus.emitBidCommitted({
-        sessionId,
-        roomId: String(session.room_id),
-        userId,
-        userNickname,
-        amount: result.amount!,
-        isLeading: result.isLeading!,
-        previousTopBidderId,
-        extensionResult: result.extensionResult ?? null,
-        shouldEnd: result.shouldEnd!,
-        timestamp: new Date().toISOString(),
-      });
+    try {
+      const session = await auctionSessionRepo.findById(sessionId);
+      if (session) {
+        const userNickname = await bidService.getUserNickname(userId);
+        bidEventBus.emitBidCommitted({
+          sessionId,
+          roomId: String(session.room_id),
+          userId,
+          userNickname,
+          amount: result.amount!,
+          isLeading: result.isLeading!,
+          previousTopBidderId,
+          extensionResult: result.extensionResult ?? null,
+          shouldEnd: result.shouldEnd!,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // 广播失败不影响已返回的 bid:accepted
     }
   });
 }
