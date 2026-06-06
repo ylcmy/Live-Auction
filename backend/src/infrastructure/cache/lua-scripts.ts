@@ -11,7 +11,8 @@ local ceilingPrice    = tonumber(ARGV[4])
 local currentRaw = redis.call('GET', topBidKey)
 local currentAmount = 0
 if currentRaw then
-  local current = cjson.decode(currentRaw)
+  local ok, current = pcall(cjson.decode, currentRaw)
+  if not ok then return 0 end
   currentAmount = tonumber(current.amount) or 0
 end
 
@@ -70,7 +71,7 @@ local topEntry = redis.call('ZREVRANGE', lbKey, 0, 0, 'WITHSCORES')
 if topEntry and #topEntry >= 2 then
   local topUserId = topEntry[1]
   local topAmount = topEntry[2]
-  redis.call('SET', topBidKey, '{"userId":"' .. topUserId .. '","amount":' .. topAmount .. '}')
+  redis.call('SET', topBidKey, cjson.encode({userId = topUserId, amount = tonumber(topAmount)}))
 elseif prevTopBidData and prevTopBidData ~= '' then
   redis.call('SET', topBidKey, prevTopBidData)
 else

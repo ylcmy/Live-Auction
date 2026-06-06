@@ -228,5 +228,44 @@ describe('Lua scripts (real Redis)', () => {
       expect(parsed.userId).toBe('u0');
       expect(parsed.amount).toBe(0);
     });
+
+    it('should delete topBidKey when leaderboard is empty and no prevTopBidData', async () => {
+      // Setup: only user 1
+      await redis.zadd(LB_KEY, 100, 'u1');
+      await redis.sadd(PARTICIPANTS_KEY, 'u1');
+      await redis.set(TOP_BID_KEY, '{"userId":"u1","amount":100}');
+
+      // Rollback user 1 with empty prevTopBidData
+      await redis.eval(
+        BID_ROLLBACK_SCRIPT,
+        3,
+        ...rollbackKeys(),
+        'u1',
+        '',
+      );
+
+      // topBidKey should be deleted
+      const topBid = await redis.get(TOP_BID_KEY);
+      expect(topBid).toBeNull();
+    });
+
+    it('should delete topBidKey when leaderboard is empty and prevTopBidData is empty string', async () => {
+      await redis.zadd(LB_KEY, 100, 'u1');
+      await redis.sadd(PARTICIPANTS_KEY, 'u1');
+      await redis.set(TOP_BID_KEY, '{"userId":"u1","amount":100}');
+
+      await redis.eval(
+        BID_ROLLBACK_SCRIPT,
+        3,
+        ...rollbackKeys(),
+        'u1',
+        '',
+      );
+
+      const topBid = await redis.get(TOP_BID_KEY);
+      expect(topBid).toBeNull();
+      const members = await redis.smembers(PARTICIPANTS_KEY);
+      expect(members).not.toContain('u1');
+    });
   });
 });
