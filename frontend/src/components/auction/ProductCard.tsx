@@ -1,5 +1,7 @@
+import { Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { formatPrice, getPriceLabel } from '../../lib/format';
+import { formatMsCompact, formatPrice, getPriceLabel } from '../../lib/format';
+import { useAuctionStore } from '../../store/auctionStore';
 import type { RoomAuctionItem } from '../../types/api';
 
 interface ProductCardProps {
@@ -37,6 +39,10 @@ function AudioWaveform() {
 export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, onSelect, onBid, index }: ProductCardProps) {
   const { label: priceLabel, price: displayPrice } = getPriceLabel(item);
   const isActive = item.status === 'active';
+
+  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
+  const currentAuction = useAuctionStore((s) => s.currentAuction);
+  const isCurrentActive = isCurrent && isActive && currentAuction?.sessionId === item.sessionId;
 
   // 状态标签颜色映射
   const statusColors: Record<string, { bg: string; text: string }> = {
@@ -117,9 +123,19 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
 
           {/* 价格和操作 */}
           <div className="flex items-end justify-between mt-2">
-            <div className="flex items-baseline gap-1">
-              <span className="text-red-500 font-bold text-base">¥{formatPrice(displayPrice).replace('¥', '')}</span>
-              <span className="text-gray-400 text-[11px]">{priceLabel}</span>
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-red-500 font-bold text-base">¥{formatPrice(displayPrice).replace('¥', '')}</span>
+                <span className="text-gray-400 text-[11px]">{priceLabel}</span>
+              </div>
+              {isCurrentActive && countdownRemainingMs > 0 && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Clock className="w-3 h-3 text-red-400" />
+                  <span className={`text-[11px] font-mono font-medium ${countdownRemainingMs < 10000 ? 'text-red-500 animate-pulse' : 'text-red-400'}`}>
+                    {formatMsCompact(countdownRemainingMs)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 操作按钮：竞拍中显示"去出价"，其他所有状态显示"去看看" */}
