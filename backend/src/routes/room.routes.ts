@@ -244,9 +244,12 @@ export async function roomRoutes(app: FastifyInstance) {
         const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
         if (topBid) currentPrice = Number(topBid.amount);
       }
+      // Use session status only for active sessions; otherwise fall back to product status
+      // This prevents a re-listed (unsold->listed) product from showing as 'unsold' due to old session
+      const displayStatus = sess?.status === 'active' ? sess.status : row.productStatus;
       return {
         sessionId: sess?.sessionId ?? row.productId,
-        status: sess?.status ?? row.productStatus,
+        status: displayStatus,
         currentPrice,
         startedAt: sess?.startedAt ?? null,
         endedAt: sess?.endedAt ?? null,
