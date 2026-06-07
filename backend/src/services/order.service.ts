@@ -15,10 +15,10 @@ export const orderService = {
     if (role === 'user') return orderRepo.findByBuyer(userId, page, limit, status);
     const products = await productRepo.findAll({ merchant_id: userId, limit: 1000 });
     const productIds = products.items.map((p: any) => p.id);
-    return orderRepo.findByMerchantProductIds(productIds, page, limit, status);
+    return orderRepo.findByProductIds(productIds, page, limit, status);
   },
 
-  async getOrderDetail(orderId: number) {
+  async getOrderDetail(orderId: number, userId: number, role: 'merchant' | 'user') {
     const order = await orderRepo.findById(orderId);
     if (!order) throw new AppError('订单不存在', 404);
 
@@ -29,13 +29,27 @@ export const orderService = {
       order.cancelled_at = new Date();
     }
 
+    if (role === 'user') {
+      if (order.buyer_id !== userId) throw new AppError('无权查看此订单', 403);
+    } else if (role === 'merchant') {
+      const product = await productRepo.findById(order.product_id);
+      if (!product || product.merchant_id !== userId) throw new AppError('无权查看此订单', 403);
+    }
+
     return order;
   },
 
-  async mockPay(orderId: number) {
+  async mockPay(orderId: number, userId: number, role: 'merchant' | 'user') {
     const order = await orderRepo.findById(orderId);
     if (!order) throw new AppError('订单不存在', 404);
     if (order.status !== 'pending_payment') throw new AppError('订单状态不正确', 409);
+
+    if (role === 'user') {
+      if (order.buyer_id !== userId) throw new AppError('无权操作此订单', 403);
+    } else if (role === 'merchant') {
+      const product = await productRepo.findById(order.product_id);
+      if (!product || product.merchant_id !== userId) throw new AppError('无权操作此订单', 403);
+    }
 
     const now = new Date();
     const transactionId = generateTransactionId();
@@ -59,7 +73,7 @@ export const orderService = {
     };
   },
 
-  async updateStatus(orderId: number, newStatus: string) {
+  async updateStatus(orderId: number, newStatus: string, userId: number, role: 'merchant' | 'user') {
     const VALID_TRANSITIONS: Record<string, string[]> = {
       pending_payment: ['paid', 'cancelled'],
       paid: ['completed'],
@@ -69,6 +83,13 @@ export const orderService = {
 
     const order = await orderRepo.findById(orderId);
     if (!order) throw new AppError('订单不存在', 404);
+
+    if (role === 'user') {
+      if (order.buyer_id !== userId) throw new AppError('无权操作此订单', 403);
+    } else if (role === 'merchant') {
+      const product = await productRepo.findById(order.product_id);
+      if (!product || product.merchant_id !== userId) throw new AppError('无权操作此订单', 403);
+    }
 
     const allowed = VALID_TRANSITIONS[order.status] ?? [];
     if (!allowed.includes(newStatus)) {

@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { env } from '../../config/env.js';
 import { CircuitBreaker } from './circuit-breaker.js';
+import { logger } from '../../middleware/logger.js';
 
 const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 3,
@@ -10,8 +11,8 @@ const redis = new Redis(env.REDIS_URL, {
   },
 });
 
-redis.on('error', (err) => console.error('Redis error:', err));
-redis.on('connect', () => console.log('Redis connected'));
+redis.on('error', (err) => logger.error({ err }, 'Redis error'));
+redis.on('connect', () => logger.info('Redis connected'));
 
 // Circuit breaker instance for Redis
 export const redisCircuitBreaker = new CircuitBreaker({
@@ -69,12 +70,6 @@ export const cache = {
     redisCircuitBreaker.execute(
       () => redis.zrevrange(key, start, stop, 'WITHSCORES'),
       () => Promise.resolve([] as string[]),
-    ),
-
-  zrank: (key: string, member: string) =>
-    redisCircuitBreaker.execute(
-      () => redis.zrank(key, member),
-      () => Promise.resolve(null as number | null),
     ),
 
   zrevrank: (key: string, member: string) =>

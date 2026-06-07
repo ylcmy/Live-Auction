@@ -2,9 +2,13 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { connectSocket, getSocket } from '../services/socket';
 import { useAuthStore } from '../store/authStore';
+import type { WsEvents } from '../types/ws';
 
-// Track joined rooms globally to prevent duplicate joins
-const joinedRooms = new Set<number>();
+// Reference-counting map for joined rooms to prevent duplicate joins across components
+const joinedRoomCounts = new Map<number, number>();
+
+// Subscription registry to re-attach handlers after reconnect
+const subscriptionRegistry = new Map<number, Set<{ event: string; handler: (...args: any[]) => void }>>();
 
 export function useWebSocket(roomId: number | null) {
   const [isConnected, setIsConnected] = useState(false);
@@ -47,6 +51,17 @@ export function useWebSocket(roomId: number | null) {
       // Server will respond with 'auction:state' if there's an active session,
       // even if Redis cache was lost (falls back to MySQL).
       requestState();
+
+      // Re-attach all subscriptions to the new socket
+      const newSocket = socketRef.current || getSocket();
+      if (newSocket && roomId) {
+        const subs = subscriptionRegistry.get(roomId);
+        if (subs) {
+          for (const { event, handler } of subs) {
+            newSocket.on(event, handler as (...args: any[]) => void);
+          }
+        }
+      }
     };
 
     socket.on('connect', onConnect);
@@ -54,10 +69,12 @@ export function useWebSocket(roomId: number | null) {
     socket.on('reconnect_attempt', onReconnectAttempt);
     socket.on('reconnect', onReconnect);
 
-    if (!joinedRooms.has(roomId)) {
+    // Reference-counted join: only emit auction:join when count goes from 0 to 1
+    const count = joinedRoomCounts.get(roomId) || 0;
+    if (count === 0) {
       socket.emit('auction:join', { roomId });
-      joinedRooms.add(roomId);
     }
+    joinedRoomCounts.set(roomId, count + 1);
     myRoomRef.current = roomId;
 
     // If socket is already connected (e.g., shared from another page),
@@ -93,8 +110,14 @@ export function useWebSocket(roomId: number | null) {
 
     return () => {
       if (myRoomRef.current === roomId) {
-        socket.emit('auction:leave', { roomId });
-        joinedRooms.delete(roomId);
+        // Reference-counted leave: only emit auction:leave when count reaches 0
+        const currentCount = joinedRoomCounts.get(roomId) || 0;
+        if (currentCount <= 1) {
+          socket.emit('auction:leave', { roomId });
+          joinedRoomCounts.delete(roomId);
+        } else {
+          joinedRoomCounts.set(roomId, currentCount - 1);
+        }
         myRoomRef.current = null;
       }
       socket.off('connect', onConnect);
@@ -107,12 +130,38 @@ export function useWebSocket(roomId: number | null) {
     };
   }, [token, roomId, requestState]);
 
-  const subscribe = useCallback(<T>(event: string, handler: (data: T) => void) => {
-    // Use the shared socket instance directly to avoid stale ref issues
+  const subscribe = useCallback(<K extends keyof WsEvents>(
+    event: K,
+    handler: (data: WsEvents[K]) => void,
+  ) => {
+    const onEvent = (data: WsEvents[K]) => handler(data);
+
+    // Register in the subscription registry
+    const currentRoomId = myRoomRef.current;
+    if (currentRoomId) {
+      if (!subscriptionRegistry.has(currentRoomId)) {
+        subscriptionRegistry.set(currentRoomId, new Set());
+      }
+      subscriptionRegistry.get(currentRoomId)!.add({ event, handler: onEvent as (...args: any[]) => void });
+    }
+
+    // Attach to current socket
     const currentSocket = socketRef.current || getSocket();
-    currentSocket?.on(event, handler);
+    currentSocket?.on(event as string, onEvent as (...args: any[]) => void);
+
     return () => {
-      currentSocket?.off(event, handler);
+      const s = socketRef.current || getSocket();
+      s?.off(event as string, onEvent as (...args: any[]) => void);
+      // Remove from registry
+      if (currentRoomId && subscriptionRegistry.has(currentRoomId)) {
+        const subs = subscriptionRegistry.get(currentRoomId)!;
+        for (const sub of subs) {
+          if (sub.event === event && sub.handler === onEvent) {
+            subs.delete(sub);
+            break;
+          }
+        }
+      }
     };
   }, []);
 

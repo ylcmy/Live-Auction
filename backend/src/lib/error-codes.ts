@@ -1,0 +1,36 @@
+/**
+ * Centralized error code definitions.
+ * Format: HTTP_STATUS * 100 + SEQUENCE
+ */
+export const ErrorCodes = {
+  // 400 Bad Request
+  INVALID_PARAMS: 40000,
+  INVALID_PRODUCT_ID: 40001,
+  INVALID_ORDER_ID: 40002,
+
+  // 403 Forbidden
+  BID_OWN_PRODUCT: 40300,
+  NOT_ORDER_OWNER: 40301,
+
+  // 404 Not Found
+  PRODUCT_NOT_FOUND: 40400,
+  AUCTION_NOT_FOUND: 40401,
+  ORDER_NOT_FOUND: 40402,
+
+  // 409 Conflict
+  AUCTION_NOT_ACTIVE: 40900,
+  BID_DUPLICATE: 40901,
+  BID_STALE_PRICE: 40902,
+  BID_CEILING_REACHED: 40903,
+  ROOM_ALREADY_EXISTS: 40904,
+  AUCTION_IN_PROGRESS: 40905,
+
+  // 429 Too Many Requests
+  BID_RATE_LIMITED: 42900,
+
+  // 500 Internal Server Error
+  INTERNAL_ERROR: 50000,
+  RULE_MISSING: 50001,
+} as const;
+
+export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];

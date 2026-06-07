@@ -1,15 +1,7 @@
 import { db } from '../infrastructure/db/knex.js';
+import { paginateQuery } from '../lib/paginate.js';
 
 const ACTIVE_STATUSES = ['pending', 'active'];
-
-/**
- * Determine active_room_id value based on status:
- * - When status is active/pending → set to room_id (enforces unique constraint)
- * - When status is ended/cancelled/unsold → set to NULL (releases the slot)
- */
-function activeRoomIdForStatus(status: string, roomId: number): number | null {
-  return ACTIVE_STATUSES.includes(status) ? roomId : null;
-}
 
 export const auctionSessionRepo = {
   async create(data: { product_id: number; rule_id: number; room_id: number; current_price?: number }) {
@@ -46,7 +38,6 @@ export const auctionSessionRepo = {
       .first();
   },
   async updateStatus(id: number, status: string, extra: Record<string, any> = {}) {
-    // If we have room_id in extra or can derive it, update active_room_id accordingly
     const update: Record<string, any> = { status, ...extra, updated_at: db.fn.now() };
 
     // When transitioning away from active/pending, clear active_room_id
@@ -71,8 +62,6 @@ export const auctionSessionRepo = {
     let query = db('auction_sessions');
     if (room_id) query = query.where({ room_id });
     if (status) query = query.where({ status });
-    const total = await query.clone().clearSelect().count('* as count').first();
-    const items = await query.orderBy('created_at', 'desc').offset((page - 1) * limit).limit(limit);
-    return { items, total: Number((total as any)?.count || 0), page, limit };
+    return paginateQuery(query, page, limit, { orderBy: ['created_at', 'desc'] });
   },
 };

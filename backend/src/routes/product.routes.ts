@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { productService } from '../services/product.service.js';
-import { replySuccess } from '../lib/reply.js';
+import { replySuccess, replyError } from '../lib/reply.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 export async function productRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authMiddleware);
@@ -50,16 +51,16 @@ export async function productRoutes(app: FastifyInstance) {
     const query = req.query as any;
     const data = await productService.getProducts(req.auth.userId, {
       status: query.status,
-      page: parseInt(query.page) || 1,
+      page: Math.max(1, parseInt(query.page) || 1),
       limit: parseInt(query.limit) || 20,
     });
     return replySuccess(reply, data);
   });
 
   app.get('/api/products/:id', async (req, reply) => {
-    const data = await productService.getProductById(
-      Number((req.params as any).id),
-    );
+    const id = Number((req.params as any).id);
+    if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PRODUCT_ID, '无效的商品 ID', 400);
+    const data = await productService.getProductById(id);
     return replySuccess(reply, data);
   });
 
@@ -85,11 +86,9 @@ export async function productRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const body = req.body as any;
-      const data = await productService.updateRules(
-        req.auth.userId,
-        Number((req.params as any).id),
-        body,
-      );
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PRODUCT_ID, '无效的商品 ID', 400);
+      const data = await productService.updateRules(req.auth.userId, id, body);
       return replySuccess(reply, data);
     },
   );
@@ -109,11 +108,9 @@ export async function productRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const body = req.body as any;
-      const data = await productService.updateStatus(
-        req.auth.userId,
-        Number((req.params as any).id),
-        body.status,
-      );
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PRODUCT_ID, '无效的商品 ID', 400);
+      const data = await productService.updateStatus(req.auth.userId, id, body.status);
       return replySuccess(reply, data);
     },
   );

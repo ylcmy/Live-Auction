@@ -12,8 +12,24 @@ import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { broadcastToRoom } from '../ws/rooms.js';
 import { broadcastRoomListUpdate } from '../ws/index.js';
 import { canTransition } from '../domain/auction.js';
+import type { AuctionStatus } from '../domain/auction.js';
 import { AuctionTimerManager } from './auction-timer-manager.js';
 import type { Server } from 'socket.io';
+import type { Knex } from 'knex';
+
+interface AuctionSessionRow {
+  id: number;
+  product_id: number;
+  room_id: number;
+  status: string;
+  current_price: number | string;
+  started_at: Date | string;
+  ended_at: Date | string | null;
+  winner_id: number | null;
+  extension_count: number;
+  version: number;
+  order_created?: boolean;
+}
 
 export class AuctionService {
   constructor(
@@ -366,8 +382,8 @@ export class AuctionService {
    */
   private async _doSettleCore(
     sessionId: number,
-    session: any,
-    trx?: any,
+    session: AuctionSessionRow,
+    trx?: Knex.Transaction,
   ): Promise<{
     winner: { userId: number; userNickname: string; finalPrice: number } | null;
     leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
@@ -423,7 +439,7 @@ export class AuctionService {
     const leaderboard = await bidService.getLeaderboard(sessionId, 0);
 
     // Enforce state machine transition
-    if (!canTransition(session.status as any, newStatus as any)) {
+    if (!canTransition(session.status as AuctionStatus, newStatus as AuctionStatus)) {
       logger.warn({ event: 'invalid_transition', sessionId, from: session.status, to: newStatus }, 'Invalid state transition blocked');
       return { winner: null, leaderboard: [], orderId: null };
     }
@@ -521,7 +537,7 @@ export class AuctionService {
         throw new AppError('该竞拍已结束', 409);
       }
 
-      if (!canTransition(session.status as any, 'cancelled')) {
+      if (!canTransition(session.status as AuctionStatus, 'cancelled')) {
         throw new AppError(`竞拍状态不可从 ${session.status} 变为 cancelled`, 409);
       }
 
@@ -567,7 +583,7 @@ export class AuctionService {
       throw new AppError('该竞拍已结束', 409);
     }
 
-    if (!canTransition(session.status as any, 'cancelled')) {
+    if (!canTransition(session.status as AuctionStatus, 'cancelled')) {
       throw new AppError(`竞拍状态不可从 ${session.status} 变为 cancelled`, 409);
     }
 

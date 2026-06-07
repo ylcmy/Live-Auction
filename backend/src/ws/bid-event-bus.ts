@@ -92,7 +92,6 @@ export class BidEventBus extends EventEmitter {
                 userId: event.previousTopBidderId,
                 newAmount: event.amount,
               });
-              break;
             }
           }
         }

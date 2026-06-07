@@ -226,7 +226,7 @@ describe('_processBidRedis (CAS-based)', () => {
   });
 
   it('Rate limit exceeded: returns 42900', async () => {
-    mockRedis.zcard.mockResolvedValue(5); // At limit
+    mockCache.zcard.mockResolvedValue(5); // At limit (now uses cache instead of redis)
 
     const result = await bidService._processBidRedis(100, 2, 'key-005');
 

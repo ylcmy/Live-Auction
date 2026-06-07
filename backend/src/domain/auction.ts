@@ -16,13 +16,3 @@ const VALID_TRANSITIONS: Record<AuctionStatus, AuctionStatus[]> = {
 export function canTransition(from: AuctionStatus, to: AuctionStatus): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
-
-export function checkCeilingPrice(
-  currentPrice: number,
-  bidIncrement: number,
-  ceilingPrice: number | null,
-): boolean {
-  if (ceilingPrice === null || ceilingPrice === undefined) return false;
-  const nextBid = currentPrice + bidIncrement;
-  return nextBid >= ceilingPrice;
-}

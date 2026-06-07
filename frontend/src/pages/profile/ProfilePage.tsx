@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { fadeUp } from '../../lib/animations';
 import { UserCircle, Pencil, Package, RefreshCw, LogOut, ChevronRight } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
@@ -14,11 +15,6 @@ import {
 } from '../../design-system/components/ui/dialog';
 import EditProfileSheet from './EditProfileSheet';
 import type { ApiResponse } from '../../types/api';
-
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
-};
 
 export default function ProfilePage() {
   const navigate = useNavigate();

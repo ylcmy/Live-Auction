@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../middleware/auth.js';
 import { orderService } from '../services/order.service.js';
-import { replySuccess } from '../lib/reply.js';
+import { replySuccess, replyError } from '../lib/reply.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 export async function orderRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authMiddleware);
@@ -11,7 +12,7 @@ export async function orderRoutes(app: FastifyInstance) {
     const data = await orderService.getOrders(
       req.auth.userId,
       req.auth.role,
-      parseInt(query.page) || 1,
+      Math.max(1, parseInt(query.page) || 1),
       parseInt(query.limit) || 20,
       query.status,
     );
@@ -19,18 +20,24 @@ export async function orderRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/orders/:id', async (req, reply) => {
-    const data = await orderService.getOrderDetail(Number((req.params as any).id));
+    const id = Number((req.params as any).id);
+    if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的订单 ID', 400);
+    const data = await orderService.getOrderDetail(id, req.auth.userId, req.auth.role);
     return replySuccess(reply, data);
   });
 
   app.post('/api/orders/:id/pay', async (req, reply) => {
-    const data = await orderService.mockPay(Number((req.params as any).id));
+    const id = Number((req.params as any).id);
+    if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的订单 ID', 400);
+    const data = await orderService.mockPay(id, req.auth.userId, req.auth.role);
     return replySuccess(reply, data);
   });
 
   app.put('/api/orders/:id/status', async (req, reply) => {
     const { status } = req.body as { status: string };
-    const data = await orderService.updateStatus(Number((req.params as any).id), status);
+    const id = Number((req.params as any).id);
+    if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的订单 ID', 400);
+    const data = await orderService.updateStatus(id, status, req.auth.userId, req.auth.role);
     return replySuccess(reply, data);
   });
 }

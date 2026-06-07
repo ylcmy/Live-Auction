@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+
+const BID_ERROR_AUTO_DISMISS_MS = 3000;
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Crown } from 'lucide-react';
 import {
@@ -92,7 +94,7 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
   // Auto-clear bid error after 3 seconds
   useEffect(() => {
     if (!bidError) return;
-    const timer = setTimeout(clearBidError, 3000);
+    const timer = setTimeout(clearBidError, BID_ERROR_AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [bidError, clearBidError]);
 

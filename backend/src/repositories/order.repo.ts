@@ -1,4 +1,5 @@
 import { db } from '../infrastructure/db/knex.js';
+import { paginateQuery } from '../lib/paginate.js';
 
 export const orderRepo = {
   async create(data: { session_id: number; buyer_id: number; product_id: number; final_price: number }) {
@@ -29,12 +30,10 @@ export const orderRepo = {
     if (status) {
       q = q.where('o.status', status);
     }
-    const total = await q.clone().clearSelect().count('* as cnt').first();
-    const items = await q.orderBy('o.created_at', 'desc').offset((page - 1) * limit).limit(limit);
-    return { items, total: Number((total as any)?.cnt || 0), page, limit };
+    return paginateQuery(q, page, limit, { orderBy: ['o.created_at', 'desc'] });
   },
 
-  async findByMerchantProductIds(productIds: number[], page = 1, limit = 20, status?: string) {
+  async findByProductIds(productIds: number[], page = 1, limit = 20, status?: string) {
     if (productIds.length === 0) return { items: [], total: 0, page, limit };
     let q = db('orders as o')
       .leftJoin('products as p', 'p.id', 'o.product_id')
@@ -44,9 +43,7 @@ export const orderRepo = {
     if (status) {
       q = q.where('o.status', status);
     }
-    const total = await q.clone().clearSelect().count('* as cnt').first();
-    const items = await q.orderBy('o.created_at', 'desc').offset((page - 1) * limit).limit(limit);
-    return { items, total: Number((total as any)?.cnt || 0), page, limit };
+    return paginateQuery(q, page, limit, { orderBy: ['o.created_at', 'desc'] });
   },
 
   async updateStatus(id: number, status: string, extra: Record<string, any> = {}) {

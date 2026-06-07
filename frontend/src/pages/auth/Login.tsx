@@ -1,23 +1,13 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { stagger, fadeUp } from '../../lib/animations';
 import { useAuthStore } from '../../store/authStore';
 import { decodeJwtPayload } from '../../lib/jwt';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
 import { Eye, EyeOff } from 'lucide-react';
-
-const stagger = {
-  animate: {
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
-};
 
 const DEMO_ACCOUNTS: Record<'merchant' | 'user', { username: string; password: string }> = {
   merchant: { username: 'merchant_1', password: 'pass1234' },

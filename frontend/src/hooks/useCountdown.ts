@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { CountdownSync } from '../types/ws';
+import type { CountdownSync, ExtendSync } from '../types/ws';
 
 export interface UseCountdownOptions {
   onTick?: (remainingMs: number, isUrgent: boolean) => void;
@@ -35,12 +35,14 @@ export function useCountdown(options?: UseCountdownOptions) {
   }, [syncCounter]);
 
   const sync = useCallback((cs: CountdownSync) => {
-    endTimeRef.current = cs.serverTime + cs.remainingMs;
+    const offset = Date.now() - cs.serverTime; // client - server offset
+    endTimeRef.current = Date.now() + cs.remainingMs - offset;
     setSyncCounter((c) => c + 1);
   }, []);
 
-  const extend = useCallback((newRemainingMs: number) => {
-    endTimeRef.current = Date.now() + newRemainingMs;
+  const extend = useCallback((es: ExtendSync) => {
+    const offset = Date.now() - es.serverTime;
+    endTimeRef.current = Date.now() + es.extendMs - offset;
     setSyncCounter((c) => c + 1);
   }, []);
 

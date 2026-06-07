@@ -27,6 +27,7 @@ import { useCountdown } from '../../hooks/useCountdown';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatMsCompact } from '../../lib/format';
 import type { Product, PaginatedData } from '../../types/api';
+import type { AuctionState, CountdownSync, AuctionStartedEvent, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent } from '../../types/ws';
 
 type StatusFilter = 'all' | 'pending' | 'listed' | 'active' | 'ended' | 'unsold' | 'deleted';
 
@@ -133,7 +134,7 @@ export default function ProductList() {
   }, [countdownSync, sync]);
 
   useEffect(() => {
-    if (extendMs && extendMs > 0) {
+    if (extendMs && extendMs.extendMs > 0) {
       extend(extendMs);
       useAuctionStore.setState({ extendMs: null });
     }
@@ -143,7 +144,7 @@ export default function ProductList() {
   useEffect(() => {
     if (!isConnected || !roomId) return;
     const unsubs = [
-      subscribe<any>('auction:state', (data: any) => {
+      subscribe('auction:state', (data: AuctionState) => {
         if (data.status === 'active') {
           setAuction(data);
           if (data.remainingMs != null) {
@@ -152,18 +153,18 @@ export default function ProductList() {
         }
         fetchProducts();
       }),
-      subscribe<any>('bid:new', (data: { sessionId: number; amount: number }) => {
+      subscribe('bid:new', (data) => {
         updateAuctionPrice(data.sessionId, data.amount);
         fetchProducts();
       }),
-      subscribe<any>('rank:update', (data: any) => setLeaderboard(data)),
-      subscribe<any>('countdown:sync', (data: any) => setCountdown(data)),
-      subscribe<any>('countdown:extend', (data: any) => triggerExtend(data.extendSeconds * 1000)),
-      subscribe<any>('room:count', (data: any) => {
+      subscribe('rank:update', (data: LeaderboardEntry[]) => setLeaderboard(data)),
+      subscribe('countdown:sync', (data: CountdownSync) => setCountdown(data)),
+      subscribe('countdown:extend', (data: CountdownExtendEvent) => triggerExtend({ sessionId: data.sessionId, extendMs: data.extendSeconds * 1000, serverTime: data.serverTime ?? Date.now() })),
+      subscribe('room:count', (data) => {
         setOnlineCount(data.onlineCount);
         setParticipantCount(data.participantCount);
       }),
-      subscribe<any>('auction:started', (data: any) => {
+      subscribe('auction:started', (data: AuctionStartedEvent) => {
         setAuction({
           sessionId: data.sessionId,
           status: 'active',
@@ -187,7 +188,7 @@ export default function ProductList() {
         }
         fetchProducts();
       }),
-      subscribe<any>('auction:ended', (data: any) => {
+      subscribe('auction:ended', (data: AuctionEndResult) => {
         updateAuctionStatus(data.sessionId, data.status);
         fetchProducts();
       }),

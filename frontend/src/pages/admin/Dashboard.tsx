@@ -47,8 +47,8 @@ export default function Dashboard() {
     async function fetchData() {
       try {
         const [productsRes, ordersRes] = await Promise.all([
-          api.get<{ data: { items: Product[]; total: number } }>('/products', { page: '1', limit: '100' }),
-          api.get<{ data: { items: Order[]; total: number } }>('/orders', { page: '1', limit: '10' }),
+          api.get<{ data: { items: Product[]; total: number } }>('/products', { page: 1, limit: 100 }),
+          api.get<{ data: { items: Order[]; total: number } }>('/orders', { page: 1, limit: 100 }),
         ]);
         const productData = productsRes?.data ?? { items: [], total: 0 };
         const orderData = ordersRes?.data ?? { items: [], total: 0 };

@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
-import { ORDER_STATUS_MAP, useOrderCountdown } from '../../lib/order-utils';
+import { getOrderDisplayStatus } from '../../lib/order-utils';
+import { useOrderCountdown } from '../../hooks/useOrderCountdown';
+import { ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import { ArrowLeft, Package, Clock, Timer, CreditCard, CheckCircle2 } from 'lucide-react';
@@ -163,9 +165,9 @@ function OrderCard({
   payingId: number | null;
 }) {
   const navigate = useNavigate();
-  const isExpired = order.status === 'pending_payment' && new Date(order.expireAt) < new Date();
-  const displayStatus = isExpired ? 'expired' : order.status;
-  const statusConfig = ORDER_STATUS_MAP[displayStatus as OrderStatus] ?? ORDER_STATUS_MAP.pending_payment;
+  const displayStatus = getOrderDisplayStatus(order);
+  const isExpired = displayStatus === 'expired';
+  const statusConfig = ORDER_STATUS_CONFIG[displayStatus as keyof typeof ORDER_STATUS_CONFIG] ?? ORDER_STATUS_CONFIG.pending_payment;
   const countdown = useOrderCountdown(order.status === 'pending_payment' && !isExpired ? order.expireAt : null);
 
   return (

@@ -1,4 +1,5 @@
 import { db } from '../infrastructure/db/knex.js';
+import { paginateQuery } from '../lib/paginate.js';
 
 export const productRepo = {
   async create(data: {
@@ -26,6 +27,7 @@ export const productRepo = {
   ) {
     const { merchant_id, status, page = 1, limit = 20 } = filters;
 
+    // Count query without joins for efficiency
     let countQuery = db('products');
     if (merchant_id) countQuery = countQuery.where({ merchant_id });
     if (status) {
@@ -33,8 +35,8 @@ export const productRepo = {
     } else {
       countQuery = countQuery.whereNot({ status: 'deleted' });
     }
-    const total = await countQuery.count('* as count').first();
 
+    // Rows query with joins for full data
     let rowsQuery = db('products')
       .leftJoin('auction_rules', 'products.id', 'auction_rules.product_id')
       .leftJoin('auction_sessions as s', function () {
@@ -70,12 +72,12 @@ export const productRepo = {
       rowsQuery = rowsQuery.whereNot({ 'products.status': 'deleted' });
     }
 
-    const rows = await rowsQuery
-      .orderBy('products.created_at', 'desc')
-      .offset((page - 1) * limit)
-      .limit(limit);
+    const result = await paginateQuery(rowsQuery, page, limit, {
+      orderBy: ['products.created_at', 'desc'],
+      countQueryBuilder: countQuery,
+    });
 
-    const items = rows.map((row: any) => {
+    const items = result.items.map((row: any) => {
       const product = { ...row };
       if (row.rule_id) {
         product.rule = {
@@ -108,9 +110,9 @@ export const productRepo = {
 
     return {
       items,
-      total: Number((total as any)?.count || 0),
-      page,
-      limit,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
     };
   },
 
