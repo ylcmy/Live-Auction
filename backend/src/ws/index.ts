@@ -50,6 +50,11 @@ export function initWebSocket(httpServer: HttpServer) {
     cors: { origin: '*', credentials: true },
     pingInterval: 25000,
     pingTimeout: 5000,
+    // 高并发优化: 关闭压缩减少 CPU 开销，限制消息大小，缩短连接超时
+    perMessageDeflate: false,
+    httpCompression: false,
+    maxHttpBufferSize: 1e6,
+    connectTimeout: 10000,
   });
 
   // Inject io instance into auction service for settlement broadcasts

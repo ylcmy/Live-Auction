@@ -1,8 +1,15 @@
 /**
- * 批次出价压测脚本
+ * 批次出价压测脚本（增强版）
  *
  * 每批所有用户在 1s 内陆续出价，等全部响应后进入下一批
  * 用法: node bid-stress-test.cjs [concurrent_users] [batches] [sessionId]
+ *
+ * 指标覆盖:
+ *   - 出价响应时间 (P50/P90/P95/P99)
+ *   - 出价成功率 / QPS
+ *   - 排名正确性校验 (金额降序 / 排名无重复 / 排名连续)
+ *   - 广播同步延迟 (bid:accepted → rank:update)
+ *   - 出价幂等率 (重复幂等键验证)
  *
  * 测试环境: Docker MySQL 3307 + Redis 6380 + 后端 3002
  */
@@ -16,6 +23,7 @@ const CONCURRENT = parseInt(process.argv[2] || '50', 10);
 const BATCHES = parseInt(process.argv[3] || '5', 10);
 const SESSION_ID = parseInt(process.argv[4] || '380', 10);
 const BATCH_SPREAD_MS = 1000; // 每批出价在 1s 内陆续发出
+const RANK_VALIDATION_WAIT_MS = 5000; // 出价完成后等待 rank:update 广播的时间
 
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 500 });
 
@@ -53,7 +61,7 @@ async function registerAndLogin(vuId) {
 }
 
 // ── Connect a single VU and return the socket ───────────────────────────────
-function connectVU(token) {
+function connectVU(token, lastLeaderboard) {
   return new Promise((resolve, reject) => {
     const socket = io(TARGET, {
       transports: ['websocket'],
@@ -63,6 +71,15 @@ function connectVU(token) {
 
     socket.on('connect', () => {
       socket.emit('auction:join', { roomId: 1 });
+
+      // 监听 rank:update 广播，收集排行榜数据
+      socket.on('rank:update', (data) => {
+        if (Array.isArray(data)) {
+          lastLeaderboard.length = 0;
+          lastLeaderboard.push(...data);
+        }
+      });
+
       // Wait for join to settle
       setTimeout(() => resolve(socket), 300);
     });
@@ -75,17 +92,36 @@ function connectVU(token) {
 }
 
 // ── Send one bid and return a promise that resolves with the result ─────────
-function sendBid(socket, batchIndex, vuIndex) {
+function sendBid(socket, batchIndex, vuIndex, overrideKey) {
   return new Promise((resolve) => {
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = overrideKey || crypto.randomUUID();
     const startTime = process.hrtime.bigint();
+    let rankUpdateReceivedAt = null;
+
+    // 注册一次性 rank:update 监听器，捕获出价后首次排名更新
+    const rankHandler = () => {
+      if (!rankUpdateReceivedAt) {
+        rankUpdateReceivedAt = process.hrtime.bigint();
+      }
+    };
+    socket.once('rank:update', rankHandler);
 
     const acceptHandler = (data) => {
       if (data.idempotencyKey === idempotencyKey) {
-        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        const acceptedAt = process.hrtime.bigint();
+        const elapsed = Number(acceptedAt - startTime) / 1e6;
         socket.off('bid:accepted', acceptHandler);
         socket.off('bid:rejected', rejectHandler);
-        resolve({ elapsed, accepted: true, idempotencyKey, batch: batchIndex, vu: vuIndex });
+        // rank:update 可能还未到达，延迟清理
+        setTimeout(() => socket.off('rank:update', rankHandler), 2000);
+        resolve({
+          elapsed, accepted: true, idempotencyKey,
+          batch: batchIndex, vu: vuIndex,
+          acceptedAt, isDuplicate: !!overrideKey,
+          _getRankSyncMs: () => rankUpdateReceivedAt
+            ? Number(rankUpdateReceivedAt - acceptedAt) / 1e6
+            : null,
+        });
       }
     };
 
@@ -94,7 +130,13 @@ function sendBid(socket, batchIndex, vuIndex) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
         socket.off('bid:accepted', acceptHandler);
         socket.off('bid:rejected', rejectHandler);
-        resolve({ elapsed, accepted: false, idempotencyKey, batch: batchIndex, vu: vuIndex, reason: data.reason });
+        setTimeout(() => socket.off('rank:update', rankHandler), 2000);
+        resolve({
+          elapsed, accepted: false, idempotencyKey,
+          batch: batchIndex, vu: vuIndex, reason: data.reason,
+          isDuplicate: !!overrideKey,
+          _getRankSyncMs: () => null,
+        });
       }
     };
 
@@ -106,14 +148,23 @@ function sendBid(socket, batchIndex, vuIndex) {
     setTimeout(() => {
       socket.off('bid:accepted', acceptHandler);
       socket.off('bid:rejected', rejectHandler);
-      resolve({ elapsed: 0, accepted: false, idempotencyKey, batch: batchIndex, vu: vuIndex, reason: 'timeout' });
+      socket.off('rank:update', rankHandler);
+      resolve({
+        elapsed: 0, accepted: false, idempotencyKey,
+        batch: batchIndex, vu: vuIndex, reason: 'timeout',
+        isDuplicate: !!overrideKey,
+        _getRankSyncMs: () => null,
+      });
     }, 10000);
   });
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log(`\n=== 批次出价压测 ===`);
+  // 全局排行榜收集器（任意 socket 的最后一次 rank:update 数据）
+  const lastLeaderboard = [];
+
+  console.log(`\n=== 批次出价压测 (增强版) ===`);
   console.log(`目标: ${TARGET}`);
   console.log(`并发用户: ${CONCURRENT}`);
   console.log(`出价批次: ${BATCHES}`);
@@ -132,7 +183,7 @@ async function main() {
   for (let i = 0; i < CONCURRENT; i++) {
     try {
       const token = await registerAndLogin(i);
-      const socket = await connectVU(token);
+      const socket = await connectVU(token, lastLeaderboard);
       sockets.push({ socket, vuIndex: i });
     } catch (e) {
       console.log(`  VU ${i} 连接失败: ${e.message}`);
@@ -150,18 +201,25 @@ async function main() {
     return;
   }
 
-  // Phase 2: Batch bidding
+  // Phase 2: Batch bidding (with duplicate key for idempotency testing)
   console.log('\n--- 阶段 2: 批次出价 ---');
   const allResults = [];
+  const duplicateKey = crypto.randomUUID();
+  let duplicateKeyUsed = 0;
 
   for (let batch = 0; batch < BATCHES; batch++) {
     const batchStart = process.hrtime.bigint();
 
     // Each VU sends a bid, staggered within BATCH_SPREAD_MS
     const bidPromises = sockets.map(({ socket, vuIndex }, idx) => {
-      // Spread bids evenly across BATCH_SPREAD_MS
       const delay = Math.floor((idx / connectedCount) * BATCH_SPREAD_MS);
-      return new Promise(r => setTimeout(r, delay)).then(() => sendBid(socket, batch, vuIndex));
+
+      // 确定性重复键选择: 每 20 个 VU 选 1 个，最多 3 个
+      const shouldDuplicate = (idx % 20 === 0) && duplicateKeyUsed < 3;
+      const overrideKey = shouldDuplicate ? duplicateKey : undefined;
+      if (shouldDuplicate) duplicateKeyUsed++;
+
+      return new Promise(r => setTimeout(r, delay)).then(() => sendBid(socket, batch, vuIndex, overrideKey));
     });
 
     const batchResults = await Promise.all(bidPromises);
@@ -176,6 +234,60 @@ async function main() {
     if (batch < BATCHES - 1) {
       await new Promise(r => setTimeout(r, 1000));
     }
+  }
+
+  // Phase 3: 等待 rank:update 广播到达 + 收集精确延迟
+  console.log('\n--- 阶段 3: 广播同步延迟测量 ---');
+  await new Promise(r => setTimeout(r, RANK_VALIDATION_WAIT_MS));
+
+  const lastBatchResults = allResults.filter(r => r.batch === BATCHES - 1);
+  const preciseSyncDelays = [];
+  let syncReceivedCount = 0;
+
+  for (const r of lastBatchResults) {
+    if (typeof r._getRankSyncMs === 'function') {
+      const delay = r._getRankSyncMs();
+      if (delay !== null) {
+        preciseSyncDelays.push(delay);
+        syncReceivedCount++;
+      }
+    }
+  }
+
+  const allSocketsReceivedRankUpdate = syncReceivedCount >= lastBatchResults.length * 0.95;
+  console.log(`  最后一批出价数: ${lastBatchResults.length}`);
+  console.log(`  收到 rank:update 的出价数: ${syncReceivedCount}/${lastBatchResults.length}`);
+  console.log(`  全部在 ${RANK_VALIDATION_WAIT_MS}ms 窗口内: ${allSocketsReceivedRankUpdate ? '✅' : '❌'}`);
+
+  // Phase 4: 排名正确性校验
+  console.log('\n--- 阶段 4: 排名正确性校验 ---');
+
+  let rankingCorrect = false;
+  let duplicateRanks = 0;
+  let rankEntries = 0;
+  let rankSequential = false;
+
+  if (lastLeaderboard.length > 0) {
+    rankEntries = lastLeaderboard.length;
+
+    // 验证 1: 金额降序排列
+    const amounts = lastLeaderboard.map(e => e.amount);
+    rankingCorrect = amounts.every((val, i, arr) => i === 0 || arr[i - 1] >= val);
+
+    // 验证 2: 无重复排名
+    const rankSet = new Set(lastLeaderboard.map(e => e.rank));
+    duplicateRanks = lastLeaderboard.length - rankSet.size;
+
+    // 验证 3: 排名连续 (1,2,3,...)
+    const ranks = lastLeaderboard.map(e => e.rank).sort((a, b) => a - b);
+    rankSequential = ranks.every((r, i) => r === i + 1);
+
+    console.log(`  排行榜条目数: ${rankEntries}`);
+    console.log(`  金额降序排列: ${rankingCorrect ? '✅' : '❌'}`);
+    console.log(`  排名无重复: ${duplicateRanks === 0 ? '✅' : `❌ (${duplicateRanks} duplicates)`}`);
+    console.log(`  排名连续: ${rankSequential ? '✅' : '❌'}`);
+  } else {
+    console.log('  ⚠️ 未收到 rank:update 广播，无法验证排名正确性');
   }
 
   // Disconnect all
@@ -196,7 +308,6 @@ async function main() {
 
   const percentile = (pct) => times[Math.min(Math.floor(times.length * pct), times.length - 1)];
   const avg = times.reduce((s, t) => s + t, 0) / times.length;
-  // QPS based on actual bidding phase only (exclude connect/disconnect)
   const biddingDuration = times.length > 0 ? (times[times.length - 1] - times[0]) / 1000 : 0;
   const qps = biddingDuration > 0 ? results.length / biddingDuration : 0;
 
@@ -244,16 +355,113 @@ async function main() {
     });
   }
 
+  // ── 幂等性统计 ────────────────────────────────────────────────────────────
+  const duplicateResults = allResults.filter(r => r.isDuplicate);
+  const duplicateAccepted = duplicateResults.filter(r => r.accepted);
+  const idempotencyViolations = duplicateAccepted.length > 1
+    ? duplicateAccepted.length - 1  // 第一次 accepted 正常，后续是违规
+    : 0;
+
+  console.log(`\n--- 幂等性验证 ---`);
+  console.log(`  重复键出价数: ${duplicateResults.length}`);
+  console.log(`  重复键接受数: ${duplicateAccepted.length}`);
+  console.log(`  幂等违规数: ${idempotencyViolations}`);
+  console.log(`  幂等合规率: ${duplicateResults.length > 0
+    ? ((1 - idempotencyViolations / duplicateResults.length) * 100).toFixed(1) + '%'
+    : 'N/A'}`);
+
+  // ── 广播同步延迟统计（精确测量）────────────────────────────────────────────
+  console.log(`\n--- 广播同步延迟 ---`);
+  console.log(`  最后一批出价数: ${lastBatchResults.length}`);
+  console.log(`  收到 rank:update 的出价数: ${syncReceivedCount}/${lastBatchResults.length}`);
+  if (preciseSyncDelays.length > 0) {
+    const sortedDelays = [...preciseSyncDelays].sort((a, b) => a - b);
+    const syncP50 = sortedDelays[Math.floor(sortedDelays.length * 0.5)];
+    const syncP95 = sortedDelays[Math.min(Math.floor(sortedDelays.length * 0.95), sortedDelays.length - 1)];
+    const syncP99 = sortedDelays[Math.min(Math.floor(sortedDelays.length * 0.99), sortedDelays.length - 1)];
+    const syncMax = sortedDelays[sortedDelays.length - 1];
+    console.log(`  同步延迟 P50: ${syncP50.toFixed(1)}ms`);
+    console.log(`  同步延迟 P95: ${syncP95.toFixed(1)}ms`);
+    console.log(`  同步延迟 P99: ${syncP99.toFixed(1)}ms`);
+    console.log(`  同步延迟 Max: ${syncMax.toFixed(1)}ms`);
+    console.log(`  全部 <1s: ${syncMax < 1000 ? '✅' : '❌'}`);
+    console.log(`  全部 <${RANK_VALIDATION_WAIT_MS}ms 窗口: ${syncMax < RANK_VALIDATION_WAIT_MS ? '✅' : '❌'}`);
+  } else {
+    console.log(`  ⚠️ 未收集到精确同步延迟数据`);
+  }
+
+  // ── 排名正确性汇总 ────────────────────────────────────────────────────────
+  console.log(`\n--- 排名正确性汇总 ---`);
+  console.log(`  排行榜条目数: ${rankEntries}`);
+  console.log(`  金额降序排列: ${rankingCorrect ? '✅' : '❌'}`);
+  console.log(`  排名无重复: ${duplicateRanks === 0 ? '✅' : '❌'}`);
+  console.log(`  排名连续: ${rankSequential ? '✅' : '❌'}`);
+
   // Write CSV
   const fs = require('fs');
   const path = require('path');
   const csvPath = path.join(__dirname, 'reports', 'bid-stress-results.csv');
-  const csvHeader = 'batch,vu,elapsed_ms,accepted,reason,idempotencyKey\n';
+  const csvHeader = 'batch,vu,elapsed_ms,accepted,reason,idempotencyKey,isDuplicate\n';
   const csvLines = allResults.map(r =>
-    `${r.batch},${r.vu},${r.elapsed.toFixed(2)},${r.accepted},${r.reason || ''},${r.idempotencyKey || ''}`
+    `${r.batch},${r.vu},${r.elapsed.toFixed(2)},${r.accepted},${r.reason || ''},${r.idempotencyKey || ''},${r.isDuplicate || false}`
   ).join('\n');
   fs.writeFileSync(csvPath, csvHeader + csvLines + '\n');
   console.log(`\n详细数据已保存: ${csvPath}`);
+
+  // Write JSON summary
+  const sortedSyncDelays = preciseSyncDelays.length > 0 ? [...preciseSyncDelays].sort((a, b) => a - b) : [];
+  const summaryPath = path.join(__dirname, 'reports', `bid-stress-${CONCURRENT}vu-summary.json`);
+  const summary = {
+    config: { concurrent: CONCURRENT, batches: BATCHES, sessionId: SESSION_ID },
+    timestamp: new Date().toISOString(),
+    connection: {
+      success: connectedCount,
+      total: CONCURRENT,
+      rate: (connectedCount / CONCURRENT * 100).toFixed(1) + '%',
+    },
+    bidding: {
+      total: allResults.length,
+      accepted: accepted.length,
+      rejected: rejected.length,
+      successRate: (accepted.length / results.length * 100).toFixed(1) + '%',
+    },
+    latency: {
+      min: Number(times[0].toFixed(2)),
+      avg: Number(avg.toFixed(2)),
+      p50: Number(percentile(0.5).toFixed(2)),
+      p90: Number(percentile(0.9).toFixed(2)),
+      p95: Number(percentile(0.95).toFixed(2)),
+      p99: Number(percentile(0.99).toFixed(2)),
+      max: Number(times[times.length - 1].toFixed(2)),
+    },
+    idempotency: {
+      duplicateKeyTests: duplicateResults.length,
+      violations: idempotencyViolations,
+      complianceRate: duplicateResults.length > 0
+        ? ((1 - idempotencyViolations / duplicateResults.length) * 100).toFixed(1) + '%'
+        : 'N/A',
+    },
+    ranking: {
+      correct: rankingCorrect,
+      duplicateRanks,
+      sequential: rankSequential,
+      entries: rankEntries,
+    },
+    broadcastSync: {
+      receivedCount: syncReceivedCount,
+      totalInLastBatch: lastBatchResults.length,
+      allWithinWindow: syncReceivedCount >= lastBatchResults.length * 0.95,
+      windowMs: RANK_VALIDATION_WAIT_MS,
+      preciseDelayMs: sortedSyncDelays.length > 0 ? {
+        p50: Number(sortedSyncDelays[Math.floor(sortedSyncDelays.length * 0.5)].toFixed(1)),
+        p95: Number(sortedSyncDelays[Math.min(Math.floor(sortedSyncDelays.length * 0.95), sortedSyncDelays.length - 1)].toFixed(1)),
+        p99: Number(sortedSyncDelays[Math.min(Math.floor(sortedSyncDelays.length * 0.99), sortedSyncDelays.length - 1)].toFixed(1)),
+        max: Number(sortedSyncDelays[sortedSyncDelays.length - 1].toFixed(1)),
+      } : null,
+    },
+  };
+  fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+  console.log(`摘要 JSON: ${summaryPath}`);
 }
 
 main().catch(console.error);

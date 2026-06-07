@@ -195,6 +195,30 @@ function printBidMetrics() {
   } catch {}
 }
 
+// ── Helper: pick pre-generated token (avoids HTTP auth bottleneck) ───────────
+let preGenTokens = null;
+let preGenTokenIndex = 0;
+
+function pickPreGenToken(context, events, done) {
+  if (!preGenTokens) {
+    const fs = require('fs');
+    const path = require('path');
+    const tokenFile = path.join(__dirname, 'reports', 'pre-gen-tokens.json');
+    try {
+      preGenTokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+    } catch (e) {
+      return done(new Error(`Cannot read pre-gen tokens from ${tokenFile}: ${e.message}`));
+    }
+  }
+  if (preGenTokens.length === 0) {
+    return done(new Error('No pre-generated tokens available'));
+  }
+  // Round-robin token selection
+  context.vars.token = preGenTokens[preGenTokenIndex % preGenTokens.length];
+  preGenTokenIndex++;
+  return done();
+}
+
 // Print on process exit
 process.on('exit', printBidMetrics);
 
@@ -205,4 +229,5 @@ module.exports = {
   generateIdempotencyKey,
   submitBidHttp,
   logBidAck,
+  pickPreGenToken,
 };

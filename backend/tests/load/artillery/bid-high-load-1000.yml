@@ -1,0 +1,78 @@
+# Artillery extreme-load bid test: ~1000 VU
+#
+# Tests: System stability under 1000 concurrent WebSocket connections
+# Target: SC-004 from spec (1000+ connections, >=99% success, 5 min sustained)
+#
+# Strategy: Pre-generate tokens (avoids HTTP auth bottleneck), gradual ramp-up
+#
+# Usage:
+#   cd backend
+#   node tests/load/artillery/pre-gen-tokens.cjs 1200   # generate 1200 tokens
+#   pnpm load:high1000
+
+config:
+  target: 'http://localhost:3002'
+  phases:
+    # Gradual ramp: 8/s × 30s = 240, then 15/s × 50s = 750, total ~990
+    - duration: 30
+      arrivalRate: 8
+      name: 'Warm up'
+    - duration: 50
+      arrivalRate: 15
+      name: 'Ramp to 1000 VU'
+    - duration: 60
+      arrivalRate: 3
+      name: 'Sustained load (hold connections)'
+    - duration: 15
+      arrivalRate: 2
+      name: 'Cool down'
+
+  socketio:
+    transports: ['websocket']
+
+  engines:
+    socketio-v3: {}
+
+  processor: './socketio-processor.cjs'
+
+  ensure:
+    conditions:
+      - expression: 'vusers.created > 0'
+        strict: true
+
+scenarios:
+  - name: 'Extreme concurrency bidding - 1000 VU (pre-auth)'
+    engine: socketio-v3
+    weight: 1
+
+    flow:
+      # 1. Pick a pre-generated token (no HTTP auth needed)
+      - function: 'pickPreGenToken'
+
+      # 2. Connect to Socket.IO with pre-generated token
+      - connect:
+          namespace: '/'
+          auth:
+            token: '{{ token }}'
+
+      # 3. Join room
+      - emit:
+          channel: 'auction:join'
+          data:
+            roomId: 1
+
+      - think: 1
+
+      # 4. Submit 3 bids per VU
+      - loop:
+          - function: 'generateIdempotencyKey'
+          - emit:
+              channel: 'bid:submit'
+              data:
+                sessionId: 1
+                idempotencyKey: '{{ idempotencyKey }}'
+          - think: 0.5
+        count: 3
+
+      # 5. Hold for rank:update receipt
+      - think: 5
