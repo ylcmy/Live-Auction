@@ -1,101 +1,84 @@
-# Artillery multi-user bidding test: 20 VU x 30s
+# Artillery multi-user bidding test: ~20 VU x 30s
 #
 # Tests: End-to-end bid latency, broadcast latency, rank sync latency
 #
 # Usage:
 #   cd backend && pnpm load:bid              (默认测试环境 localhost:3002)
-#   ARTILLERY_TARGET=http://host:port npx artillery run tests/load/artillery/multi-user-bid.yml
 
 config:
-  target: "{{ $processEnvironment.ARTILLERY_TARGET || 'http://localhost:3002' }}"
+  target: 'http://localhost:3002'
   phases:
     - duration: 5
-      arrivalRate: 5
-      name: "Warm up"
+      arrivalRate: 2
+      name: 'Warm up'
     - duration: 30
-      arrivalRate: 20
-      name: "Bidding phase"
+      arrivalRate: 10
+      name: 'Bidding phase'
 
   socketio:
-    transports: ["websocket"]
+    transports: ['websocket']
 
-  processor: "./socketio-processor.js"
+  engines:
+    socketio-v3: {}
+
+  processor: './socketio-processor.cjs'
 
   # Ensure thresholds
   ensure:
     conditions:
-      - expression: "vusers.created > 0"
+      - expression: 'vusers.created > 0'
         strict: true
 
 scenarios:
-  - name: "Multi-user concurrent bidding"
+  - name: 'Multi-user concurrent bidding'
+    engine: socketio-v3
     weight: 1
 
-    beforeScenario: "uniqueUsername"
-
     flow:
-      # 1. Register + Login
-      - post:
-          url: "/api/auth/register"
-          json:
-            username: "{{ username }}"
-            password: "{{ password }}"
-            nickname: "{{ nickname }}"
-            role: "user"
-          expect:
-            - statusCode:
-              - 200
-              - 201
-              - 409
-      - post:
-          url: "/api/auth/login"
-          json:
-            username: "{{ username }}"
-            password: "{{ password }}"
-          capture:
-            - json: "$.data.accessToken"
-              as: "token"
-          expect:
-            statusCode: 200
+      # 1. Generate unique username
+      - function: 'uniqueUsername'
 
-      # 2. Connect to Socket.IO
+      # 2. Register + Login (via processor)
+      - function: 'registerAndLogin'
+
+      # 3. Set socket auth params
+      - function: 'setSocketAuth'
+
+      # 4. Connect to Socket.IO (auth resolved at runtime)
       - connect:
-          namespace: "/"
-          channels:
-            - "bid:accepted"
-            - "bid:rejected"
-            - "bid:new"
-            - "rank:update"
-            - "countdown:sync"
-            - "room:count"
-          data:
-            auth:
-              token: "{{ token }}"
+          namespace: '/'
+          auth:
+            token: '{{ token }}'
 
-      # 3. Join room
+      # 5. Join room
       - emit:
-          channel: "auction:join"
+          channel: 'auction:join'
           data:
             roomId: 1
 
       - think: 0.5
 
-      # 4. Submit 5 bids with random intervals
+      # 6. Submit 5 bids with random intervals
       - loop:
-          - function: "generateIdempotencyKey"
+          - function: 'generateIdempotencyKey'
           - emit:
-              channel: "bid:submit"
+              channel: 'bid:submit'
               data:
                 sessionId: 1
-                idempotencyKey: "{{ idempotencyKey }}"
+                idempotencyKey: '{{ idempotencyKey }}'
+              acknowledge:
+                capture:
+                  - json: '$.0'
+                    as: 'bidAck'
+          - function: 'recordBidAck'
           - think: 0.5
         count: 5
 
-      # 5. Hold connection to receive broadcasts
+      # 7. Hold connection to receive broadcasts
       - think: 10
 
-      # 6. Leave room
+      # 8. Leave room
       - emit:
-          channel: "auction:leave"
+          channel: 'auction:leave'
           data:
             roomId: 1

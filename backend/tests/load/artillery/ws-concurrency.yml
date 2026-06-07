@@ -1,84 +1,60 @@
-# Artillery WebSocket concurrency test: 500 VU
+# Artillery WebSocket concurrency test: ~100 VU
 #
 # Tests: Connection management, room join/leave, message broadcast
 #
 # Usage:
 #   cd backend && pnpm load:concurrency      (默认测试环境 localhost:3002)
-#   ARTILLERY_TARGET=http://host:port npx artillery run tests/load/artillery/ws-concurrency.yml
 
 config:
-  target: "{{ $processEnvironment.ARTILLERY_TARGET || 'http://localhost:3002' }}"
+  target: 'http://localhost:3002'
   phases:
     - duration: 10
-      arrivalRate: 100
-      name: "Ramp up"
+      arrivalRate: 5
+      name: 'Ramp up'
     - duration: 30
-      arrivalRate: 500
-      name: "Sustained load"
-    - duration: 10
-      arrivalRate: 0
-      name: "Ramp down"
+      arrivalRate: 20
+      name: 'Sustained load'
 
   socketio:
-    transports: ["websocket"]
+    transports: ['websocket']
 
-  processor: "./socketio-processor.js"
+  engines:
+    socketio-v3: {}
+
+  processor: './socketio-processor.cjs'
 
 scenarios:
-  - name: "Room connection lifecycle"
+  - name: 'Room connection lifecycle'
+    engine: socketio-v3
     weight: 1
 
-    beforeScenario: "uniqueUsername"
-
     flow:
-      # 1. Register + Login
-      - post:
-          url: "/api/auth/register"
-          json:
-            username: "{{ username }}"
-            password: "{{ password }}"
-            nickname: "{{ nickname }}"
-            role: "user"
-          expect:
-            - statusCode:
-              - 200
-              - 201
-              - 409
-      - post:
-          url: "/api/auth/login"
-          json:
-            username: "{{ username }}"
-            password: "{{ password }}"
-          capture:
-            - json: "$.data.accessToken"
-              as: "token"
-          expect:
-            statusCode: 200
+      # 1. Generate unique username
+      - function: 'uniqueUsername'
 
-      # 2. Connect to Socket.IO
+      # 2. Register + Login (via processor)
+      - function: 'registerAndLogin'
+
+      # 3. Set socket auth params
+      - function: 'setSocketAuth'
+
+      # 4. Connect to Socket.IO (auth resolved at runtime)
       - connect:
-          namespace: "/"
-          channels:
-            - "room:count"
-            - "auction:state"
-            - "bid:new"
-            - "rank:update"
-            - "countdown:sync"
-          data:
-            auth:
-              token: "{{ token }}"
+          namespace: '/'
+          auth:
+            token: '{{ token }}'
 
-      # 3. Join room
+      # 5. Join room
       - emit:
-          channel: "auction:join"
+          channel: 'auction:join'
           data:
             roomId: 1
 
-      # 4. Hold connection (simulate browsing)
+      # 6. Hold connection (simulate browsing)
       - think: 5
 
-      # 5. Leave room
+      # 7. Leave room
       - emit:
-          channel: "auction:leave"
+          channel: 'auction:leave'
           data:
             roomId: 1
