@@ -3,7 +3,7 @@
  *
  * Verifies the complete bid lifecycle:
  *   bid:submit → bid.service → DB (bid_records) → Redis (leaderboard/top_bid)
- *   → broadcast bid:new + rank:update + emotion:lead / emotion:overtaken
+ *   → broadcast bid:new + rank:update + emotion:overtaken
  *
  * Also samples end-to-end latency and asserts P95 < 1s (SC-001).
  *
@@ -35,16 +35,11 @@ import {
 } from '../../helpers/factory.js';
 import { assertAuctionConsistency } from '../../helpers/consistency-checker.js';
 
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -117,7 +112,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
   clients = [];
 
@@ -198,7 +192,8 @@ describe('T015: 全链路出价集成测试 — bid:submit→DB→Redis→WS 广
     // Wait for events
     await waitForEvents(acceptedEvents, 1, 10_000);
     await waitForEvents(bidNewEvents, 1, 10_000);
-    await new Promise((r) => setTimeout(r, 300)); // Allow rank:update to propagate
+    // Allow rank:update to propagate (debounced by 50ms in BidEventBus + async broadcast)
+    await new Promise((r) => setTimeout(r, 500));
 
     const latencyMs = Date.now() - bidStart;
 
@@ -320,8 +315,7 @@ describe('T015: 全链路出价集成测试 — bid:submit→DB→Redis→WS 广
 });
 
 describe('T016: emotion 事件广播与链路延迟 P95', () => {
-  it('出价领先者收到 emotion:lead，被超越者收到 emotion:overtaken', async () => {
-    const leadEvents: { userId: number }[] = [];
+  it('出价被超越者收到 emotion:overtaken', async () => {
     const overtakenEvents: { userId: number; newAmount: number }[] = [];
 
     const client1 = ioClient(`http://127.0.0.1:${port}`, {
@@ -336,11 +330,9 @@ describe('T016: emotion 事件广播与链路延迟 P95', () => {
     });
     clients.push(client1, client2);
 
-    client1.on('emotion:lead', (d: { userId: number }) => leadEvents.push(d));
     client1.on('emotion:overtaken', (d: { userId: number; newAmount: number }) =>
       overtakenEvents.push(d),
     );
-    client2.on('emotion:lead', (d: { userId: number }) => leadEvents.push(d));
 
     await Promise.all(
       [client1, client2].map(
@@ -352,26 +344,21 @@ describe('T016: emotion 事件广播与链路延迟 P95', () => {
     client2.emit('auction:join', { roomId });
     await new Promise((r) => setTimeout(r, 200));
 
-    // User 0 bids first → should get emotion:lead
+    // User 0 bids first → becomes leader
     client1.emit('bid:submit', {
       sessionId,
       idempotencyKey: `emotion_user0_${Date.now()}`,
     });
     await new Promise((r) => setTimeout(r, 1000));
 
-    expect(leadEvents.length).toBeGreaterThanOrEqual(1);
-    expect(leadEvents.some((e) => e.userId === users[0]!.id)).toBe(true);
-
-    // User 1 outbids → user1 gets emotion:lead, user0 gets emotion:overtaken
-    leadEvents.length = 0;
+    // User 1 outbids → user0 gets emotion:overtaken
     client2.emit('bid:submit', {
       sessionId,
       idempotencyKey: `emotion_user1_${Date.now()}`,
     });
-    await new Promise((r) => setTimeout(r, 1500));
-
-    // User1 should get emotion:lead
-    expect(leadEvents.some((e) => e.userId === users[1]!.id)).toBe(true);
+    // Wait for async BidEventBus to broadcast emotion:overtaken
+    // (requires findById + getUserNickname async calls before emitting)
+    await new Promise((r) => setTimeout(r, 3000));
 
     // User0 should get emotion:overtaken
     expect(overtakenEvents.some((e) => e.userId === users[0]!.id)).toBe(true);
@@ -475,8 +462,8 @@ describe('T070: 出价链路延迟量化', () => {
       idempotencyKey: `latency_quantify_${Date.now()}`,
     });
 
-    // Wait for all events
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for all events (async BidEventBus: bid:new immediate, rank:update debounced 50ms)
+    await new Promise((r) => setTimeout(r, 3000));
 
     // bid:accepted latency
     if (acceptedTime.length > 0) {

@@ -20,7 +20,6 @@ import {
 } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { FastifyInstance } from 'fastify';
-import Redis from 'ioredis';
 
 import { setupTestApp, teardownTestApp } from '../setup.js';
 import { initWebSocket } from '../../../src/ws/index.js';
@@ -36,13 +35,6 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 /**
  * Poll `predicate()` every `intervalMs` until it returns true,
@@ -98,7 +90,6 @@ afterAll(async () => {
  * so each test gets a fully independent, fresh auction.
  */
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
 
   const merchant = await seedUser({ username: 'recon_merchant', role: 'merchant' });

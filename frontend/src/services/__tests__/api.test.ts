@@ -163,13 +163,13 @@ describe('api service', () => {
       );
     });
 
-    test('默认 Content-Type 为 application/json', async () => {
+    test('有 body 的请求默认 Content-Type 为 application/json', async () => {
       const { api } = await loadApi();
       localStorageMock.getItem.mockReturnValue(null);
 
       fetchMock.mockResolvedValue(createMockApiResponse(null));
 
-      await api.get('/test');
+      await api.post('/test', { data: 'value' });
 
       const callOptions = fetchMock.mock.calls[0][1] as RequestInit;
       const headers = callOptions.headers as Record<string, string>;

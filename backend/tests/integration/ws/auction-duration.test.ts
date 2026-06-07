@@ -31,16 +31,7 @@ import {
   generateToken,
 } from '../../helpers/factory.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -69,7 +60,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
 
   const merchant = await seedUser({ username: 'duration_merchant', role: 'merchant' });

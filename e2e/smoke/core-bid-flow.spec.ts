@@ -130,9 +130,13 @@ async function loginViaApi(page: import('@playwright/test').Page, token: string)
   await page.evaluate(
     ({ token }: { token: string }) => {
       localStorage.setItem('accessToken', token);
+      localStorage.setItem('refreshToken', token);
     },
     { token },
   );
+  // Reload to let zustand store restore token from localStorage
+  await page.reload();
+  await page.waitForLoadState('networkidle');
 }
 
 test.describe('CI 冒烟: 核心竞拍流程', () => {

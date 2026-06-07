@@ -25,6 +25,7 @@ import {
   seedRoom,
   seedActiveAuction,
   generateToken,
+  truncateAll,
 } from '../../helpers/factory.js';
 import { assertAuctionConsistency } from '../../helpers/consistency-checker.js';
 
@@ -144,10 +145,22 @@ beforeAll(async () => {
   await app.listen({ port: 0, host: '127.0.0.1' });
   const addr = app.server.address();
   port = typeof addr === 'object' && addr ? addr.port : 0;
+});
 
-  const merchant = await seedUser({ username: 'ws_rank_merchant', role: 'merchant' });
-  const { productId } = await seedProduct(merchant.id, { name: '排名一致性商品' });
-  roomId = await seedRoom(merchant.id, { title: '排名一致性测试间' });
+afterAll(async () => {
+  for (const c of clients ?? []) {
+    if (c.connected) c.disconnect();
+  }
+  await teardownTestApp(app);
+});
+
+beforeEach(async () => {
+  await truncateAll();
+  clients = [];
+
+  const merchant = await seedUser({ role: 'merchant' });
+  const { productId } = await seedProduct(merchant.id);
+  roomId = await seedRoom(merchant.id);
 
   const auction = await seedActiveAuction({
     productId,
@@ -159,20 +172,9 @@ beforeAll(async () => {
 
   users = [];
   for (let i = 0; i < CLIENT_COUNT; i++) {
-    const u = await seedUser({ username: `ws_rank_bidder_${i}`, role: 'user' });
+    const u = await seedUser({ role: 'user' });
     users.push({ id: u.id, token: generateToken(u.id, 'user') });
   }
-}, 30_000);
-
-afterAll(async () => {
-  for (const c of clients ?? []) {
-    if (c.connected) c.disconnect();
-  }
-  await teardownTestApp(app);
-});
-
-beforeEach(() => {
-  clients = [];
 });
 
 // ---------------------------------------------------------------------------
@@ -247,9 +249,9 @@ describe('排名一致性与秒级同步集成测试', () => {
         ),
       );
 
-      // --- Wait for bids to settle (some may be rejected due to session lock) ---
-      // Allow enough time for all bids to be processed serially
-      await new Promise((r) => setTimeout(r, 3000));
+      // --- Wait for bids to settle (some may be rejected due to CAS conflict) ---
+      // Allow enough time for all bids to be processed (Redis CAS path, no session lock)
+      await waitForStable(accepted, 500, 10_000);
 
       // Disconnect clients to stop background broadcasts
       for (const c of clients) c.disconnect();
@@ -502,7 +504,7 @@ describe('排名一致性与秒级同步集成测试', () => {
 
       // --- Assertions ---
 
-      // All bids should be accepted (100ms gap should be enough for session lock)
+      // All bids should be accepted (100ms gap is enough for Redis CAS path)
       expect(accepted.length).toBe(RAPID_COUNT);
 
       // No duplicate idempotency keys

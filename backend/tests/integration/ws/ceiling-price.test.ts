@@ -21,7 +21,6 @@ import {
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../../src/infrastructure/db/knex.js';
-import Redis from 'ioredis';
 
 import { setupTestApp, teardownTestApp } from '../setup.js';
 import { initWebSocket } from '../../../src/ws/index.js';
@@ -37,13 +36,6 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 function waitForEvent<T>(
   socket: ClientSocket,
@@ -94,7 +86,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
 
   const auction = await seedNearCeilingAuction();

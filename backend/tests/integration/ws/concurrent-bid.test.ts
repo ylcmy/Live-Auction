@@ -29,6 +29,7 @@ import {
   seedRoom,
   seedActiveAuction,
   generateToken,
+  truncateAll,
 } from '../../helpers/factory.js';
 import { assertAuctionConsistency } from '../../helpers/consistency-checker.js';
 
@@ -105,11 +106,22 @@ beforeAll(async () => {
   await app.listen({ port: 0, host: '127.0.0.1' });
   const addr = app.server.address();
   port = typeof addr === 'object' && addr ? addr.port : 0;
+});
 
-  // 4. Seed persistent fixtures (users + auction)
-  const merchant = await seedUser({ username: 'ws_concurrent_merchant', role: 'merchant' });
-  const { productId } = await seedProduct(merchant.id, { name: '竞拍并发商品' });
-  roomId = await seedRoom(merchant.id, { title: '并发出价测试间' });
+afterAll(async () => {
+  for (const c of clients ?? []) {
+    if (c.connected) c.disconnect();
+  }
+  await teardownTestApp(app);
+});
+
+beforeEach(async () => {
+  await truncateAll();
+  clients = [];
+
+  const merchant = await seedUser({ role: 'merchant' });
+  const { productId } = await seedProduct(merchant.id);
+  roomId = await seedRoom(merchant.id);
 
   const auction = await seedActiveAuction({
     productId,
@@ -121,20 +133,9 @@ beforeAll(async () => {
 
   users = [];
   for (let i = 0; i < CLIENT_COUNT; i++) {
-    const u = await seedUser({ username: `ws_bidder_${i}`, role: 'user' });
+    const u = await seedUser({ role: 'user' });
     users.push({ id: u.id, token: generateToken(u.id, 'user') });
   }
-});
-
-afterAll(async () => {
-  for (const c of clients ?? []) {
-    if (c.connected) c.disconnect();
-  }
-  await teardownTestApp(app);
-});
-
-beforeEach(async () => {
-  clients = [];
 });
 
 // ---------------------------------------------------------------------------
@@ -186,7 +187,7 @@ describe('T067: 并发出价集成测试', () => {
       ),
     );
 
-    // --- Join room and fire bids sequentially (session lock requires serial processing) ---
+    // --- Join room and fire bids sequentially (Redis CAS requires serial processing for consistent amounts) ---
     for (let i = 0; i < CLIENT_COUNT; i++) {
       clients[i]!.emit('auction:join', { roomId });
     }
@@ -199,7 +200,7 @@ describe('T067: 并发出价集成测试', () => {
         sessionId,
         idempotencyKey: `concurrent_test_${users[i]!.id}_${Date.now()}`,
       });
-      // Wait for the session lock to be released before next bid
+      // Wait for the Redis CAS to complete before next bid
       await new Promise((r) => setTimeout(r, 150));
     }
 

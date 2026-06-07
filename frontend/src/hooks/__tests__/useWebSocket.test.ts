@@ -7,7 +7,7 @@ const mockOn = vi.fn();
 const mockOff = vi.fn();
 const mockSocket = {
   id: 'test-socket-id',
-  connected: true,
+  connected: false,
   emit: mockEmit,
   on: mockOn,
   off: mockOff,

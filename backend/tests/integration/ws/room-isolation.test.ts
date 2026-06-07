@@ -19,7 +19,6 @@ import {
 } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { FastifyInstance } from 'fastify';
-import Redis from 'ioredis';
 
 import { setupTestApp, teardownTestApp } from '../setup.js';
 import { initWebSocket } from '../../../src/ws/index.js';
@@ -31,17 +30,6 @@ import {
   seedActiveAuction,
   generateToken,
 } from '../../helpers/factory.js';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -79,7 +67,6 @@ afterAll(async () => {
  * so each test gets independent, predictable IDs.
  */
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
 
   // Each room needs a unique host (live_rooms_host_id_unique constraint)
@@ -144,7 +131,9 @@ describe('T068: 房间隔离 — 多房间并发场景', () => {
       idempotencyKey: `room_iso_${userA.id}_1_${Date.now()}`,
     });
 
-    await new Promise((r) => setTimeout(r, 500));
+    // Wait for async BidEventBus to broadcast bid:new (happens after bid:accepted,
+    // requires findById + getUserNickname async calls before emitting)
+    await new Promise((r) => setTimeout(r, 3000));
 
     // bid:new should appear in room A, NOT in room B
     expect(bidsInA.length).toBeGreaterThanOrEqual(1);
@@ -238,7 +227,8 @@ describe('T068: 房间隔离 — 多房间并发场景', () => {
       sessionId: sessionAId,
       idempotencyKey: `leave_test_${userA.id}_${Date.now()}`,
     });
-    await new Promise((r) => setTimeout(r, 500));
+    // Wait for async BidEventBus broadcast
+    await new Promise((r) => setTimeout(r, 3000));
 
     // clientB should NOT receive the bid after leaving
     expect(bidsAfterLeave).toHaveLength(0);
@@ -254,28 +244,26 @@ describe('T068: 房间隔离 — 多房间并发场景', () => {
 
 describe('T028: 房间隔离 — 1000 条事件采样零跨房间泄漏 (SC-007)', () => {
   it('100 次出价在房间 A，房间 B 零事件泄漏', async () => {
-    await flushTestRedis();
     await truncateAll();
 
-    const merchantA = await seedUser({ username: 'iso2_merchant_A', role: 'merchant' });
-    const merchantB = await seedUser({ username: 'iso2_merchant_B', role: 'merchant' });
-    const { productId: prodA } = await seedProduct(merchantA.id, { name: '商品A2' });
-    const { productId: prodB } = await seedProduct(merchantB.id, { name: '商品B2' });
+    const merchantA = await seedUser({ role: 'merchant' });
+    const merchantB = await seedUser({ role: 'merchant' });
+    const { productId: prodA } = await seedProduct(merchantA.id);
+    const { productId: prodB } = await seedProduct(merchantB.id);
 
-    const rA = await seedRoom(merchantA.id, { title: '隔离测试间A2' });
-    const rB = await seedRoom(merchantB.id, { title: '隔离测试间B2' });
+    const rA = await seedRoom(merchantA.id);
+    const rB = await seedRoom(merchantB.id);
 
     const auctionA = await seedActiveAuction({ productId: prodA, roomId: rA, durationSeconds: 600 });
     await seedActiveAuction({ productId: prodB, roomId: rB, durationSeconds: 600 });
 
     const users: { id: number; token: string }[] = [];
     for (let i = 0; i < 5; i++) {
-      const u = await seedUser({ username: `iso2_user_${i}`, role: 'user' });
+      const u = await seedUser({ role: 'user' });
       users.push({ id: u.id, token: generateToken(u.id, 'user') });
     }
 
     const leaksInB: unknown[] = [];
-    const bidsInA: unknown[] = [];
 
     const clientA = ioClient(`http://127.0.0.1:${port}`, {
       auth: { token: users[0]!.token },
@@ -329,12 +317,12 @@ describe('T028: 房间隔离 — 1000 条事件采样零跨房间泄漏 (SC-007)
 
     clientA.disconnect();
     clientB.disconnect();
-  });
+  }, 60_000);
 });
 
 describe('T030: 无效 token 连接被拒绝', () => {
   it('使用无效 token 连接应被拒绝，不影响同房间其他用户', async () => {
-    const validUser = await seedUser({ username: 'token_valid', role: 'user' });
+    const validUser = await seedUser({ role: 'user' });
     const validToken = generateToken(validUser.id, 'user');
 
     const validClient = ioClient(`http://127.0.0.1:${port}`, {

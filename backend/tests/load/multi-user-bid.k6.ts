@@ -14,8 +14,8 @@
  *   K6_SCENARIO=full k6 run backend/tests/load/multi-user-bid.k6.ts
  *
  * Environment variables:
- *   API_BASE   - API base URL (default http://localhost:3002)
- *   WS_URL     - WebSocket URL (default ws://localhost:3002)
+ *   API_BASE   - API base URL (default http://localhost:3001)
+ *   WS_URL     - WebSocket URL (default ws://localhost:3001)
  *   ROOM_ID    - Room ID
  *   SESSION_ID - Auction session ID
  *   K6_SCENARIO - quick or full
@@ -27,22 +27,92 @@ import http from 'k6/http';
 import { sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
-// ── Socket.IO v4 helpers (k6 v2 compatible) ─────────────────────────────────
-function parseSocketIOMessage(msg: string): { event: string; data: any } | null {
-  if (typeof msg !== 'string' || !msg.startsWith('42')) return null;
-  try {
-    const parsed = JSON.parse(msg.substring(2));
-    return { event: parsed[0], data: parsed[1] };
-  } catch {
-    return null;
+// ── Socket.IO v4 protocol helpers ───────────────────────────────────────────
+
+// Engine.IO packet types: 0=open, 1=close, 2=ping, 3=pong, 4=message, 5=upgrade, 6=noop
+// Socket.IO packet types (under EIO 4=message): 0=CONNECT, 1=DISCONNECT, 2=EVENT, 3=ACK, 4=ERROR
+
+const EIO_CONNECT  = '0';
+const EIO_PING     = '2';
+const EIO_PONG     = '3';
+const EIO_UPGRADE  = '5';
+
+const SIO_CONNECT  = '40';
+const SIO_EVENT_PREFIX = '42';
+
+// Handshake state machine
+type HandshakeState = 'eio-connect' | 'probe' | 'upgrade' | 'sio-connect' | 'connected';
+
+interface SocketIOPacket {
+  eioType: string;     // Engine.IO packet type ('0','2','3','4','5','6')
+  sioType?: string;    // Socket.IO packet type (only when eioType='4')
+  event?: string;      // Event name (only for sio events)
+  data?: any;          // Event payload
+}
+
+function parsePacket(msg: string): SocketIOPacket | null {
+  if (typeof msg !== 'string' || msg.length === 0) return null;
+  const eioType = msg[0];
+
+  if (eioType === '4') {
+    // Engine.IO message → parse Socket.IO layer
+    const sioPayload = msg.substring(1);
+    if (sioPayload.length === 0) return { eioType };
+    const sioType = sioPayload[0];
+
+    if (sioType === '2' && sioPayload.length > 1) {
+      // EVENT: 42["event",{data}]
+      try {
+        const parsed = JSON.parse(sioPayload.substring(1));
+        return { eioType, sioType, event: parsed[0], data: parsed[1] };
+      } catch { return { eioType, sioType }; }
+    }
+
+    return { eioType, sioType };
   }
+
+  return { eioType };
 }
 
-function emitSocketIO(socket: any, event: string, data: any) {
-  socket.send('42["' + event + '",' + JSON.stringify(data) + ']');
+function emitEvent(socket: any, event: string, data: any) {
+  socket.send(SIO_EVENT_PREFIX + '["' + event + '",' + JSON.stringify(data) + ']');
 }
 
-// ── UUID v4 (local implementation to avoid network dependency) ────────────────
+function performHandshake(socket: any, token: string): HandshakeState {
+  // Step 1: Send Engine.IO CONNECT with auth
+  socket.send(EIO_CONNECT + JSON.stringify({ token }));
+  return 'probe';
+}
+
+function handleHandshakeStep(socket: any, packet: SocketIOPacket, state: HandshakeState): HandshakeState {
+  switch (state) {
+    case 'probe':
+      // Step 2: Received EIO OPEN → send probe
+      if (packet.eioType === EIO_CONNECT) {
+        socket.send('2probe');
+        return 'upgrade';
+      }
+      break;
+    case 'upgrade':
+      // Step 3: Received probe response → send upgrade
+      if (packet.eioType === '3' || (packet.eioType === '4' && packet.sioType === '3')) {
+        socket.send(EIO_UPGRADE);
+        // Step 4: Send Socket.IO CONNECT
+        socket.send(SIO_CONNECT + '{}');
+        return 'sio-connect';
+      }
+      break;
+    case 'sio-connect':
+      // Step 5: Received Socket.IO CONNECT ACK
+      if (packet.eioType === '4' && packet.sioType === '0') {
+        return 'connected';
+      }
+      break;
+  }
+  return state;
+}
+
+// ── UUID v4 (local implementation) ──────────────────────────────────────────
 function uuidv4(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -61,6 +131,8 @@ const bidsAccepted           = new Counter('bids_accepted');
 const bidsRejected           = new Counter('bids_rejected');
 const auctionSuccessRate     = new Rate('auction_success_rate');
 const businessErrors         = new Rate('business_errors');
+const handshakeSuccess       = new Counter('handshake_success');
+const handshakeError         = new Counter('handshake_error');
 
 // ── Scenario selection ──────────────────────────────────────────────────────
 const scenario = __ENV.K6_SCENARIO || 'quick';
@@ -114,7 +186,7 @@ export const options = getOptions();
 
 // ── Setup: register and login multiple users ────────────────────────────────
 export function setup() {
-  const apiBase = __ENV.API_BASE || 'http://localhost:3002';
+  const apiBase = __ENV.API_BASE || 'http://localhost:3001';
   const userCount = Number(__ENV.USER_COUNT || 20);
   const tokens: string[] = [];
 
@@ -123,14 +195,12 @@ export function setup() {
     const password = 'Test1234!';
     const nickname = `BidUser${i}`;
 
-    // Register
-    const regRes = http.post(
+    http.post(
       `${apiBase}/api/auth/register`,
       JSON.stringify({ username, password, nickname, role: 'user' }),
       { headers: { 'Content-Type': 'application/json' } },
     );
 
-    // Login (even if register fails due to duplicate, login should work)
     const loginRes = http.post(
       `${apiBase}/api/auth/login`,
       JSON.stringify({ username, password }),
@@ -141,11 +211,9 @@ export function setup() {
       try {
         const body = JSON.parse(loginRes.body as string);
         const token = body.data?.accessToken;
-        if (token) {
-          tokens.push(token);
-        }
+        if (token) tokens.push(token);
       } catch {
-        // Skip this user on parse failure
+        // Skip on parse failure
       }
     }
   }
@@ -159,101 +227,106 @@ export default function (data: { tokens: string[] }) {
 
   const userIndex = (__VU - 1) % data.tokens.length;
   const token = data.tokens[userIndex];
-  const baseUrl = __ENV.WS_URL || 'ws://localhost:3002';
+  const baseUrl = __ENV.WS_URL || 'ws://localhost:3001';
   const roomId = Number(__ENV.ROOM_ID || 1);
   const sessionId = Number(__ENV.SESSION_ID || 1);
-  const url = `${baseUrl}/socket.io/?EIO=4&transport=websocket&token=${encodeURIComponent(token)}`;
+  const url = `${baseUrl}/socket.io/?EIO=4&transport=websocket`;
 
   ws.connect(url, null, (socket) => {
-    // Track pending bids by idempotencyKey for latency measurement
+    let hsState: HandshakeState = 'eio-connect';
     const pendingBids: Record<string, { submitTime: number }> = {};
-    // Track bid:new arrival times for broadcast latency calculation
     const bidNewArrivals: Record<string, number> = {};
 
-    socket.on('open', () => {
-      // Send Socket.IO CONNECT with auth token to complete the handshake
-      socket.send('40{"token":"' + token + '"}');
+    // ── Message handler (registered before any sends) ──
+    socket.on('message', (msg: string) => {
+      const packet = parsePacket(msg);
+      if (!packet) return;
 
-      emitSocketIO(socket, 'auction:join', { roomId });
+      // Handle Engine.IO ping (server→client: "2", client→server: "3")
+      if (packet.eioType === EIO_PING) {
+        socket.send(EIO_PONG);
+        return;
+      }
 
-      // Single message handler for all Socket.IO events
-      socket.on('message', (msg: string) => {
-        const parsed = parseSocketIOMessage(msg);
-        if (!parsed) return;
-
-        if (parsed.event === 'bid:accepted') {
-          bidsAccepted.add(1);
-          auctionSuccessRate.add(1);
-
-          const key = parsed.data?.idempotencyKey;
-          if (key && pendingBids[key] !== undefined) {
-            const now = Date.now();
-            const elapsed = now - pendingBids[key].submitTime;
-            bidResponseLatency.add(elapsed);
-            bidTotalResponseTime.add(elapsed);
-
-            // If bid:new already arrived, compute broadcast latency
-            if (bidNewArrivals[key] !== undefined) {
-              bidToBroadcastLatency.add(bidNewArrivals[key] - pendingBids[key].submitTime);
-              delete bidNewArrivals[key];
-            }
-
-            delete pendingBids[key];
-          }
-        } else if (parsed.event === 'bid:rejected') {
-          bidsRejected.add(1);
-
-          const key = parsed.data?.idempotencyKey;
-          const code = parsed.data?.code;
-
-          // Total response time includes rejected requests (industry standard)
-          if (key && pendingBids[key] !== undefined) {
-            bidTotalResponseTime.add(Date.now() - pendingBids[key].submitTime);
-            delete pendingBids[key];
-          }
-
-          // Distinguish business rejection from non-business errors
-          // Codes: 40901=idempotency/lock, 42900=rate limit, 40900=ended, 40400=not found
-          // Only 50000+ are non-business (system) errors
-          if (typeof code === 'number' && code >= 50000) {
-            // Non-business error (system error)
-            businessErrors.add(1);
-          }
-          auctionSuccessRate.add(0);
-        } else if (parsed.event === 'rank:update') {
-          // Compute rank sync latency — time from last bid submission to rank update
-          const lastSubmitTime = Object.values(pendingBids).pop()?.submitTime;
-          if (lastSubmitTime !== undefined) {
-            rankSyncLatency.add(Date.now() - lastSubmitTime);
-          }
-        } else if (parsed.event === 'bid:new') {
-          // Record bid:new arrival time for broadcast latency calculation
-          const key = parsed.data?.idempotencyKey;
-          if (key) {
-            bidNewArrivals[key] = Date.now();
-          }
+      // Handle handshake steps
+      if (hsState !== 'connected') {
+        const prev = hsState;
+        hsState = handleHandshakeStep(socket, packet, hsState);
+        if (hsState === 'connected' && prev !== 'connected') {
+          handshakeSuccess.add(1);
+          onConnected();
         }
-      });
+        return;
+      }
 
-      // Each VU submits 5 bids with 0.5-1s intervals
+      // ── Business events (post-handshake) ──
+      if (packet.event === 'bid:accepted') {
+        bidsAccepted.add(1);
+        auctionSuccessRate.add(1);
+        const key = packet.data?.idempotencyKey;
+        if (key && pendingBids[key]) {
+          const elapsed = Date.now() - pendingBids[key].submitTime;
+          bidResponseLatency.add(elapsed);
+          bidTotalResponseTime.add(elapsed);
+          if (bidNewArrivals[key] !== undefined) {
+            bidToBroadcastLatency.add(bidNewArrivals[key] - pendingBids[key].submitTime);
+            delete bidNewArrivals[key];
+          }
+          delete pendingBids[key];
+        }
+      } else if (packet.event === 'bid:rejected') {
+        bidsRejected.add(1);
+        const key = packet.data?.idempotencyKey;
+        const code = packet.data?.code;
+        if (key && pendingBids[key]) {
+          bidTotalResponseTime.add(Date.now() - pendingBids[key].submitTime);
+          delete pendingBids[key];
+        }
+        if (typeof code === 'number' && code >= 50000) {
+          businessErrors.add(1);
+        }
+        auctionSuccessRate.add(0);
+      } else if (packet.event === 'rank:update') {
+        const lastSubmitTime = Object.values(pendingBids).pop()?.submitTime;
+        if (lastSubmitTime !== undefined) {
+          rankSyncLatency.add(Date.now() - lastSubmitTime);
+        }
+      } else if (packet.event === 'bid:new') {
+        const key = packet.data?.idempotencyKey;
+        if (key) bidNewArrivals[key] = Date.now();
+      }
+    });
+
+    // ── Socket open → start handshake ──
+    socket.on('open', () => {
+      hsState = performHandshake(socket, token);
+
+      // Timeout: if handshake doesn't complete in 5s, close
+      socket.setTimeout(() => {
+        if (hsState !== 'connected') {
+          handshakeError.add(1);
+          socket.close();
+        }
+      }, 5000);
+    });
+
+    // ── Post-handshake business logic ──
+    function onConnected() {
+      emitEvent(socket, 'auction:join', { roomId });
+
       const bidCount = 5;
       for (let i = 0; i < bidCount; i++) {
         const key = uuidv4();
         const submitTime = Date.now();
-
         bidsSubmitted.add(1);
         pendingBids[key] = { submitTime };
-        emitSocketIO(socket, 'bid:submit', {
-          sessionId,
-          idempotencyKey: key,
-        });
-
+        emitEvent(socket, 'bid:submit', { sessionId, idempotencyKey: key });
         sleep(0.5 + Math.random() * 0.5);
       }
 
       const holdDuration = scenario === 'full' ? 15000 : 10000;
       socket.setTimeout(() => socket.close(), holdDuration);
-    });
+    }
   });
 
   sleep(0.3);
@@ -285,12 +358,10 @@ export function handleSummary(data: Record<string, unknown>) {
   const bcastP95 = (metrics?.bid_to_broadcast_latency?.values?.['p(95)'] as number) ?? 0;
   const bcastP99 = (metrics?.bid_to_broadcast_latency?.values?.['p(99)'] as number) ?? 0;
 
-  // Calculate throughput
   const state = data.state as Record<string, unknown> | undefined;
   const testDuration = (state?.testRunDurationMs as number) ?? 1;
   const durationSeconds = testDuration / 1000;
   const throughput = durationSeconds > 0 ? accepted / durationSeconds : 0;
-
   const sessionId = Number(__ENV.SESSION_ID || 1);
 
   const summary = {
@@ -299,41 +370,16 @@ export function handleSummary(data: Record<string, unknown>) {
     vus: scenario === 'full' ? 50 : 20,
     duration: scenario === 'full' ? '5m' : '30s',
     latency: {
-      bid_response_ms: {
-        p50: Number(bidP50.toFixed(2)),
-        p95: Number(bidP95.toFixed(2)),
-        p99: Number(bidP99.toFixed(2)),
-      },
-      bid_total_response_ms: {
-        p50: Number(totalP50.toFixed(2)),
-        p95: Number(totalP95.toFixed(2)),
-        p99: Number(totalP99.toFixed(2)),
-        note: 'Includes both accepted and rejected bids (industry standard response time)',
-      },
-      rank_sync_ms: {
-        p50: Number(rankP50.toFixed(2)),
-        p95: Number(rankP95.toFixed(2)),
-        p99: Number(rankP99.toFixed(2)),
-      },
-      bid_to_broadcast_ms: {
-        p50: Number(bcastP50.toFixed(2)),
-        p95: Number(bcastP95.toFixed(2)),
-        p99: Number(bcastP99.toFixed(2)),
-      },
+      bid_response_ms: { p50: +bidP50.toFixed(2), p95: +bidP95.toFixed(2), p99: +bidP99.toFixed(2) },
+      bid_total_response_ms: { p50: +totalP50.toFixed(2), p95: +totalP95.toFixed(2), p99: +totalP99.toFixed(2) },
+      rank_sync_ms: { p50: +rankP50.toFixed(2), p95: +rankP95.toFixed(2), p99: +rankP99.toFixed(2) },
+      bid_to_broadcast_ms: { p50: +bcastP50.toFixed(2), p95: +bcastP95.toFixed(2), p99: +bcastP99.toFixed(2) },
     },
     bidding: {
-      submitted,
-      accepted,
-      rejected,
-      throughput_per_second: Number(throughput.toFixed(2)),
-      success_rate_pct: Number((successR * 100).toFixed(2)),
-      business_error_rate_pct: Number((bizRate * 100).toFixed(4)),
-    },
-    consistency_check: {
-      session_id: sessionId,
-      note:
-        'Run consistency-checker separately: ' +
-        'npx tsx backend/scripts/check-consistency.ts --session-id=' + sessionId,
+      submitted, accepted, rejected,
+      throughput_per_second: +throughput.toFixed(2),
+      success_rate_pct: +(successR * 100).toFixed(2),
+      business_error_rate_pct: +(bizRate * 100).toFixed(4),
     },
     assertions: {
       bid_response_p95_lt_5000ms:  bidP95 < 5000,

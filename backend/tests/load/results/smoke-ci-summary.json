@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-06-06T07:18:47.117Z",
+  "timestamp": "2026-06-07T04:06:55.456Z",
   "scenario": "smoke-ci",
   "vus": 200,
   "duration": "2m",
   "results": {
-    "ws_connect_success": 9690,
-    "ws_connect_error": 0,
-    "ws_connect_success_rate": 100,
+    "ws_connect_success": 16700,
+    "ws_connect_error": 28595,
+    "ws_connect_success_rate": 36.87,
     "ws_connect_latency_p95_ms": 8,
     "ws_connect_latency_p99_ms": 0,
-    "non_business_error_rate": 0
+    "non_business_error_rate": 100
   },
   "assertions": {
-    "connect_success_rate_gte_99": true,
-    "non_business_error_lt_0_1": true,
+    "connect_success_rate_gte_99": false,
+    "non_business_error_lt_0_1": false,
     "latency_p95_lt_500ms": true
   },
-  "passed": true
+  "passed": false
 }

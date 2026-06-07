@@ -32,8 +32,9 @@ import {
   seedRoom,
   seedActiveAuction,
   generateToken,
+  truncateAll,
 } from '../../helpers/factory.js';
-import { restoreRedisAvailability } from '../../helpers/redis-test-utils.js';
+import { restoreRedisAvailability, reconnectRedis, simulateRedisOutage } from '../../helpers/redis-test-utils.js';
 import { assertAuctionConsistency } from '../../helpers/consistency-checker.js';
 import { cache, redis as redisClient } from '../../../src/infrastructure/cache/redis.js';
 import { db } from '../../../src/infrastructure/db/knex.js';
@@ -101,24 +102,6 @@ beforeAll(async () => {
   await app.listen({ port: 0, host: '127.0.0.1' });
   const addr = app.server.address();
   port = typeof addr === 'object' && addr ? addr.port : 0;
-
-  const merchant = await seedUser({ username: 'fallback_merchant', role: 'merchant' });
-  const product = await seedProduct(merchant.id, { name: '降级测试商品' });
-  productId = product.productId;
-  roomId = await seedRoom(merchant.id, { title: '降级测试间' });
-
-  const auction = await seedActiveAuction({
-    productId,
-    roomId,
-    ceilingPrice: null,
-    durationSeconds: 600,
-  });
-  sessionId = auction.sessionId;
-
-  const u1 = await seedUser({ username: 'fallback_bidder1', role: 'user' });
-  const u2 = await seedUser({ username: 'fallback_bidder2', role: 'user' });
-  bidder1 = { id: u1.id, token: generateToken(u1.id, 'user') };
-  bidder2 = { id: u2.id, token: generateToken(u2.id, 'user') };
 });
 
 afterAll(async () => {
@@ -129,6 +112,34 @@ afterAll(async () => {
   if (client1?.connected) client1.disconnect();
   if (client2?.connected) client2.disconnect();
   await teardownTestApp(app);
+});
+
+beforeEach(async () => {
+  // Ensure Redis is running and reconnected before each test
+  await startRedis();
+  restoreRedisAvailability();
+  try { await reconnectRedis(); } catch {}
+  await new Promise(r => setTimeout(r, 500));
+
+  await truncateAll();
+
+  const merchant = await seedUser({ role: 'merchant' });
+  const product = await seedProduct(merchant.id);
+  productId = product.productId;
+  roomId = await seedRoom(merchant.id);
+
+  const auction = await seedActiveAuction({
+    productId,
+    roomId,
+    ceilingPrice: null,
+    durationSeconds: 600,
+  });
+  sessionId = auction.sessionId;
+
+  const u1 = await seedUser({ role: 'user' });
+  const u2 = await seedUser({ role: 'user' });
+  bidder1 = { id: u1.id, token: generateToken(u1.id, 'user') };
+  bidder2 = { id: u2.id, token: generateToken(u2.id, 'user') };
 });
 
 afterEach(async () => {
@@ -175,6 +186,7 @@ describe('T036: Redis 降级出价集成测试', () => {
   it('Redis 宕机时通过 MySQL 降级路径成功出价', async () => {
     // Stop Redis container to simulate real outage
     stopRedis();
+    simulateRedisOutage();
     await new Promise((r) => setTimeout(r, 1000));
 
     client1 = ioClient(`http://127.0.0.1:${port}`, {
@@ -215,6 +227,7 @@ describe('T036: Redis 降级出价集成测试', () => {
 
   it('降级路径下多用户出价均成功且金额递增', async () => {
     stopRedis();
+    simulateRedisOutage();
     await new Promise((r) => setTimeout(r, 1000));
 
     client1 = ioClient(`http://127.0.0.1:${port}`, {
@@ -251,6 +264,7 @@ describe('T036: Redis 降级出价集成测试', () => {
 
   it('降级路径下重复幂等键被正确拒绝', async () => {
     stopRedis();
+    simulateRedisOutage();
     await new Promise((r) => setTimeout(r, 1000));
 
     client1 = ioClient(`http://127.0.0.1:${port}`, {
@@ -284,6 +298,7 @@ describe('T036: Redis 降级出价集成测试', () => {
   it('Redis 恢复后 consistency-checker 通过: DB 与缓存对齐', async () => {
     // Phase 1: Place bids while Redis is down
     stopRedis();
+    simulateRedisOutage();
     await new Promise((r) => setTimeout(r, 1000));
 
     client1 = ioClient(`http://127.0.0.1:${port}`, {
@@ -306,10 +321,8 @@ describe('T036: Redis 降级出价集成测试', () => {
     // Phase 2: Restart Redis and wait for it to be fully ready
     await startRedis();
 
-    // Force ioredis to reconnect (may be in disconnected state from stopRedis)
-    try { redisClient.disconnect(false); } catch {}
-    await new Promise(r => setTimeout(r, 500));
-    redisClient.connect();
+    // Force ioredis to reconnect using the helper
+    try { await reconnectRedis(); } catch {}
     await new Promise(r => setTimeout(r, 1000));
 
     // Verify Redis is responsive
@@ -333,5 +346,5 @@ describe('T036: Redis 降级出价集成测试', () => {
     await assertAuctionConsistency(sessionId);
 
     expect(lbCount).toBeGreaterThan(0);
-  });
+  }, 60_000);
 });

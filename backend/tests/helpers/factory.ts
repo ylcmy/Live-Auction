@@ -26,15 +26,21 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
  * Truncate every table used by integration tests, respecting FK constraints.
  */
 export async function truncateAll(): Promise<void> {
-  await db.raw('SET FOREIGN_KEY_CHECKS = 0');
-  await db('bid_records').truncate();
-  await db('orders').truncate();
-  await db('auction_sessions').truncate();
-  await db('auction_rules').truncate();
-  await db('products').truncate();
-  await db('live_rooms').truncate();
-  await db('users').truncate();
-  await db.raw('SET FOREIGN_KEY_CHECKS = 1');
+  // Use a transaction to guarantee all operations run on the same DB connection,
+  // so SET FOREIGN_KEY_CHECKS = 0 stays in effect for subsequent DELETEs.
+  // We use del() instead of truncate() because TRUNCATE causes implicit commit
+  // in MySQL which would break the transaction.
+  await db.transaction(async (trx) => {
+    await trx.raw('SET FOREIGN_KEY_CHECKS = 0');
+    await trx('bid_records').del();
+    await trx('orders').del();
+    await trx('auction_sessions').del();
+    await trx('auction_rules').del();
+    await trx('products').del();
+    await trx('live_rooms').del();
+    await trx('users').del();
+    await trx.raw('SET FOREIGN_KEY_CHECKS = 1');
+  });
   try {
     await flushAll();
   } catch {
@@ -247,6 +253,10 @@ export async function seedActiveAuction(opts: {
     }
   }
 
+  // Fetch the rule and product for Redis cache (bid service needs rule + merchant_id)
+  const rule = await db('auction_rules').where({ id: ruleId }).first();
+  const product = await db('products').where({ id: productId }).first();
+
   try {
     await Promise.all([
       cache.set(`auction:${sessionId}:end_time`, String(endTime)),
@@ -259,6 +269,17 @@ export async function seedActiveAuction(opts: {
         JSON.stringify({ userId: 0, amount: 100, timestamp: Date.now() }),
       ),
       cache.set(`room:${roomId}:active_session`, String(sessionId)),
+      // Cache keys required by bidService.getAuctionContextFromCache
+      cache.set(
+        `auction:${sessionId}:rule`,
+        JSON.stringify({
+          bid_increment: Number(rule.bid_increment),
+          ceiling_price: rule.ceiling_price ? Number(rule.ceiling_price) : null,
+          max_extensions: rule.max_extensions,
+          extend_seconds: rule.extend_seconds,
+        }),
+      ),
+      cache.set(`auction:${sessionId}:merchant_id`, String(product.merchant_id)),
     ]);
   } catch {
     // If Redis is not available the test will fail at runtime; the seed

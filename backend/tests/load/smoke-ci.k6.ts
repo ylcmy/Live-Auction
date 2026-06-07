@@ -11,27 +11,89 @@
  */
 
 import ws from 'k6/ws';
-import { check, sleep } from 'k6';
+import http from 'k6/http';
+import { sleep } from 'k6';
 import { Counter, Trend, Rate } from 'k6/metrics';
 
-// ── Socket.IO v4 helpers (k6 v2 compatible) ─────────────────────────────────
-function parseSocketIOMessage(msg: string): { event: string; data: any } | null {
-  if (typeof msg !== 'string' || !msg.startsWith('42')) return null;
-  try {
-    const parsed = JSON.parse(msg.substring(2));
-    return { event: parsed[0], data: parsed[1] };
-  } catch {
-    return null;
-  }
+// ── Socket.IO v4 protocol helpers ───────────────────────────────────────────
+
+const EIO_CONNECT = '0';
+const EIO_PING    = '2';
+const EIO_PONG    = '3';
+const EIO_UPGRADE = '5';
+
+const SIO_CONNECT      = '40';
+const SIO_EVENT_PREFIX = '42';
+
+type HandshakeState = 'eio-connect' | 'probe' | 'upgrade' | 'sio-connect' | 'connected';
+
+interface SocketIOPacket {
+  eioType: string;
+  sioType?: string;
+  event?: string;
+  data?: any;
 }
 
-function emitSocketIO(socket: any, event: string, data: any) {
-  socket.send('42["' + event + '",' + JSON.stringify(data) + ']');
+function parsePacket(msg: string): SocketIOPacket | null {
+  if (typeof msg !== 'string' || msg.length === 0) return null;
+  const eioType = msg[0];
+
+  if (eioType === '4') {
+    const sioPayload = msg.substring(1);
+    if (sioPayload.length === 0) return { eioType };
+    const sioType = sioPayload[0];
+
+    if (sioType === '2' && sioPayload.length > 1) {
+      try {
+        const parsed = JSON.parse(sioPayload.substring(1));
+        return { eioType, sioType, event: parsed[0], data: parsed[1] };
+      } catch { return { eioType, sioType }; }
+    }
+
+    return { eioType, sioType };
+  }
+
+  return { eioType };
+}
+
+function emitEvent(socket: any, event: string, data: any) {
+  socket.send(SIO_EVENT_PREFIX + '["' + event + '",' + JSON.stringify(data) + ']');
+}
+
+function performHandshake(socket: any, token: string): HandshakeState {
+  socket.send(EIO_CONNECT + JSON.stringify({ token }));
+  return 'probe';
+}
+
+function handleHandshakeStep(socket: any, packet: SocketIOPacket, state: HandshakeState): HandshakeState {
+  switch (state) {
+    case 'probe':
+      if (packet.eioType === EIO_CONNECT) {
+        socket.send('2probe');
+        return 'upgrade';
+      }
+      break;
+    case 'upgrade':
+      if (packet.eioType === '3' || (packet.eioType === '4' && packet.sioType === '3')) {
+        socket.send(EIO_UPGRADE);
+        socket.send(SIO_CONNECT + '{}');
+        return 'sio-connect';
+      }
+      break;
+    case 'sio-connect':
+      if (packet.eioType === '4' && packet.sioType === '0') {
+        return 'connected';
+      }
+      break;
+  }
+  return state;
 }
 
 // ── Custom metrics ──────────────────────────────────────────────────────────
 const connectSuccess = new Counter('ws_connect_success');
 const connectError   = new Counter('ws_connect_error');
+const handshakeOk    = new Counter('handshake_success');
+const handshakeFail  = new Counter('handshake_error');
 const wsLatency      = new Trend('ws_connect_latency', true);
 const errorRate      = new Rate('non_business_errors');
 
@@ -47,47 +109,109 @@ export const options = {
   thresholds: {
     ws_connect_success:       ['count>0'],
     ws_connect_error:         ['count<10000'],
-    non_business_errors:      ['rate<0.001'],   // <0.1%
+    non_business_errors:      ['rate<0.001'],
     ws_connect_latency:       ['p(95)<500'],
   },
 };
 
+// ── Setup: register and login users ─────────────────────────────────────────
+export function setup() {
+  const apiBase = __ENV.API_BASE || 'http://localhost:3001';
+  const userCount = Number(__ENV.USER_COUNT || 200);
+  const tokens: string[] = [];
+
+  for (let i = 0; i < userCount; i++) {
+    const username = `k6_smoke_${i}_${Date.now()}`;
+    const password = 'Test1234!';
+    const nickname = `SmokeUser${i}`;
+
+    http.post(
+      `${apiBase}/api/auth/register`,
+      JSON.stringify({ username, password, nickname, role: 'user' }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+
+    const loginRes = http.post(
+      `${apiBase}/api/auth/login`,
+      JSON.stringify({ username, password }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+
+    if (loginRes.status === 200) {
+      try {
+        const body = JSON.parse(loginRes.body as string);
+        const token = body.data?.accessToken;
+        if (token) tokens.push(token);
+      } catch {}
+    }
+  }
+
+  return { tokens };
+}
+
 // ── Default function (per-VU iteration) ─────────────────────────────────────
-export default function () {
-  const token = __ENV.TEST_TOKEN || 'test-token';
+export default function (data: { tokens: string[] }) {
+  if (data.tokens.length === 0) return;
+
+  const userIndex = (__VU - 1) % data.tokens.length;
+  const token = data.tokens[userIndex];
   const baseUrl = __ENV.WS_URL || 'ws://localhost:3001';
   const roomId = Number(__ENV.ROOM_ID || 1);
-  const url = `${baseUrl}/socket.io/?EIO=4&transport=websocket&token=${encodeURIComponent(token)}`;
+  const url = `${baseUrl}/socket.io/?EIO=4&transport=websocket`;
 
   const start = Date.now();
 
   const res = ws.connect(url, null, (socket) => {
+    let hsState: HandshakeState = 'eio-connect';
+
+    // ── Message handler ──
+    socket.on('message', (msg: string) => {
+      const packet = parsePacket(msg);
+      if (!packet) return;
+
+      if (packet.eioType === EIO_PING) {
+        socket.send(EIO_PONG);
+        return;
+      }
+
+      if (hsState !== 'connected') {
+        const prev = hsState;
+        hsState = handleHandshakeStep(socket, packet, hsState);
+        if (hsState === 'connected' && prev !== 'connected') {
+          wsLatency.add(Date.now() - start);
+          handshakeOk.add(1);
+          connectSuccess.add(1);
+          onConnected();
+        }
+        return;
+      }
+
+      // countdown:tick, bid:new, rank:update — no-op, just keeping alive
+    });
+
+    // ── Socket open → handshake ──
     socket.on('open', () => {
-      wsLatency.add(Date.now() - start);
-      connectSuccess.add(1);
-      // Send Socket.IO CONNECT with auth token to complete the handshake
-      socket.send('40{"token":"' + token + '"}');
+      hsState = performHandshake(socket, token);
 
-      emitSocketIO(socket, 'auction:join', { roomId });
+      socket.setTimeout(() => {
+        if (hsState !== 'connected') {
+          handshakeFail.add(1);
+          socket.close();
+        }
+      }, 5000);
+    });
 
-      // Subscribe to common events to keep the connection alive
-      socket.on('message', (msg: string) => {
-        const parsed = parseSocketIOMessage(msg);
-        if (!parsed) return;
-        // countdown:tick, bid:new, rank:update — no-op, just keeping connection alive
-      });
+    // ── Post-handshake: join room and hold ──
+    function onConnected() {
+      emitEvent(socket, 'auction:join', { roomId });
 
-      // Keep connection open for 3-8 seconds then close gracefully
       const holdDuration = 3000 + Math.random() * 5000;
       socket.setTimeout(() => socket.close(), holdDuration);
-    });
+    }
 
-    socket.on('error', () => {
-      // k6 v2 fires error on normal close too; we track errors via res.status instead
-    });
+    socket.on('error', () => {});
   });
 
-  // ws.connect returns a Response; check for non-101 errors
   if (res && res.status !== undefined && res.status !== 101) {
     connectError.add(1);
     errorRate.add(1);

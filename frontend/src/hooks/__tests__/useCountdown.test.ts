@@ -31,18 +31,24 @@ afterEach(() => {
 });
 
 describe('useCountdown', () => {
-  it('should initialize remainingMs to initialMs', () => {
-    const { result } = renderHook(() => useCountdown(30000));
-    expect(result.current.remainingMs).toBe(30000);
-  });
-
-  it('should default remainingMs to 0 when initialMs is not provided', () => {
+  it('should initialize remainingMs to 0', () => {
     const { result } = renderHook(() => useCountdown());
     expect(result.current.remainingMs).toBe(0);
   });
 
+  it('should set remainingMs via sync', async () => {
+    const { result } = renderHook(() => useCountdown());
+    act(() => {
+      result.current.sync({ sessionId: 1, remainingMs: 30000, serverTime: Date.now() });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.remainingMs).toBeGreaterThan(29000);
+  });
+
   it('should initialize isUrgent as false', () => {
-    const { result } = renderHook(() => useCountdown(30000));
+    const { result } = renderHook(() => useCountdown());
     expect(result.current.isUrgent).toBe(false);
   });
 
@@ -161,7 +167,7 @@ describe('useCountdown', () => {
   });
 
   it('should return all expected properties', () => {
-    const { result } = renderHook(() => useCountdown(10000));
+    const { result } = renderHook(() => useCountdown());
     expect(result.current).toHaveProperty('remainingMs');
     expect(result.current).toHaveProperty('isUrgent');
     expect(result.current).toHaveProperty('sync');

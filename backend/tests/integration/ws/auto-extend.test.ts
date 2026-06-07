@@ -33,16 +33,7 @@ import {
   generateToken,
 } from '../../helpers/factory.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-
-function flushTestRedis(): Promise<string> {
-  const r = new Redis(REDIS_URL);
-  return r.flushdb().finally(() => r.quit());
-}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -72,7 +63,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await flushTestRedis();
   await truncateAll();
   clients = [];
 
@@ -80,7 +70,7 @@ beforeEach(async () => {
   sessionId = auction.sessionId;
   roomId = auction.roomId;
   userTokens = auction.userTokens;
-});
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -133,29 +123,24 @@ describe('T023: 自动延时集成测试 (FR-015, SC-006)', () => {
     // ---- Assertions ----
 
     // 1. countdown:extend event was broadcast
-    if (extendEvents.length > 0) {
-      expect(extendEvents[0]!.extendSeconds).toBeGreaterThan(0);
-      expect(extendEvents[0]!.remainingExtensions).toBeGreaterThanOrEqual(0);
-    }
+    expect(extendEvents.length).toBeGreaterThan(0);
+    expect(extendEvents[0]!.extendSeconds).toBeGreaterThan(0);
+    expect(extendEvents[0]!.remainingExtensions).toBeGreaterThanOrEqual(0);
 
-    // 2. Redis end_time should have been extended (or auction settled)
+    // 2. Redis end_time should have been extended
     const redis2 = new Redis(REDIS_URL);
     try {
       const newEndTime = parseInt((await redis2.get(`auction:${sessionId}:end_time`)) || '0', 10);
       const extensions = parseInt((await redis2.get(`auction:${sessionId}:extensions`)) || '0', 10);
 
-      if (extendEvents.length > 0) {
-        // Extension happened: end_time should be greater
-        expect(newEndTime).toBeGreaterThan(initialEndTime);
-        expect(extensions).toBeGreaterThanOrEqual(1);
-      }
-      // If no extension, the bid may have triggered settlement (auction ended)
+      expect(newEndTime).toBeGreaterThan(initialEndTime);
+      expect(extensions).toBeGreaterThanOrEqual(1);
     } finally {
       await redis2.quit();
     }
 
     client.disconnect();
-  });
+  }, 20_000);
 
   it('max_extensions 用尽后不再延时', async () => {
     const extendEvents: { extendSeconds: number; remainingExtensions: number }[] = [];
@@ -213,5 +198,5 @@ describe('T023: 自动延时集成测试 (FR-015, SC-006)', () => {
     expect(extendEvents.length).toBeLessThanOrEqual(3);
 
     for (const c of clients) c.disconnect();
-  });
+  }, 60_000);
 });

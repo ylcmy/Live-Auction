@@ -126,15 +126,19 @@ async function createFixtures(request: APIRequestContext): Promise<FixtureData> 
   return { merchantToken, userToken, productId, roomId, sessionId };
 }
 
-/** 通过 API 帮助用户登录（写入 localStorage），然后导航至指定页面 */
+/** 通过 API 帮助用户登录（写入 localStorage），然后刷新页面让 zustand store 恢复状态 */
 async function loginViaApi(page: import('@playwright/test').Page, token: string) {
   await page.goto('/login');
   await page.evaluate(
     ({ token }: { token: string }) => {
       localStorage.setItem('accessToken', token);
+      localStorage.setItem('refreshToken', token);
     },
     { token },
   );
+  // Reload to let zustand store restore token from localStorage
+  await page.reload();
+  await page.waitForLoadState('networkidle');
 }
 
 /**
@@ -270,12 +274,12 @@ test.describe('T062: 完整竞拍旅程 — 竞争出价与结果验证', () => 
       // --- Verify auction ended (ceiling price hit → auto settlement) ---
       // Wait for auction:ended WS event to trigger AuctionResult overlay
       // User 2 should see winning result
-      await expect(page2.getByText('恭喜中标').or(page2.getByText('竞拍结束'))).toBeVisible({
+      await expect(page2.getByText('恭喜中标').first()).toBeVisible({
         timeout: 30000,
       });
 
       // User 1 should see "竞拍结束" with possible "出价被超越" badge
-      await expect(page1.getByText('竞拍结束').or(page1.getByText('恭喜中标'))).toBeVisible({
+      await expect(page1.getByText('竞拍结束').first()).toBeVisible({
         timeout: 30000,
       });
 
@@ -412,6 +416,6 @@ test.describe('完整竞拍流程', () => {
     await expect(page.getByText('竞拍已成功发起')).toBeVisible({ timeout: 10000 });
 
     // 验证进行中的竞拍卡片出现
-    await expect(page.getByText('进行中的竞拍')).toBeVisible();
+    await expect(page.getByText('实时竞拍监控')).toBeVisible();
   });
 });
