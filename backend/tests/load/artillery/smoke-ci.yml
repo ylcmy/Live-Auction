@@ -5,10 +5,11 @@
 #   - Non-business error rate < 0.1%
 #
 # Usage:
-#   cd backend && npx artillery run tests/load/artillery/smoke-ci.yml
+#   cd backend && pnpm load:smoke            (默认测试环境 localhost:3002)
+#   ARTILLERY_TARGET=http://host:port npx artillery run tests/load/artillery/smoke-ci.yml
 
 config:
-  target: "http://localhost:3001"
+  target: "{{ $processEnvironment.ARTILLERY_TARGET || 'http://localhost:3002' }}"
   phases:
     - duration: 30
       arrivalRate: 20

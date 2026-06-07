@@ -3,10 +3,11 @@
 # Tests: Connection management, room join/leave, message broadcast
 #
 # Usage:
-#   cd backend && npx artillery run tests/load/artillery/ws-concurrency.yml
+#   cd backend && pnpm load:concurrency      (默认测试环境 localhost:3002)
+#   ARTILLERY_TARGET=http://host:port npx artillery run tests/load/artillery/ws-concurrency.yml
 
 config:
-  target: "http://localhost:3001"
+  target: "{{ $processEnvironment.ARTILLERY_TARGET || 'http://localhost:3002' }}"
   phases:
     - duration: 10
       arrivalRate: 100

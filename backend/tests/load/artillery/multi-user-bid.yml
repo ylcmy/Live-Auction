@@ -3,10 +3,11 @@
 # Tests: End-to-end bid latency, broadcast latency, rank sync latency
 #
 # Usage:
-#   cd backend && npx artillery run tests/load/artillery/multi-user-bid.yml
+#   cd backend && pnpm load:bid              (默认测试环境 localhost:3002)
+#   ARTILLERY_TARGET=http://host:port npx artillery run tests/load/artillery/multi-user-bid.yml
 
 config:
-  target: "http://localhost:3001"
+  target: "{{ $processEnvironment.ARTILLERY_TARGET || 'http://localhost:3002' }}"
   phases:
     - duration: 5
       arrivalRate: 5
