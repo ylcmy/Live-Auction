@@ -1,0 +1,83 @@
+# Artillery WebSocket concurrency test: 500 VU
+#
+# Tests: Connection management, room join/leave, message broadcast
+#
+# Usage:
+#   cd backend && npx artillery run tests/load/artillery/ws-concurrency.yml
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 10
+      arrivalRate: 100
+      name: "Ramp up"
+    - duration: 30
+      arrivalRate: 500
+      name: "Sustained load"
+    - duration: 10
+      arrivalRate: 0
+      name: "Ramp down"
+
+  socketio:
+    transports: ["websocket"]
+
+  processor: "./socketio-processor.js"
+
+scenarios:
+  - name: "Room connection lifecycle"
+    weight: 1
+
+    beforeScenario: "uniqueUsername"
+
+    flow:
+      # 1. Register + Login
+      - post:
+          url: "/api/auth/register"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+            nickname: "{{ nickname }}"
+            role: "user"
+          expect:
+            - statusCode:
+              - 200
+              - 201
+              - 409
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.data.accessToken"
+              as: "token"
+          expect:
+            statusCode: 200
+
+      # 2. Connect to Socket.IO
+      - connect:
+          namespace: "/"
+          channels:
+            - "room:count"
+            - "auction:state"
+            - "bid:new"
+            - "rank:update"
+            - "countdown:sync"
+          data:
+            auth:
+              token: "{{ token }}"
+
+      # 3. Join room
+      - emit:
+          channel: "auction:join"
+          data:
+            roomId: 1
+
+      # 4. Hold connection (simulate browsing)
+      - think: 5
+
+      # 5. Leave room
+      - emit:
+          channel: "auction:leave"
+          data:
+            roomId: 1

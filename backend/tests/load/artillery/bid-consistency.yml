@@ -1,0 +1,100 @@
+# Artillery bid consistency test: 500 VU
+#
+# Tests: Price monotonicity, CAS correctness, idempotency under high load
+#
+# Usage:
+#   cd backend && npx artillery run tests/load/artillery/bid-consistency.yml
+#
+# After test, run consistency check:
+#   npx tsx scripts/check-consistency.ts --session-id=1
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 5
+      arrivalRate: 100
+      name: "Ramp up"
+    - duration: 10
+      arrivalRate: 500
+      name: "Peak load"
+    - duration: 20
+      arrivalRate: 500
+      name: "Sustained peak"
+    - duration: 5
+      arrivalRate: 0
+      name: "Ramp down"
+
+  socketio:
+    transports: ["websocket"]
+
+  processor: "./socketio-processor.js"
+
+  ensure:
+    conditions:
+      - expression: "vusers.created > 0"
+        strict: true
+
+scenarios:
+  - name: "Concurrent bidding stress"
+    weight: 1
+
+    beforeScenario: "uniqueUsername"
+
+    flow:
+      # 1. Register + Login
+      - post:
+          url: "/api/auth/register"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+            nickname: "{{ nickname }}"
+            role: "user"
+          expect:
+            - statusCode:
+              - 200
+              - 201
+              - 409
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.data.accessToken"
+              as: "token"
+          expect:
+            statusCode: 200
+
+      # 2. Connect to Socket.IO
+      - connect:
+          namespace: "/"
+          channels:
+            - "bid:accepted"
+            - "bid:rejected"
+            - "bid:new"
+            - "rank:update"
+          data:
+            auth:
+              token: "{{ token }}"
+
+      # 3. Join room
+      - emit:
+          channel: "auction:join"
+          data:
+            roomId: 1
+
+      - think: 0.2
+
+      # 4. Submit 5 bids (rapid fire - testing CAS under contention)
+      - loop:
+          - function: "generateIdempotencyKey"
+          - emit:
+              channel: "bid:submit"
+              data:
+                sessionId: 1
+                idempotencyKey: "{{ idempotencyKey }}"
+          - think: 0.2
+        count: 5
+
+      # 5. Brief hold for broadcast receipt
+      - think: 3

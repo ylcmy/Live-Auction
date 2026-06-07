@@ -1,0 +1,98 @@
+# Artillery smoke test for CI: 200 VU x 2min
+#
+# Goals:
+#   - WebSocket connection success rate >= 99%
+#   - Non-business error rate < 0.1%
+#
+# Usage:
+#   cd backend && npx artillery run tests/load/artillery/smoke-ci.yml
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 30
+      arrivalRate: 20
+      name: "Warm up"
+    - duration: 90
+      arrivalRate: 200
+      name: "Sustained load"
+
+  socketio:
+    transports: ["websocket"]
+
+  engines:
+    socketio: {}
+
+  processor: "./socketio-processor.js"
+
+  ensure:
+    thresholds:
+      http.response_time.p95: 500
+    conditions:
+      - expression: "http.codes.200 > 0"
+        strict: true
+
+scenarios:
+  - name: "Smoke - register and connect"
+    weight: 1
+
+    beforeScenario: "uniqueUsername"
+
+    flow:
+      # 1. Register
+      - post:
+          url: "/api/auth/register"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+            nickname: "{{ nickname }}"
+            role: "user"
+          capture:
+            - json: "$.data.accessToken"
+              as: "token"
+            - json: "$.data.id"
+              as: "userId"
+          expect:
+            - statusCode:
+              - 200
+              - 201
+              - 409
+
+      # 2. Login (if register didn't return token)
+      - think: 0.5
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.data.accessToken"
+              as: "token"
+          expect:
+            statusCode: 200
+
+      # 3. Connect to Socket.IO with auth
+      - think: 0.2
+      - connect:
+          namespace: "/"
+          channels:
+            - "room:count"
+            - "auction:state"
+          data:
+            auth:
+              token: "{{ token }}"
+
+      # 4. Join room
+      - emit:
+          channel: "auction:join"
+          data:
+            roomId: 1
+
+      # 5. Hold connection 3-8 seconds
+      - think: 5
+
+      # 6. Leave room
+      - emit:
+          channel: "auction:leave"
+          data:
+            roomId: 1
