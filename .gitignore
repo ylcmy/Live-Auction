@@ -39,6 +39,8 @@ coverage/
 # Test output
 test-results/
 playwright-report/
+backend/tests/load/results/
+backend/tests/load/artillery/reports/
 
 # Misc
 *.tmp

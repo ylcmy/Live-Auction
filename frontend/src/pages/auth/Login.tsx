@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
+import { decodeJwtPayload } from '../../lib/jwt';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
@@ -44,8 +45,8 @@ export default function Login() {
     const token = localStorage.getItem('accessToken');
     if (token) {
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        navigate(payload.role === 'merchant' ? '/admin' : '/live');
+        const payload = decodeJwtPayload<{ role: string }>(token);
+        navigate(payload?.role === 'merchant' ? '/admin' : '/live');
       } catch {
         navigate('/live');
       }

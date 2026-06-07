@@ -17,7 +17,7 @@ import { bidEventBus } from '../bid-event-bus.js';
 export function registerBidHandlers(io: Server, socket: Socket) {
   const userId = (socket as any).userId as number;
 
-  socket.on('bid:submit', async (data: { sessionId: number; amount?: number; idempotencyKey: string }) => {
+  socket.on('bid:submit', async (data: { sessionId: number; amount?: number; idempotencyKey: string }, ack?: (response: { success: boolean; data?: any; error?: any }) => void) => {
     const { sessionId, amount, idempotencyKey } = data;
 
     // ---- 1. 获取前领先者 (异步通知需要) ----
@@ -34,12 +34,14 @@ export function registerBidHandlers(io: Server, socket: Socket) {
     const result: BidProcessResult = await bidService.processBid(sessionId, userId, idempotencyKey, amount);
 
     if (!result.success) {
-      socket.emit('bid:rejected', { sessionId, idempotencyKey, reason: result.error?.message, code: result.error?.code });
+      const rejected = { sessionId, idempotencyKey, reason: result.error?.message, code: result.error?.code };
+      socket.emit('bid:rejected', rejected);
+      if (ack) ack({ success: false, error: rejected });
       return;
     }
 
     // ---- 3. 立即返回 accepted ----
-    socket.emit('bid:accepted', {
+    const accepted = {
       sessionId,
       idempotencyKey,
       bidId: 0,
@@ -47,7 +49,9 @@ export function registerBidHandlers(io: Server, socket: Socket) {
       rank: result.rank,
       isLeading: result.isLeading,
       gapToLeader: result.gapToLeader,
-    });
+    };
+    socket.emit('bid:accepted', accepted);
+    if (ack) ack({ success: true, data: accepted });
 
     // ---- 4. 异步广播 (不阻塞用户) ----
     try {
