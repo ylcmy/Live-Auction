@@ -37,7 +37,7 @@ import { ErrorCodes } from '../lib/error-codes.js';
 const BID_RATE_LIMIT_MAX = 5;
 const BID_RATE_LIMIT_WINDOW_MS = 1000;
 const BID_RATE_LIMIT_TTL_S = 2;
-const IDEMPOTENCY_PENDING_TTL = 300;
+const IDEMPOTENCY_PENDING_TTL = 30;
 const IDEMPOTENCY_RESULT_TTL = 3600;
 
 export interface BidProcessResult {
@@ -330,7 +330,7 @@ export const bidService = {
     } catch (err) {
       logger.error({ err, sessionId, userId, bidAmount }, 'MySQL persistence failed, rolling back Redis');
       const topBidRaw = await cache.get(topBidKey);
-      await cache.eval(BID_ROLLBACK_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), topBidRaw || '']);
+      await cache.eval(BID_ROLLBACK_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), topBidRaw || '', new Date().toISOString()]);
       return { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: '出价处理失败，请重试' } };
     }
 

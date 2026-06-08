@@ -6,21 +6,7 @@ import { redis, redisCircuitBreaker } from './infrastructure/cache/redis.js';
 import { initWebSocket } from './ws/index.js';
 import { orderService } from './services/order.service.js';
 import { getAuctionService } from './services/auction.service.js';
-
-const AUTO_CANCEL_INTERVAL_MS = 60 * 1000;
-
-function startAutoCancelTimer() {
-  setInterval(async () => {
-    try {
-      const count = await orderService.autoCancelExpiredOrders();
-      if (count > 0) {
-        logger.info({ event: 'auto_cancel_batch', count }, `Auto-cancelled ${count} expired orders`);
-      }
-    } catch (err) {
-      logger.error({ event: 'auto_cancel_error', err }, 'Auto-cancel timer error');
-    }
-  }, AUTO_CANCEL_INTERVAL_MS);
-}
+import { startOrderTimeoutWorker, closeOrderTimeoutWorker } from './infrastructure/queue/order-timeout.js';
 
 async function start() {
   // Check DB connection
@@ -62,8 +48,11 @@ async function start() {
     }
   });
 
-  startAutoCancelTimer();
-  logger.info('Order auto-cancel timer started');
+  // Run a one-time fallback scan for any expired orders before starting the worker
+  await orderService.autoCancelExpiredOrders();
+  // Start BullMQ worker for order timeout processing
+  startOrderTimeoutWorker();
+  logger.info('Order timeout worker started');
 }
 
 start().catch((err) => {

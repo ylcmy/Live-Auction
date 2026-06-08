@@ -47,6 +47,7 @@ local participantsKey = KEYS[2]
 local topBidKey       = KEYS[3]
 local userId          = ARGV[1]
 local prevTopBidData  = ARGV[2]
+local currentTimestamp = ARGV[3]
 
 redis.call('ZREM', lbKey, userId)
 redis.call('SREM', participantsKey, userId)
@@ -56,11 +57,29 @@ local topEntry = redis.call('ZREVRANGE', lbKey, 0, 0, 'WITHSCORES')
 if topEntry and #topEntry >= 2 then
   local topUserId = topEntry[1]
   local topAmount = topEntry[2]
-  redis.call('SET', topBidKey, cjson.encode({userId = topUserId, amount = tonumber(topAmount)}))
+  redis.call('SET', topBidKey, cjson.encode({userId = topUserId, amount = tonumber(topAmount), timestamp = currentTimestamp}))
 elseif prevTopBidData and prevTopBidData ~= '' then
   redis.call('SET', topBidKey, prevTopBidData)
 else
   redis.call('DEL', topBidKey)
 end
 return 1
+`;
+
+/** 分布式锁释放脚本：校验锁值后删除，防止误删 */
+export const LOCK_RELEASE_SCRIPT = `
+  if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+  else
+    return 0
+  end
+`;
+
+/** 分布式锁续期脚本：校验锁值后续期，防止续期他人锁 */
+export const LOCK_RENEW_SCRIPT = `
+  if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+  else
+    return 0
+  end
 `;

@@ -3,7 +3,7 @@ import { productRepo } from '../repositories/product.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
 import { liveRoomRepo } from '../repositories/live-room.repo.js';
 import { orderRepo } from '../repositories/order.repo.js';
-import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
+import { cache, isRedisAvailable, withLock, redis } from '../infrastructure/cache/redis.js';
 import { db } from '../infrastructure/db/knex.js';
 import { bidService } from './bid.service.js';
 import { logger } from '../middleware/logger.js';
@@ -14,6 +14,7 @@ import { broadcastRoomListUpdate } from '../ws/index.js';
 import { canTransition } from '../domain/auction.js';
 import type { AuctionStatus } from '../domain/auction.js';
 import { AuctionTimerManager } from './auction-timer-manager.js';
+import { scheduleOrderExpiryCheck } from '../infrastructure/queue/order-timeout.js';
 import type { Server } from 'socket.io';
 import type { Knex } from 'knex';
 
@@ -307,16 +308,20 @@ export class AuctionService {
    */
   private async _settleAuctionRedis(sessionId: number): Promise<SettleResult> {
     const lockKey = `settle_lock:${sessionId}`;
-    const lock = await cache.setnx(lockKey, '1', 30);
-    if (!lock) {
-      logger.warn({ event: 'auction_settle_blocked', sessionId }, 'Settlement blocked - concurrent settlement in progress');
-      return { winner: null, leaderboard: [], orderId: null };
-    }
-
     try {
-      return await this._doSettle(sessionId);
-    } finally {
-      await cache.del(lockKey);
+      return await withLock(redis, lockKey, 30000, async (lock) => {
+        if (lock.isLost) {
+          logger.warn({ event: 'auction_settle_lock_lost', sessionId }, 'Settlement lock lost during execution');
+          return { winner: null, leaderboard: [], orderId: null };
+        }
+        return await this._doSettle(sessionId);
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Failed to acquire lock')) {
+        logger.warn({ event: 'auction_settle_blocked', sessionId }, 'Settlement blocked - concurrent settlement in progress');
+        return { winner: null, leaderboard: [], orderId: null };
+      }
+      throw err;
     }
   }
 
@@ -487,6 +492,13 @@ export class AuctionService {
       }
     }
 
+    // Schedule order expiry check via BullMQ (fire-and-forget; failure is non-blocking)
+    if (orderId) {
+      scheduleOrderExpiryCheck(orderId).catch((err) => {
+        logger.error({ event: 'order_expiry_schedule_failed', orderId, err }, 'Failed to schedule order expiry check');
+      });
+    }
+
     // Build leaderboard with nicknames
     const leaderboard = await bidService.getLeaderboard(sessionId, 0);
 
@@ -579,13 +591,18 @@ export class AuctionService {
    */
   private async _cancelAuctionRedis(sessionId: number, merchantId: number): Promise<void> {
     const lockKey = `cancel_lock:${sessionId}`;
-    const lock = await cache.setnx(lockKey, '1', 10);
-    if (!lock) throw new AppError('操作进行中，请稍后再试', 409);
-
     try {
-      await this._doCancel(sessionId, merchantId);
-    } finally {
-      await cache.del(lockKey);
+      await withLock(redis, lockKey, 10000, async (lock) => {
+        if (lock.isLost) {
+          throw new AppError('操作锁已丢失，请重试', 409);
+        }
+        await this._doCancel(sessionId, merchantId);
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Failed to acquire lock')) {
+        throw new AppError('操作进行中，请稍后再试', 409);
+      }
+      throw err;
     }
   }
 
@@ -740,7 +757,7 @@ export class AuctionService {
           await cache.setnx(`auction:${sessionId}:top_bid`, topBidData, ttlSeconds);
         }
 
-        // Rebuild leaderboard from bid_records (ZADD with NX flag per member)
+        // Rebuild leaderboard from bid_records (DEL + pipeline ZADD for atomicity)
         const bids = await db('bid_records')
           .where({ session_id: sessionId })
           .select('user_id', 'bid_amount');
@@ -753,11 +770,16 @@ export class AuctionService {
           }
         }
         const lbKey = `auction:${sessionId}:leaderboard`;
-        for (const [userId, amount] of userBestBids) {
-          await cache.zadd(lbKey, amount, String(userId));
+        // Delete first to ensure clean state, then pipeline ZADD for atomicity
+        await cache.del(lbKey);
+        if (userBestBids.size > 0) {
+          const pipe = cache.pipeline();
+          for (const [userId, amount] of userBestBids) {
+            pipe.zadd(lbKey, amount, String(userId));
+          }
+          pipe.expire(lbKey, ttlSeconds);
+          await pipe.exec();
         }
-        // Set TTL on leaderboard key
-        await cache.expire(lbKey, ttlSeconds);
 
         // Rebuild participants from DISTINCT user_ids in bid_records
         const participantIds = [...userBestBids.keys()];
