@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatMsCompact } from './format';
+import { formatMsCompact } from '@/lib/format';
 
 describe('formatMsCompact', () => {
   it('formats 0ms as 00:00', () => {

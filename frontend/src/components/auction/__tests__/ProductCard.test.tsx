@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import ProductCard from './ProductCard';
-import type { RoomAuctionItem } from '../../types/api';
+import ProductCard from '@/components/auction/ProductCard';
+import type { RoomAuctionItem } from '@/types/api';
 
 afterEach(() => cleanup());
 
-vi.mock('../../store/auctionStore', () => ({
+vi.mock('@/store/auctionStore', () => ({
   useAuctionStore: (selector: any) => {
     const state = {
       countdownRemainingMs: 65000,

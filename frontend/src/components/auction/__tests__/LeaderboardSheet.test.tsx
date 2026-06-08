@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import LeaderboardSheet from './LeaderboardSheet';
+import LeaderboardSheet from '@/components/auction/LeaderboardSheet';
 
-vi.mock('../../store/auctionStore', () => ({
+vi.mock('@/store/auctionStore', () => ({
   useAuctionStore: (selector: any) => {
     const state = {
       leaderboard: [

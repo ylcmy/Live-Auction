@@ -1,8 +1,9 @@
 import { db } from '../knex.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
+import { env } from '../../../config/env.js';
 
 export async function seed(): Promise<void> {
-  const hash = await bcrypt.hash('pass1234', 10);
+  const hash = await bcrypt.hash('pass1234', env.BCRYPT_COST);
   const now = new Date();
 
   await db('users').insert([
