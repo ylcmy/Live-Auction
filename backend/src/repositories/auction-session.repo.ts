@@ -52,10 +52,10 @@ export const auctionSessionRepo = {
     if (winnerId) update.winner_id = winnerId;
     return db('auction_sessions').where({ id }).update(update).increment('version', 1);
   },
-  async findAllActive(): Promise<Array<{ id: number; started_at: Date | string; rule_id: number }>> {
+  async findAllActive(): Promise<Array<{ id: number; started_at: Date | string; rule_id: number; extension_count: number }>> {
     return db('auction_sessions')
       .where({ status: 'active' })
-      .select('id', 'started_at', 'rule_id');
+      .select('id', 'started_at', 'rule_id', 'extension_count');
   },
   async findAll(filters: { room_id?: number; status?: string; page?: number; limit?: number } = {}) {
     const { room_id, status, page = 1, limit = 20 } = filters;

@@ -21,6 +21,10 @@ export const orderRepo = {
       .first();
   },
 
+  async findBySessionId(sessionId: number) {
+    return db('orders').where({ session_id: sessionId }).first();
+  },
+
   async findByBuyer(buyerId: number, page = 1, limit = 20, status?: string) {
     let q = db('orders as o')
       .leftJoin('products as p', 'p.id', 'o.product_id')

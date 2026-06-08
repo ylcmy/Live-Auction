@@ -321,10 +321,12 @@ export const bidService = {
     await cache.zadd(rateKey, now, String(now));
     await cache.expire(rateKey, BID_RATE_LIMIT_TTL_S);
 
-    // ---- 7. MySQL persistence ----
+    // ---- 7. MySQL persistence (transactional) ----
     try {
-      await bidRepo.create({ session_id: sessionId, user_id: userId, bid_amount: bidAmount, idempotency_key: idempotencyKey });
-      await auctionSessionRepo.updatePrice(sessionId, bidAmount);
+      await db.transaction(async (trx) => {
+        await bidRepo.create({ session_id: sessionId, user_id: userId, bid_amount: bidAmount, idempotency_key: idempotencyKey }, trx);
+        await trx('auction_sessions').where({ id: sessionId }).update({ current_price: bidAmount, updated_at: db.fn.now() }).increment('version', 1);
+      });
     } catch (err) {
       logger.error({ err, sessionId, userId, bidAmount }, 'MySQL persistence failed, rolling back Redis');
       const topBidRaw = await cache.get(topBidKey);

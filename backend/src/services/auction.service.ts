@@ -28,7 +28,13 @@ interface AuctionSessionRow {
   winner_id: number | null;
   extension_count: number;
   version: number;
-  order_created?: boolean;
+  order_created?: boolean | number;
+}
+
+interface SettleResult {
+  winner: { userId: number; userNickname: string; finalPrice: number } | null;
+  leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
+  orderId: number | null;
 }
 
 export class AuctionService {
@@ -287,11 +293,7 @@ export class AuctionService {
    * Settle an auction: determine winner, create order, update statuses, broadcast cleanup.
    * When Redis is unavailable, uses MySQL SELECT FOR UPDATE row lock instead of Redis lock.
    */
-  async settleAuction(sessionId: number): Promise<{
-    winner: { userId: number; userNickname: string; finalPrice: number } | null;
-    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
-    orderId: number | null;
-  }> {
+  async settleAuction(sessionId: number): Promise<SettleResult> {
     logger.info({ event: 'auction_settle_start', sessionId }, 'Settling auction');
 
     if (isRedisAvailable()) {
@@ -303,11 +305,7 @@ export class AuctionService {
   /**
    * Redis path: use Redis SETNX lock for settlement mutual exclusion.
    */
-  private async _settleAuctionRedis(sessionId: number): Promise<{
-    winner: { userId: number; userNickname: string; finalPrice: number } | null;
-    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
-    orderId: number | null;
-  }> {
+  private async _settleAuctionRedis(sessionId: number): Promise<SettleResult> {
     const lockKey = `settle_lock:${sessionId}`;
     const lock = await cache.setnx(lockKey, '1', 30);
     if (!lock) {
@@ -325,27 +323,30 @@ export class AuctionService {
   /**
    * MySQL fallback path: use SELECT FOR UPDATE row lock for settlement mutual exclusion.
    */
-  private async _settleAuctionMySQL(sessionId: number): Promise<{
-    winner: { userId: number; userNickname: string; finalPrice: number } | null;
-    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
-    orderId: number | null;
-  }> {
+  private async _settleAuctionMySQL(sessionId: number): Promise<SettleResult> {
     try {
-      return await db.transaction(async (trx) => {
+      const result = await db.transaction(async (trx) => {
         // Acquire row-level lock on the session
         const session = await auctionSessionRepo.findByIdForUpdate(sessionId, trx);
         if (!session) {
           logger.warn({ event: 'auction_settle_nosession', sessionId }, 'Session not found for settlement');
-          return { winner: null, leaderboard: [], orderId: null };
+          return { winner: null, leaderboard: [], orderId: null, roomId: 0, newStatus: '' } as SettleResult & { roomId: number; newStatus: string };
         }
 
         if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
           logger.warn({ event: 'auction_settle_already', sessionId, status: session.status }, 'Auction already ended');
-          return { winner: null, leaderboard: [], orderId: null };
+          return { winner: null, leaderboard: [], orderId: null, roomId: 0, newStatus: '' } as SettleResult & { roomId: number; newStatus: string };
         }
 
         return await this._doSettleCore(sessionId, session, trx);
       });
+
+      // Post-transaction: broadcast and cache cleanup (must be outside transaction)
+      if (result.winner || result.newStatus) {
+        this._postSettle(sessionId, result.roomId, result.newStatus, result.winner, result.leaderboard, result.orderId);
+      }
+
+      return { winner: result.winner, leaderboard: result.leaderboard, orderId: result.orderId };
     } catch (err) {
       logger.error({ event: 'auction_settle_mysql_error', sessionId, err }, 'Settlement failed (MySQL path)');
       return { winner: null, leaderboard: [], orderId: null };
@@ -353,46 +354,51 @@ export class AuctionService {
   }
 
   /**
-   * Core settlement logic shared by both Redis and MySQL paths.
+   * Redis path: execute settlement within a MySQL transaction for atomicity.
+   * Broadcast and cache cleanup happen after the transaction commits.
    */
-  private async _doSettle(
-    sessionId: number,
-  ): Promise<{
-    winner: { userId: number; userNickname: string; finalPrice: number } | null;
-    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
-    orderId: number | null;
-  }> {
-    const session = await auctionSessionRepo.findById(sessionId);
-    if (!session) {
-      logger.warn({ event: 'auction_settle_nosession', sessionId }, 'Session not found for settlement');
+  private async _doSettle(sessionId: number): Promise<SettleResult> {
+    try {
+      const result = await db.transaction(async (trx) => {
+        const session = await auctionSessionRepo.findByIdForUpdate(sessionId, trx);
+        if (!session) {
+          logger.warn({ event: 'auction_settle_nosession', sessionId }, 'Session not found for settlement');
+          return { winner: null, leaderboard: [], orderId: null, roomId: 0, newStatus: '' } as SettleResult & { roomId: number; newStatus: string };
+        }
+
+        if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
+          logger.warn({ event: 'auction_settle_already', sessionId, status: session.status }, 'Auction already ended');
+          return { winner: null, leaderboard: [], orderId: null, roomId: 0, newStatus: '' } as SettleResult & { roomId: number; newStatus: string };
+        }
+
+        return await this._doSettleCore(sessionId, session, trx);
+      });
+
+      // Post-transaction: broadcast and cache cleanup (must be outside transaction)
+      if (result.winner || result.newStatus) {
+        this._postSettle(sessionId, result.roomId, result.newStatus, result.winner, result.leaderboard, result.orderId);
+      }
+
+      return { winner: result.winner, leaderboard: result.leaderboard, orderId: result.orderId };
+    } catch (err) {
+      logger.error({ event: 'auction_settle_error', sessionId, err }, 'Settlement failed');
       return { winner: null, leaderboard: [], orderId: null };
     }
-
-    if (session.status === 'ended' || session.status === 'cancelled' || session.status === 'unsold') {
-      logger.warn({ event: 'auction_settle_already', sessionId, status: session.status }, 'Auction already ended');
-      return { winner: null, leaderboard: [], orderId: null };
-    }
-
-    return this._doSettleCore(sessionId, session);
   }
 
   /**
-   * Core settlement logic: determine winner, create order, update statuses, broadcast.
-   * When called from MySQL path, trx is provided for transactional updates.
+   * Core settlement logic: determine winner, create order, update statuses.
+   * Always called within a transaction (trx is required).
+   * Returns extended result with roomId/newStatus for post-transaction broadcast.
    */
   private async _doSettleCore(
     sessionId: number,
     session: AuctionSessionRow,
     trx?: Knex.Transaction,
-  ): Promise<{
-    winner: { userId: number; userNickname: string; finalPrice: number } | null;
-    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[];
-    orderId: number | null;
-  }> {
+  ): Promise<SettleResult & { roomId: number; newStatus: string }> {
     // Determine winner - use Redis leaderboard if available, otherwise MySQL
     let winner: { userId: number; userNickname: string; finalPrice: number } | null = null;
     let orderId: number | null = null;
-    let orderCreated = true;
     let newStatus: string;
 
     if (isRedisAvailable()) {
@@ -419,19 +425,65 @@ export class AuctionService {
     }
 
     if (winner) {
-      // Create order for winner
-      try {
-        const createdId = await orderRepo.create({
-          session_id: sessionId,
-          buyer_id: winner.userId,
-          product_id: session.product_id,
-          final_price: winner.finalPrice,
-        });
-        orderId = createdId ?? null;
-        logger.info({ event: 'order_created', orderId, sessionId, buyerId: winner.userId, amount: winner.finalPrice }, 'Order created for winner');
-      } catch (err) {
-        logger.error({ event: 'order_create_failed', sessionId, err }, 'Failed to create order');
-        orderCreated = false;
+      // Idempotent protection: check order_created flag
+      if (session.order_created === true || session.order_created === 1) {
+        // Order already created in a previous attempt — recover orderId
+        const existingOrder = trx
+          ? await trx('orders').where({ session_id: sessionId }).first()
+          : await orderRepo.findBySessionId(sessionId);
+        if (existingOrder) {
+          orderId = existingOrder.id;
+          logger.info({ event: 'order_idempotent_skip', sessionId, orderId }, 'Order already exists, skipping creation');
+        } else {
+          logger.warn({ event: 'order_created_flag_mismatch', sessionId }, 'order_created is true but no order found, creating new order');
+          const expireAt = new Date(Date.now() + 15 * 60 * 1000);
+          if (trx) {
+            const [createdId] = await trx('orders').insert({
+              session_id: sessionId,
+              buyer_id: winner.userId,
+              product_id: session.product_id,
+              final_price: winner.finalPrice,
+              status: 'pending_payment',
+              expire_at: expireAt,
+            });
+            orderId = createdId ?? null;
+          } else {
+            const createdId = await orderRepo.create({
+              session_id: sessionId,
+              buyer_id: winner.userId,
+              product_id: session.product_id,
+              final_price: winner.finalPrice,
+            });
+            orderId = createdId ?? null;
+          }
+        }
+      } else {
+        // Create order for winner
+        try {
+          const expireAt = new Date(Date.now() + 15 * 60 * 1000);
+          if (trx) {
+            const [createdId] = await trx('orders').insert({
+              session_id: sessionId,
+              buyer_id: winner.userId,
+              product_id: session.product_id,
+              final_price: winner.finalPrice,
+              status: 'pending_payment',
+              expire_at: expireAt,
+            });
+            orderId = createdId ?? null;
+          } else {
+            const createdId = await orderRepo.create({
+              session_id: sessionId,
+              buyer_id: winner.userId,
+              product_id: session.product_id,
+              final_price: winner.finalPrice,
+            });
+            orderId = createdId ?? null;
+          }
+          logger.info({ event: 'order_created', orderId, sessionId, buyerId: winner.userId, amount: winner.finalPrice }, 'Order created for winner');
+        } catch (err) {
+          logger.error({ event: 'order_create_failed', sessionId, err }, 'Failed to create order');
+        }
       }
     }
 
@@ -441,15 +493,16 @@ export class AuctionService {
     // Enforce state machine transition
     if (!canTransition(session.status as AuctionStatus, newStatus as AuctionStatus)) {
       logger.warn({ event: 'invalid_transition', sessionId, from: session.status, to: newStatus }, 'Invalid state transition blocked');
-      return { winner: null, leaderboard: [], orderId: null };
+      return { winner: null, leaderboard: [], orderId: null, roomId: session.room_id, newStatus: '' };
     }
 
-    // Update statuses
+    // Update statuses within transaction
     if (trx) {
       await trx('auction_sessions').where({ id: sessionId }).update({
         status: newStatus,
         winner_id: winner?.userId,
         ended_at: trx.fn.now(),
+        order_created: winner ? true : undefined,
         active_room_id: null,
         updated_at: trx.fn.now(),
       });
@@ -461,25 +514,43 @@ export class AuctionService {
       await auctionSessionRepo.updateStatus(sessionId, newStatus, {
         winner_id: winner?.userId,
         ended_at: db.fn.now(),
+        ...(winner ? { order_created: true } : {}),
       });
       await productRepo.updateStatus(session.product_id, newStatus === 'ended' ? 'ended' : 'unsold');
     }
 
-    // Broadcast auction ended to room BEFORE clearing cache
+    logger.info({ event: 'auction_settle_done', sessionId, status: newStatus, winner: winner?.userId, orderId }, 'Auction settled');
+
+    return { winner, leaderboard, orderId, roomId: session.room_id, newStatus };
+  }
+
+  /**
+   * Post-transaction actions: broadcast and cache cleanup.
+   * Must be called AFTER the transaction commits to avoid clients reading uncommitted data.
+   */
+  private _postSettle(
+    sessionId: number,
+    roomId: number,
+    newStatus: string,
+    winner: { userId: number; userNickname: string; finalPrice: number } | null,
+    leaderboard: { rank: number; userId: number; userNickname: string; avatarUrl: string | null; amount: number }[],
+    orderId: number | null,
+  ): void {
+    // Broadcast auction ended to room
     if (this.io) {
-      broadcastToRoom(this.io, String(session.room_id), 'auction:ended', {
+      broadcastToRoom(this.io, String(roomId), 'auction:ended', {
         sessionId,
         status: newStatus,
         winner,
         leaderboard,
         orderId,
-        orderCreated,
+        orderCreated: true,
       });
-      logger.info({ event: 'auction_ended_broadcast', sessionId, roomId: session.room_id, status: newStatus }, 'Broadcast auction:ended to room');
+      logger.info({ event: 'auction_ended_broadcast', sessionId, roomId, status: newStatus }, 'Broadcast auction:ended to room');
     }
 
     broadcastRoomListUpdate('room-list:auction-ended', {
-      roomId: session.room_id,
+      roomId,
       sessionId,
       status: newStatus,
     });
@@ -487,11 +558,9 @@ export class AuctionService {
     // Clear auction timers
     this.timerManager.clear(sessionId);
 
-    await cleanupAuctionCache(sessionId, session.room_id);
-
-    logger.info({ event: 'auction_settle_done', sessionId, status: newStatus, winner: winner?.userId, orderId }, 'Auction settled');
-
-    return { winner, leaderboard, orderId };
+    cleanupAuctionCache(sessionId, roomId).catch((err) => {
+      logger.error({ event: 'auction_cache_cleanup_error', sessionId, err }, 'Failed to cleanup auction cache');
+    });
   }
 
   /**
@@ -739,7 +808,8 @@ export class AuctionService {
       }
 
       const startedAt = new Date(session.started_at).getTime();
-      const endTimeMs = startedAt + rule.duration_seconds * 1000;
+      const extensionCount = session.extension_count || 0;
+      const endTimeMs = startedAt + rule.duration_seconds * 1000 + extensionCount * rule.extend_seconds * 1000;
       resolved.push({ id: session.id, endTimeMs });
 
       // Re-populate Redis end_time for future lookups
