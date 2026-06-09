@@ -254,9 +254,9 @@ Visit `http://localhost:5173` in your browser.
 
 | Username | Password | Role | Nickname |
 |----------|----------|------|----------|
-| `merchant1` | `pass1234` | Merchant | Li Boss |
-| `user1` | `pass1234` | User | Bidder Wang |
-| `user2` | `pass1234` | User | Expert Li |
+| `merchant_1` | `pass1234` | Merchant | Li Boss |
+| `user_1` | `pass1234` | User | Bidder Wang |
+| `user_2` | `pass1234` | User | Expert Li |
 
 ---
 

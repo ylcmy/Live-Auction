@@ -7,9 +7,9 @@ export async function seed(): Promise<void> {
   const now = new Date();
 
   await db('users').insert([
-    { username: 'merchant1', password_hash: hash, role: 'merchant', nickname: '李老板', created_at: now, updated_at: now },
-    { username: 'user1', password_hash: hash, role: 'user', nickname: '竞拍达人小王', created_at: now, updated_at: now },
-    { username: 'user2', password_hash: hash, role: 'user', nickname: '捡漏专家小李', created_at: now, updated_at: now },
+    { username: 'merchant_1', password_hash: hash, role: 'merchant', nickname: '李老板', created_at: now, updated_at: now },
+    { username: 'user_1', password_hash: hash, role: 'user', nickname: '竞拍达人小王', created_at: now, updated_at: now },
+    { username: 'user_2', password_hash: hash, role: 'user', nickname: '捡漏专家小李', created_at: now, updated_at: now },
   ]);
 
   // Also create a sample product, room for easy testing
