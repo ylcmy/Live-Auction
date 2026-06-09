@@ -98,6 +98,27 @@ export class BidEventBus extends EventEmitter {
       }
     });
 
+    // 3b. Emotion lead event — notify the bidder they are now leading
+    this.on('bid:committed', (event: BidCommittedEvent) => {
+      if (!this.io) return;
+
+      if (event.isLeading && (!event.previousTopBidderId || event.previousTopBidderId !== event.userId)) {
+        const roomSockets = this.io.sockets.adapter.rooms.get(event.roomId);
+        if (roomSockets) {
+          for (const socketId of roomSockets) {
+            const socket = this.io.sockets.sockets.get(socketId);
+            if (socket && (socket as any).userId === event.userId) {
+              socket.emit('emotion:lead', {
+                sessionId: event.sessionId,
+                userId: event.userId,
+                amount: event.amount,
+              });
+            }
+          }
+        }
+      }
+    });
+
     // 4. Extension + countdown sync
     this.on('bid:committed', (event: BidCommittedEvent) => {
       if (!this.io) return;
