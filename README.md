@@ -213,7 +213,7 @@ Client (React SPA)
 ### 1. Clone the Project
 
 ```bash
-git clone https://github.com/your-username/Live-Auction.git
+git clone https://github.com/ylcmy/Live-Auction.git
 cd Live-Auction
 ```
 
