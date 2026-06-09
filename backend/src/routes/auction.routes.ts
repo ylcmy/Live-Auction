@@ -4,6 +4,7 @@ import { auctionService } from '../services/auction.service.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { broadcastAuctionState } from '../ws/index.js';
 import { replySuccess, replyError } from '../lib/reply.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 export async function auctionRoutes(app: FastifyInstance) {
   app.addHook('onRequest', authMiddleware);
@@ -37,7 +38,7 @@ export async function auctionRoutes(app: FastifyInstance) {
     const data = await auctionSessionRepo.findAll({
       room_id: query.roomId ? Number(query.roomId) : undefined,
       status: query.status,
-      page: parseInt(query.page) || 1,
+      page: Math.max(1, parseInt(query.page) || 1),
       limit: parseInt(query.limit) || 20,
     });
     return replySuccess(reply, data);
@@ -45,9 +46,9 @@ export async function auctionRoutes(app: FastifyInstance) {
 
   app.get('/api/auctions/:id', async (req, reply) => {
     const id = Number((req.params as any).id);
-    if (!Number.isFinite(id)) return replyError(reply, 40000, '无效的竞拍 ID', 400);
+    if (!Number.isFinite(id)) return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的竞拍 ID', 400);
     const session = await auctionSessionRepo.findById(id);
-    if (!session) return replyError(reply, 40400, '竞拍不存在', 404);
+    if (!session) return replyError(reply, ErrorCodes.AUCTION_NOT_FOUND, '竞拍不存在', 404);
     return replySuccess(reply, session);
   });
 

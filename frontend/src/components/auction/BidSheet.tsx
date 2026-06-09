@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+
+const BID_ERROR_AUTO_DISMISS_MS = 3000;
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Crown } from 'lucide-react';
 import {
@@ -14,6 +16,7 @@ import { useBid } from '../../hooks/useBid';
 import { useAuctionEvents } from '../../hooks/useAuctionEvents';
 import { useTimers } from '../../hooks/useTimers';
 import { useAuctionStore } from '../../store/auctionStore';
+import { useAuthStore } from '../../store/authStore';
 import { formatPrice } from '../../lib/format';
 import BidStepper from './BidStepper';
 import BidHint from './BidHint';
@@ -32,6 +35,7 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
   const [isOutbid, setIsOutbid] = useState(false);
   const setMyBid = useAuctionStore((s) => s.setMyBid);
   const updateAuctionPrice = useAuctionStore((s) => s.updateAuctionPrice);
+  const userId = useAuthStore((s) => s.user?.id);
 
   const currentPrice = Number(item?.currentPrice) || 0;
   const bidIncrement = Number(item?.rule?.bidIncrement) || 1;
@@ -61,10 +65,10 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
       updateAuctionPrice(data.sessionId, data.amount);
       setTimer('bidSuccess', () => setBidSuccess(false), 1500);
     },
-    onBidNew: (data: { sessionId: number; amount: number }) => {
+    onBidNew: (data: { sessionId: number; userId: number; amount: number }) => {
       updateAuctionPrice(data.sessionId, data.amount);
       snapToMin(data.amount);
-      if (myLastBid != null && data.amount > myLastBid) {
+      if (data.userId !== userId && myLastBid != null && data.amount > myLastBid) {
         setIsOutbid(true);
         setTimer('outbid', () => setIsOutbid(false), 800);
       }
@@ -72,7 +76,7 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
     onAuctionEnded: () => {
       setTimer('auctionEnded', () => handleClose(), 3000);
     },
-  }), [setMyBid, updateAuctionPrice, snapToMin, myLastBid, setTimer, handleClose]);
+  }), [setMyBid, updateAuctionPrice, snapToMin, myLastBid, userId, setTimer, handleClose]);
 
   useAuctionEvents(item?.sessionId ?? null, open, handlers);
 
@@ -92,7 +96,7 @@ export default function BidSheet({ open, onClose, item, myLastBid }: BidSheetPro
   // Auto-clear bid error after 3 seconds
   useEffect(() => {
     if (!bidError) return;
-    const timer = setTimeout(clearBidError, 3000);
+    const timer = setTimeout(clearBidError, BID_ERROR_AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [bidError, clearBidError]);
 

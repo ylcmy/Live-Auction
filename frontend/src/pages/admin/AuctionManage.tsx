@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+
+const SUCCESS_MSG_AUTO_DISMISS_MS = 3000;
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   PlayCircle,
@@ -19,6 +21,7 @@ import api from '../../services/api';
 import { toast } from '../../design-system/hooks/use-toast';
 import { ROOM_STATUS_STYLES } from '../../lib/statusConfig';
 import type { LiveRoom, Product } from '../../types/api';
+import type { AuctionState, CountdownSync, AuctionStartedEvent, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent } from '../../types/ws';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useCountdown } from '../../hooks/useCountdown';
 import { useAuctionStore } from '../../store/auctionStore';
@@ -85,7 +88,7 @@ export default function AuctionManage() {
   }, [countdownSync, sync]);
 
   useEffect(() => {
-    if (extendMs && extendMs > 0) {
+    if (extendMs && extendMs.extendMs > 0) {
       extend(extendMs);
       useAuctionStore.setState({ extendMs: null });
     }
@@ -95,7 +98,7 @@ export default function AuctionManage() {
   useEffect(() => {
     if (!isConnected || !selectedRoom) return;
     const unsubs = [
-      subscribe<any>('auction:state', (data: any) => {
+      subscribe('auction:state', (data: AuctionState) => {
         if (data.status === 'active') {
           setAuction(data);
           if (data.remainingMs != null) {
@@ -107,19 +110,19 @@ export default function AuctionManage() {
           }
         }
       }),
-      subscribe<any>('bid:new', (data: { sessionId: number; amount: number }) => {
+      subscribe('bid:new', (data) => {
         updateAuctionPrice(data.sessionId, data.amount);
       }),
-      subscribe<any>('rank:update', (data: any) => setLeaderboard(data)),
-      subscribe<any>('countdown:sync', (data: any) => setCountdown(data)),
-      subscribe<any>('countdown:extend', (data: any) => {
-        triggerExtend(data.extendSeconds * 1000);
+      subscribe('rank:update', (data: LeaderboardEntry[]) => setLeaderboard(data)),
+      subscribe('countdown:sync', (data: CountdownSync) => setCountdown(data)),
+      subscribe('countdown:extend', (data: CountdownExtendEvent) => {
+        triggerExtend({ sessionId: data.sessionId, extendMs: data.extendSeconds * 1000, serverTime: data.serverTime ?? Date.now() });
       }),
-      subscribe<any>('room:count', (data: any) => {
+      subscribe('room:count', (data) => {
         setOnlineCount(data.onlineCount);
         setParticipantCount(data.participantCount);
       }),
-      subscribe<any>('auction:started', (data: any) => {
+      subscribe('auction:started', (data: AuctionStartedEvent) => {
         setCurrentAuction({
           id: data.sessionId,
           productId: data.product?.id ?? 0,
@@ -150,7 +153,7 @@ export default function AuctionManage() {
           });
         }
       }),
-      subscribe<any>('auction:ended', (data: any) => {
+      subscribe('auction:ended', (data: AuctionEndResult) => {
         updateAuctionStatus(data.sessionId, data.status);
         setCurrentAuction((prev) => prev ? { ...prev, status: data.status } : null);
       }),
@@ -198,7 +201,7 @@ export default function AuctionManage() {
       });
       setCurrentAuction((response as any).data);
       setSuccessMsg('竞拍已成功发起！');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      setTimeout(() => setSuccessMsg(''), SUCCESS_MSG_AUTO_DISMISS_MS);
     } catch (err: any) {
       toast({ title: '发起竞拍失败', description: err?.data?.message || '请稍后重试', variant: 'destructive' });
     } finally {

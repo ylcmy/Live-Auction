@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import type { AuctionState, LeaderboardEntry, BidResult, EmotionEvent, CountdownSync, ChatMessage } from '../types/ws';
+import type { AuctionState, LeaderboardEntry, BidResult, EmotionEvent, CountdownSync, ExtendSync, ChatMessage } from '../types/ws';
 import type { RoomAuctionItem } from '../types/api';
 
 interface AuctionStore {
   currentAuction: AuctionState | null;
   leaderboard: LeaderboardEntry[];
   countdown: CountdownSync | null;
-  extendMs: number | null;
+  extendMs: ExtendSync | null;
   myRank: number | null;
   emotionEvents: EmotionEvent[];
   participantCount: number;
@@ -20,8 +20,8 @@ interface AuctionStore {
   setAuction: (auction: AuctionState) => void;
   setLeaderboard: (lb: LeaderboardEntry[]) => void;
   setCountdown: (cd: CountdownSync) => void;
-  triggerExtend: (ms: number) => void;
-  setBidResult: (result: BidResult) => void;
+  triggerExtend: (es: ExtendSync) => void;
+  setMyRank: (result: BidResult) => void;
   setEmotion: (event: EmotionEvent) => void;
   setParticipantCount: (n: number) => void;
   setOnlineCount: (n: number) => void;
@@ -66,7 +66,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
   setLeaderboard: (leaderboard) => set({ leaderboard }),
   setCountdown: (countdown) => set({ countdown }),
   triggerExtend: (extendMs) => set({ extendMs }),
-  setBidResult: (result) => set({ myRank: result.rank }),
+  setMyRank: (result) => set({ myRank: result.rank }),
   setEmotion: (emotionEvent) =>
     set((state) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

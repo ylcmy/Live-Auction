@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { userRepo } from '../repositories/user.repo.js';
 import { env } from '../config/env.js';
@@ -16,7 +16,7 @@ export const authService = {
       throw new AppError('用户名已存在', 409);
     }
 
-    const password_hash = await bcrypt.hash(data.password, 10);
+    const password_hash = await bcrypt.hash(data.password, env.BCRYPT_COST);
     const userId = await userRepo.create({
       username: data.username,
       password_hash,

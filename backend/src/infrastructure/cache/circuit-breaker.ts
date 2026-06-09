@@ -32,6 +32,7 @@ export class CircuitBreaker {
   private state: CircuitState = 'closed';
   private failureCount = 0;
   private openedAt = 0;
+  private probeInFlight = false;
   private readonly opts: CircuitBreakerOptions;
 
   constructor(opts: Partial<CircuitBreakerOptions> = {}) {
@@ -56,6 +57,10 @@ export class CircuitBreaker {
     }
 
     if (this.state === 'half-open') {
+      if (this.probeInFlight) {
+        return fallback();
+      }
+      this.probeInFlight = true;
       try {
         const result = await fn();
         this.onSuccess();
@@ -63,6 +68,8 @@ export class CircuitBreaker {
       } catch (err) {
         this.onFailure();
         return fallback();
+      } finally {
+        this.probeInFlight = false;
       }
     }
 
@@ -91,8 +98,8 @@ export class CircuitBreaker {
       }
       return false;
     }
-    // Half-open: allow the probe
-    return true;
+    // Half-open: allow only one probe
+    return !this.probeInFlight;
   }
 
   /**

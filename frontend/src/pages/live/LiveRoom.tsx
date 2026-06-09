@@ -14,13 +14,15 @@ import EmotionToast from '../../components/auction/EmotionToast';
 import AuctionResult from './AuctionResult';
 import LeaderboardSheet from '../../components/auction/LeaderboardSheet';
 import { useEffect, useState, useRef, useCallback } from 'react';
+
+const RECONNECT_BANNER_DISMISS_MS = 3000;
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock, Trophy } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
-import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult } from '../../types/ws';
+import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent, AuctionStartedEvent } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
 
 interface LiveRoomData {
@@ -94,7 +96,7 @@ export default function LiveRoom() {
   }, [countdownSync, sync]);
 
   useEffect(() => {
-    if (extendMs && extendMs > 0) {
+    if (extendMs && extendMs.extendMs > 0) {
       extend(extendMs);
       useAuctionStore.setState({ extendMs: null });
     }
@@ -129,7 +131,7 @@ export default function LiveRoom() {
   useEffect(() => {
     if (!isConnected) return;
     const unsubs = [
-      subscribe<any>('auction:state', (data: AuctionState) => {
+      subscribe('auction:state', (data: AuctionState) => {
         if (data.status === 'active') {
           setAuction(data);
           if (data.remainingMs != null) {
@@ -141,40 +143,38 @@ export default function LiveRoom() {
           }
         }
       }),
-      subscribe<any>('rank:update', (data: any) => setLeaderboard(data)),
-      subscribe<any>('room:count', (data: any) => {
+      subscribe('rank:update', (data: LeaderboardEntry[]) => setLeaderboard(data)),
+      subscribe('room:count', (data) => {
         setOnlineCount(data.onlineCount);
         setParticipantCount(data.participantCount);
       }),
-      subscribe<any>('room:status', (data: { roomId: number; status: string }) => {
+      subscribe('room:status', (data) => {
         if (data.roomId === id) {
           setRoomStatus(data.status);
         }
       }),
-      subscribe<any>('countdown:sync', (data: CountdownSync) => {
+      subscribe('countdown:sync', (data: CountdownSync) => {
         lastSyncRef.current = data;
         setCountdown(data);
       }),
-      subscribe<any>('countdown:extend', (data: any) => {
+      subscribe('countdown:extend', (data: CountdownExtendEvent) => {
         setEmotion({ ...data, type: 'extended' });
-        triggerExtend(data.extendSeconds * 1000);
+        triggerExtend({ sessionId: data.sessionId, extendMs: data.extendSeconds * 1000, serverTime: data.serverTime ?? Date.now() });
       }),
-      subscribe<any>('emotion:lead', (data: any) => setEmotion({ ...data, type: 'lead' })),
-      subscribe<any>('emotion:overtaken', (data: any) => {
+      subscribe('emotion:lead', (data) => setEmotion({ ...data, type: 'lead' })),
+      subscribe('emotion:overtaken', (data) => {
         setEmotion({ ...data, type: 'overtaken' });
         playAlert();
       }),
-      subscribe<any>('auction:started', (data: any) => {
+      subscribe('auction:started', (data: AuctionStartedEvent) => {
         setBubbleDismissed(false);
         setRoomAuctions((prev: RoomAuctionItem[]) => {
           const existingAuction = prev.find((a) => a.sessionId === data.sessionId);
           if (existingAuction) {
-            // Update existing auction status
             return prev.map((a) =>
               a.sessionId === data.sessionId ? { ...a, status: 'active' as const } : a
             );
           }
-          // Add new auction
           return [
             ...prev,
             {
@@ -189,7 +189,6 @@ export default function LiveRoom() {
             },
           ];
         });
-        // Also set as current auction
         setAuction({
           sessionId: data.sessionId,
           status: 'active',
@@ -212,20 +211,20 @@ export default function LiveRoom() {
           });
         }
       }),
-      subscribe<any>('auction:ended', (data: AuctionEndResult) => {
+      subscribe('auction:ended', (data: AuctionEndResult) => {
         setEmotion({ ...data, type: 'ended' });
         updateAuctionStatus(data.sessionId, data.status);
         setAuctionResult(data);
       }),
-      subscribe<any>('auction:cancelled', (data: any) => setEmotion({ ...data, type: 'cancelled' })),
-      subscribe<any>('bid:new', (data: { sessionId: number; amount: number; newTopBid: boolean }) => {
+      subscribe('auction:cancelled', (data) => setEmotion({ ...data, type: 'cancelled' })),
+      subscribe('bid:new', (data) => {
         updateAuctionPrice(data.sessionId, data.amount);
       }),
-      subscribe<any>('bid:accepted', (data: { sessionId: number; amount: number }) => {
+      subscribe('bid:accepted', (data) => {
         setMyBid(data.sessionId, data.amount);
         playDing();
       }),
-      subscribe<any>('chat:broadcast', (data: ChatMessage) => {
+      subscribe('chat:broadcast', (data: ChatMessage) => {
         addChatMessage(data);
       }),
     ];
@@ -250,7 +249,7 @@ export default function LiveRoom() {
 
   useEffect(() => {
     if (wasReconnected) {
-      const timer = setTimeout(() => setWasReconnected(false), 3000);
+      const timer = setTimeout(() => setWasReconnected(false), RECONNECT_BANNER_DISMISS_MS);
       return () => clearTimeout(timer);
     }
   }, [wasReconnected]);

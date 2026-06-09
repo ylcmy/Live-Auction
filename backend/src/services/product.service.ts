@@ -108,7 +108,7 @@ export const productService = {
       extend_seconds: data.extendSeconds,
       max_extensions: data.maxExtensions,
     });
-    return { ruleId: productId };
+    return { productId };
   },
 
   async updateStatus(merchantId: number, productId: number, newStatus: string) {

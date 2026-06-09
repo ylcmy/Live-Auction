@@ -1,4 +1,5 @@
 import { db } from '../infrastructure/db/knex.js';
+import { paginateQuery } from '../lib/paginate.js';
 
 export const liveRoomRepo = {
   async create(data: { host_id: number; title: string; stream_url?: string }): Promise<number> {
@@ -16,9 +17,7 @@ export const liveRoomRepo = {
     let query = db('live_rooms');
     if (host_id) query = query.where({ host_id });
     if (status) query = query.where({ status });
-    const total = await query.clone().count('* as count').first();
-    const items = await query.orderBy('created_at', 'desc').offset((page - 1) * limit).limit(limit);
-    return { items, total: Number((total as any)?.count || 0), page, limit };
+    return paginateQuery(query, page, limit, { orderBy: ['created_at', 'desc'] });
   },
   async updateStatus(id: number, status: 'offline' | 'live') {
     return db('live_rooms').where({ id }).update({ status });

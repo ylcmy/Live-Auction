@@ -4,7 +4,7 @@ import type { BidResult, AuctionEndResult } from '../types/ws';
 
 interface AuctionEventHandlers {
   onBidAccepted?: (data: BidResult) => void;
-  onBidNew?: (data: { sessionId: number; amount: number; newTopBid: boolean }) => void;
+  onBidNew?: (data: { sessionId: number; userId: number; amount: number; newTopBid: boolean }) => void;
   onAuctionEnded?: (data: AuctionEndResult) => void;
 }
 

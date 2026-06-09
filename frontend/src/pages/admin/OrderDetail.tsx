@@ -15,6 +15,7 @@ import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
 import { formatPrice, formatTime } from '../../lib/format';
 import { ORDER_STATUS_STYLES } from '../../lib/statusConfig';
+import { getOrderDisplayStatus } from '../../lib/order-utils';
 import type { Order, OrderStatus } from '../../types/api';
 
 export default function AdminOrderDetail() {
@@ -86,9 +87,9 @@ export default function AdminOrderDetail() {
     );
   }
 
-  const isExpired = order.status === 'pending_payment' && new Date(order.expireAt) < new Date();
-  const displayStatus: OrderStatus = isExpired ? 'cancelled' : order.status;
-  const status = ORDER_STATUS_STYLES[displayStatus] ?? ORDER_STATUS_STYLES.pending_payment;
+  const displayStatus = getOrderDisplayStatus(order);
+  const isExpired = displayStatus === 'expired';
+  const status = ORDER_STATUS_STYLES[displayStatus as OrderStatus] ?? ORDER_STATUS_STYLES.pending_payment;
 
   return (
     <div className="space-y-6">

@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { formatPrice } from '../../lib/format';
-import { ORDER_STATUS_MAP, useOrderCountdown } from '../../lib/order-utils';
+import { getOrderDisplayStatus } from '../../lib/order-utils';
+import { useOrderCountdown } from '../../hooks/useOrderCountdown';
+import { ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import {
@@ -72,9 +74,9 @@ export default function OrderDetail() {
     }
   };
 
-  const isExpired = order?.status === 'pending_payment' && order?.expireAt ? new Date(order.expireAt) < new Date() : false;
-  const displayStatus = isExpired ? 'expired' : (order?.status ?? 'pending_payment');
-  const statusConfig = ORDER_STATUS_MAP[displayStatus] ?? ORDER_STATUS_MAP.pending_payment;
+  const displayStatus = order ? getOrderDisplayStatus(order) : 'pending_payment';
+  const isExpired = displayStatus === 'expired';
+  const statusConfig = ORDER_STATUS_CONFIG[displayStatus as keyof typeof ORDER_STATUS_CONFIG] ?? ORDER_STATUS_CONFIG.pending_payment;
   const countdown = useOrderCountdown(order?.status === 'pending_payment' && !isExpired ? order.expireAt : null);
 
   if (loading) {

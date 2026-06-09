@@ -1,22 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { stagger, fadeUp } from '../../lib/animations';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
 import { Eye, EyeOff } from 'lucide-react';
-
-const stagger = {
-  animate: {
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
-};
 
 export default function Register() {
   const { register, isLoading, error, clearError } = useAuthStore();

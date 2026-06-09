@@ -1,7 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { env } from '../config/env.js';
+import { env, CORS_WHITELIST } from '../config/env.js';
 import { joinRoom, leaveRoom, getOnlineCount, broadcastToRoom } from './rooms.js';
 import { registerBidHandlers } from './handlers/bid.js';
 import { registerAuctionHandlers } from './handlers/auction.js';
@@ -47,7 +47,12 @@ let io: Server;
 
 export function initWebSocket(httpServer: HttpServer) {
   io = new Server(httpServer, {
-    cors: { origin: '*', credentials: true },
+    cors: {
+      // Wildcard is only allowed when the request is unauthenticated.
+      // For credentialed requests an explicit origin whitelist is required by the CORS spec.
+      origin: CORS_WHITELIST,
+      credentials: CORS_WHITELIST !== true,
+    },
     pingInterval: 25000,
     pingTimeout: 5000,
     // 高并发优化: 关闭压缩减少 CPU 开销，限制消息大小，缩短连接超时
@@ -175,4 +180,4 @@ export async function broadcastAuctionState(roomId: number, sessionId: number) {
   }
 }
 
-export { getOnlineCount, broadcastToRoom };
+

@@ -7,6 +7,7 @@ import { db } from '../infrastructure/db/knex.js';
 import { logger } from '../middleware/logger.js';
 import { broadcastRoomStatus } from '../ws/index.js';
 import { replySuccess, replyError } from '../lib/reply.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 async function buildCurrentAuction(roomId: number) {
   const existingSessions = await db('auction_sessions as s')
@@ -77,7 +78,7 @@ export async function roomRoutes(app: FastifyInstance) {
   app.post('/api/rooms', { onRequest: requireRole('merchant') }, async (req, reply) => {
     const existing = await liveRoomRepo.findByHost(req.auth.userId);
     if (existing) {
-      return reply.code(409).send({ code: 40901, message: '您已拥有直播间，不可重复创建', data: { roomId: existing.id }, timestamp: Date.now() });
+      return replyError(reply, ErrorCodes.ROOM_ALREADY_EXISTS, '您已拥有直播间，不可重复创建', 409);
     }
     const body = req.body as any;
     const roomId = await liveRoomRepo.create({ host_id: req.auth.userId, title: body.title, stream_url: body.streamUrl });
@@ -88,7 +89,7 @@ export async function roomRoutes(app: FastifyInstance) {
   app.get('/api/rooms/my-room', { onRequest: requireRole('merchant') }, async (req, reply) => {
     const room = await liveRoomRepo.findByHost(req.auth.userId);
     if (!room) {
-      return replyError(reply, 40400, '您还没有直播间', 404);
+      return replyError(reply, ErrorCodes.AUCTION_NOT_FOUND, '您还没有直播间', 404);
     }
     return replySuccess(reply, room);
   });
@@ -98,7 +99,7 @@ export async function roomRoutes(app: FastifyInstance) {
     const filters: any = {};
     if (req.auth.role === 'merchant') filters.host_id = req.auth.userId;
     if (query.status) filters.status = query.status;
-    const data = await liveRoomRepo.findAll({ ...filters, page: parseInt(query.page) || 1, limit: parseInt(query.limit) || 20 });
+    const data = await liveRoomRepo.findAll({ ...filters, page: Math.max(1, parseInt(query.page) || 1), limit: parseInt(query.limit) || 20 });
 
     if (data.items.length === 0) {
       return replySuccess(reply, data);
@@ -164,15 +165,15 @@ export async function roomRoutes(app: FastifyInstance) {
     const { status } = req.body as { status: 'offline' | 'live' };
 
     if (!['offline', 'live'].includes(status)) {
-      return replyError(reply, 40001, '无效的状态值，仅支持 offline 或 live', 400);
+      return replyError(reply, ErrorCodes.INVALID_PRODUCT_ID, '无效的状态值，仅支持 offline 或 live', 400);
     }
 
     const room = await liveRoomRepo.findById(roomId);
     if (!room) {
-      return replyError(reply, 40400, '直播间不存在', 404);
+      return replyError(reply, ErrorCodes.PRODUCT_NOT_FOUND, '直播间不存在', 404);
     }
     if (room.host_id !== req.auth.userId) {
-      return replyError(reply, 40301, '无权限操作此直播间', 403);
+      return replyError(reply, ErrorCodes.NOT_ORDER_OWNER, '无权限操作此直播间', 403);
     }
 
     if (room.status === status) {
@@ -182,7 +183,7 @@ export async function roomRoutes(app: FastifyInstance) {
     if (status === 'offline') {
       const activeSession = await auctionSessionRepo.findActiveByRoom(roomId);
       if (activeSession) {
-        return replyError(reply, 40902, '当前有进行中的竞拍，请先结束竞拍再下播', 409);
+        return replyError(reply, ErrorCodes.AUCTION_IN_PROGRESS, '当前有进行中的竞拍，请先结束竞拍再下播', 409);
       }
     }
 
@@ -197,9 +198,9 @@ export async function roomRoutes(app: FastifyInstance) {
 
   app.get('/api/rooms/:id', async (req, reply) => {
     const roomId = Number((req.params as any).id);
-    if (!Number.isFinite(roomId)) return replyError(reply, 40000, '无效的直播间 ID', 400);
+    if (!Number.isFinite(roomId)) return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的直播间 ID', 400);
     const room = await liveRoomRepo.findById(roomId);
-    if (!room) return replyError(reply, 40400, '直播间不存在', 404);
+    if (!room) return replyError(reply, ErrorCodes.PRODUCT_NOT_FOUND, '直播间不存在', 404);
 
     const allProducts = await db('products as p')
       .leftJoin('auction_rules as r', 'p.id', 'r.product_id')
@@ -251,7 +252,7 @@ export async function roomRoutes(app: FastifyInstance) {
         if (topBid) currentPrice = Number(topBid.amount);
       }
       return {
-        sessionId: sess?.sessionId ?? row.productId,
+        sessionId: sess?.sessionId ?? null,
         status: sess?.status ?? row.productStatus,
         currentPrice,
         startedAt: sess?.startedAt ?? null,

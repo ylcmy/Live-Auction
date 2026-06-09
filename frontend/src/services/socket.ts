@@ -8,6 +8,7 @@ export function getSocket(): Socket | null {
 
 export function connectSocket(token: string): Socket {
   if (socket?.connected) return socket;
+  if (socket) socket.disconnect(); // Clean up stale disconnected socket
 
   socket = io('/', {
     auth: { token },

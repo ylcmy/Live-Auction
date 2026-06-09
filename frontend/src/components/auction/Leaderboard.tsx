@@ -108,7 +108,7 @@ export default function Leaderboard() {
                   </span>
                   {gap != null && gap > 0 && (
                     <div className="text-text-tertiary text-[10px]">
-                      差 ¥{formatPrice(gap)}
+                      差 {formatPrice(gap)}
                     </div>
                   )}
                 </div>

@@ -67,15 +67,25 @@ vi.mock('../../../src/repositories/user.repo.js', () => ({
   },
 }));
 
-vi.mock('../../../src/infrastructure/db/knex.js', () => ({
-  db: Object.assign(
-    vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnThis(),
-      first: vi.fn().mockResolvedValue(undefined),
-    }),
-    { fn: { now: vi.fn() } },
-  ),
-}));
+vi.mock('../../../src/infrastructure/db/knex.js', () => {
+  const mockTrx = {
+    where: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    increment: vi.fn().mockResolvedValue(1),
+  };
+  const mockTrxFn = vi.fn().mockReturnValue(mockTrx);
+  return {
+    db: Object.assign(
+      mockTrxFn,
+      {
+        fn: { now: vi.fn() },
+        transaction: vi.fn().mockImplementation(async (fn) => {
+          return fn(mockTrxFn);
+        }),
+      },
+    ),
+  };
+});
 
 // ---- Import after mocks ----
 
@@ -154,7 +164,7 @@ describe('_processBidRedis (CAS-based)', () => {
       expect.arrayContaining([String(2), 110]),
     );
 
-    // Verify MySQL persistence
+    // Verify MySQL persistence (transactional: bidRepo.create + trx update)
     expect(bidRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         session_id: 100,
@@ -162,8 +172,8 @@ describe('_processBidRedis (CAS-based)', () => {
         bid_amount: 110,
         idempotency_key: 'key-001',
       }),
+      expect.anything(), // trx parameter
     );
-    expect(auctionSessionRepo.updatePrice).toHaveBeenCalledWith(100, 110);
   });
 
   it('CAS returns 0: returns failure code 40902', async () => {
@@ -177,7 +187,6 @@ describe('_processBidRedis (CAS-based)', () => {
 
     // Verify MySQL was NOT touched
     expect(bidRepo.create).not.toHaveBeenCalled();
-    expect(auctionSessionRepo.updatePrice).not.toHaveBeenCalled();
   });
 
   it('MySQL persistence fails: rolls back Redis and returns 50000', async () => {
@@ -226,7 +235,7 @@ describe('_processBidRedis (CAS-based)', () => {
   });
 
   it('Rate limit exceeded: returns 42900', async () => {
-    mockRedis.zcard.mockResolvedValue(5); // At limit
+    mockCache.zcard.mockResolvedValue(5); // At limit (now uses cache instead of redis)
 
     const result = await bidService._processBidRedis(100, 2, 'key-005');
 

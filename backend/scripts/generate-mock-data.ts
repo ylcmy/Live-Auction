@@ -13,7 +13,8 @@
  */
 
 import { db } from '../src/infrastructure/db/knex.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
+import { env } from '../src/config/env.js';
 import { randomUUID } from 'crypto';
 
 const MULTIPLIER = Math.max(1, parseInt(process.argv[2] || '1', 10));
@@ -64,7 +65,7 @@ async function batchInsert<T extends Record<string, unknown>>(
 
 async function generateUsers(): Promise<{ merchantIds: number[]; userIds: number[] }> {
   console.log(`\n生成用户 (${MERCHANT_COUNT} 商家 + ${USER_COUNT} 普通用户)...`);
-  const hash = await bcrypt.hash('pass1234', 10);
+  const hash = await bcrypt.hash('pass1234', env.BCRYPT_COST);
 
   const merchants: Record<string, unknown>[] = [];
   for (let i = 1; i <= MERCHANT_COUNT; i++) {

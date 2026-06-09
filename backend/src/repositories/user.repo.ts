@@ -36,7 +36,7 @@ export const userRepo = {
   },
 
   async updateProfile(id: number, data: { nickname: string }): Promise<Omit<UserRow, 'password_hash'> | undefined> {
-    await db('users').where({ id }).update({ ...data, updated_at: new Date().toISOString() });
+    await db('users').where({ id }).update({ ...data, updated_at: db.fn.now() });
     return this.findById(id);
   },
 };

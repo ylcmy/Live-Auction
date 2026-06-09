@@ -43,7 +43,7 @@ export const PRODUCT_STATUS_STYLES: Record<ProductStatus, { bg: string; text: st
   deleted: { bg: 'bg-slate-100', text: 'text-slate-400', dot: 'bg-slate-300', label: '已删除' },
 };
 
-export const ORDER_STATUS_CONFIG: Record<OrderStatus, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; icon: React.ReactNode; className: string }> = {
+export const ORDER_STATUS_CONFIG: Record<OrderStatus | 'expired', { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; icon: React.ReactNode; className: string }> = {
   pending_payment: {
     variant: 'default',
     label: '待支付',
@@ -67,6 +67,12 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatus, { variant: 'default' | 'se
     label: '已取消',
     icon: <XCircle className="w-3.5 h-3.5" />,
     className: 'bg-red-50 text-red-500 border-red-200',
+  },
+  expired: {
+    variant: 'destructive',
+    label: '已超时',
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    className: 'bg-red-500/20 text-red-400 border-red-500/30',
   },
 };
 

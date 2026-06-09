@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 
-export interface AuthPayload { userId: number; role: 'merchant' | 'user'; }
+export interface AuthPayload { userId: number; role: 'merchant' | 'user'; nickname: string; }
 
 declare module 'fastify' {
   interface FastifyRequest { auth: AuthPayload; }

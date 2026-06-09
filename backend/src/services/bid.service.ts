@@ -22,7 +22,7 @@
  * 7. Rank from MySQL leaderboard query
  */
 
-import { cache, redis, isRedisAvailable } from '../infrastructure/cache/redis.js';
+import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import { BID_CAS_SCRIPT, BID_ROLLBACK_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
@@ -32,6 +32,13 @@ import { userRepo } from '../repositories/user.repo.js';
 import { validateBid } from '../domain/bid.js';
 import { logger } from '../middleware/logger.js';
 import { db } from '../infrastructure/db/knex.js';
+import { ErrorCodes } from '../lib/error-codes.js';
+
+const BID_RATE_LIMIT_MAX = 5;
+const BID_RATE_LIMIT_WINDOW_MS = 1000;
+const BID_RATE_LIMIT_TTL_S = 2;
+const IDEMPOTENCY_PENDING_TTL = 30;
+const IDEMPOTENCY_RESULT_TTL = 3600;
 
 export interface BidProcessResult {
   success: boolean;
@@ -179,6 +186,16 @@ async function resolveUserProfiles(
   return result;
 }
 
+/**
+ * Snap bid amount to the increment grid aligned with current price.
+ * Ensures the bid amount is a valid multiple of the increment above current price.
+ */
+function snapToIncrementGrid(bidAmount: number, currentPrice: number, increment: number, minBid: number): number {
+  let amount = Math.round((bidAmount - currentPrice) / increment) * increment + currentPrice;
+  amount = Math.max(amount, minBid);
+  return amount;
+}
+
 export const bidService = {
   /**
    * Process a bid from a user in an auction session.
@@ -219,16 +236,16 @@ export const bidService = {
       if (lbEntry) {
         const rank = await cache.zrevrank(`auction:${sessionId}:leaderboard`, String(userId));
         const result = { amount: Number(lbEntry), rank: rank !== null ? rank + 1 : 1, isLeading: rank === 0 };
-        await cache.set(idemKey, JSON.stringify(result), 3600);
+        await cache.set(idemKey, JSON.stringify(result), IDEMPOTENCY_RESULT_TTL);
         logger.info({ event: 'bid_recovered', sessionId, userId }, 'Bid recovered from pending state');
         return { success: true, ...result };
       }
       await cache.del(idemKey);
     }
 
-    const acquired = await cache.setnx(idemKey, 'pending', 300);
+    const acquired = await cache.setnx(idemKey, 'pending', IDEMPOTENCY_PENDING_TTL);
     if (!acquired) {
-      return { success: false, error: { code: 40901, message: '出价处理中，请稍候' } };
+      return { success: false, error: { code: ErrorCodes.BID_DUPLICATE, message: '出价处理中，请稍候' } };
     }
 
     logger.info({ event: 'bid_attempt', sessionId, userId, idempotencyKey }, 'Bid processing started');
@@ -242,13 +259,13 @@ export const bidService = {
     } else {
       const session = await auctionSessionRepo.findById(sessionId);
       if (!session || session.status !== 'active') {
-        return { success: false, error: { code: 40900, message: '竞拍已结束或未开始' } };
+        return { success: false, error: { code: ErrorCodes.AUCTION_NOT_ACTIVE, message: '竞拍已结束或未开始' } };
       }
       const product = await productRepo.findById(session.product_id);
-      if (!product) return { success: false, error: { code: 40400, message: '商品不存在' } };
+      if (!product) return { success: false, error: { code: ErrorCodes.PRODUCT_NOT_FOUND, message: '商品不存在' } };
       const rule = await auctionRuleRepo.findByProductId(session.product_id);
-      if (!rule) return { success: false, error: { code: 50000, message: '竞拍规则缺失' } };
-      if (userId === product.merchant_id) return { success: false, error: { code: 40300, message: '不能竞拍自己的商品' } };
+      if (!rule) return { success: false, error: { code: ErrorCodes.RULE_MISSING, message: '竞拍规则缺失' } };
+      if (userId === product.merchant_id) return { success: false, error: { code: ErrorCodes.BID_OWN_PRODUCT, message: '不能竞拍自己的商品' } };
 
       const topBidRaw = await cache.get(`auction:${sessionId}:top_bid`);
       const topBid = topBidRaw ? JSON.parse(topBidRaw) : null;
@@ -261,7 +278,7 @@ export const bidService = {
     }
 
     if (userId === ctx.merchantId) {
-      return { success: false, error: { code: 40300, message: '不能竞拍自己的商品' } };
+      return { success: false, error: { code: ErrorCodes.BID_OWN_PRODUCT, message: '不能竞拍自己的商品' } };
     }
 
     const { currentPrice, rule } = ctx;
@@ -269,10 +286,10 @@ export const bidService = {
     // ---- 3. Rate limiting ----
     const rateKey = `ratelimit:${sessionId}:${userId}`;
     const now = Date.now();
-    await redis.zremrangebyscore(rateKey, 0, now - 1000);
-    const rateCount = await redis.zcard(rateKey);
-    if (rateCount >= 5) {
-      return { success: false, error: { code: 42900, message: '出价过于频繁，请稍后再试' } };
+    await cache.zremrangebyscore(rateKey, 0, now - BID_RATE_LIMIT_WINDOW_MS);
+    const rateCount = await cache.zcard(rateKey);
+    if (rateCount >= BID_RATE_LIMIT_MAX) {
+      return { success: false, error: { code: ErrorCodes.BID_RATE_LIMITED, message: '出价过于频繁，请稍后再试' } };
     }
 
     // ---- 4. Calculate amount ----
@@ -283,13 +300,11 @@ export const bidService = {
     if (ceilingPrice !== null) {
       const nextBid = clientAmount != null && clientAmount >= minBid ? clientAmount : minBid;
       if (nextBid > ceilingPrice && currentPrice >= ceilingPrice) {
-        return { success: false, error: { code: 40901, message: '已达到封顶价' } };
+        return { success: false, error: { code: ErrorCodes.BID_CEILING_REACHED, message: '已达到封顶价' } };
       }
     }
 
-    let bidAmount = clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid;
-    bidAmount = Math.round((bidAmount - currentPrice) / increment) * increment + currentPrice;
-    bidAmount = Math.max(bidAmount, minBid);
+    let bidAmount = snapToIncrementGrid(clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid, currentPrice, increment, minBid);
 
     // ---- 5. CAS ----
     const topBidKey = `auction:${sessionId}:top_bid`;
@@ -299,22 +314,24 @@ export const bidService = {
 
     const casResult = await cache.eval(BID_CAS_SCRIPT, [topBidKey, lbKey, participantsKey], [String(userId), bidAmount, topBidData, ceilingPrice ?? 0]);
     if (!casResult || casResult === 0) {
-      return { success: false, error: { code: 40902, message: '出价已过期，当前价格已更新，请重新出价' } };
+      return { success: false, error: { code: ErrorCodes.BID_STALE_PRICE, message: '出价已过期，当前价格已更新，请重新出价' } };
     }
 
     // ---- 6. Rate limiter update ----
-    await redis.zadd(rateKey, now, String(now));
-    await redis.expire(rateKey, 2);
+    await cache.zadd(rateKey, now, String(now));
+    await cache.expire(rateKey, BID_RATE_LIMIT_TTL_S);
 
-    // ---- 7. MySQL persistence ----
+    // ---- 7. MySQL persistence (transactional) ----
     try {
-      await bidRepo.create({ session_id: sessionId, user_id: userId, bid_amount: bidAmount, idempotency_key: idempotencyKey });
-      await auctionSessionRepo.updatePrice(sessionId, bidAmount);
+      await db.transaction(async (trx) => {
+        await bidRepo.create({ session_id: sessionId, user_id: userId, bid_amount: bidAmount, idempotency_key: idempotencyKey }, trx);
+        await trx('auction_sessions').where({ id: sessionId }).update({ current_price: bidAmount, updated_at: db.fn.now() }).increment('version', 1);
+      });
     } catch (err) {
       logger.error({ err, sessionId, userId, bidAmount }, 'MySQL persistence failed, rolling back Redis');
       const topBidRaw = await cache.get(topBidKey);
-      await cache.eval(BID_ROLLBACK_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), topBidRaw || '']);
-      return { success: false, error: { code: 50000, message: '出价处理失败，请重试' } };
+      await cache.eval(BID_ROLLBACK_SCRIPT, [lbKey, participantsKey, topBidKey], [String(userId), topBidRaw || '', new Date().toISOString()]);
+      return { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: '出价处理失败，请重试' } };
     }
 
     // ---- 8. Extension check ----
@@ -361,7 +378,7 @@ export const bidService = {
 
     // ---- 1. In-memory rate limiting ----
     const rateKey = `ratelimit:${sessionId}:${userId}`;
-    if (!rateLimiter.check(rateKey, 5, 1000)) {
+    if (!rateLimiter.check(rateKey, BID_RATE_LIMIT_MAX, BID_RATE_LIMIT_WINDOW_MS)) {
       logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'rate_limit' }, 'Bid rejected - rate limit exceeded (MySQL path)');
       return {
         success: false,
@@ -370,35 +387,35 @@ export const bidService = {
     }
 
     // ---- 2. Fetch context (outside transaction) ----
-    const productCheck = await auctionSessionRepo.findById(sessionId);
-    if (!productCheck) {
+    const session = await auctionSessionRepo.findById(sessionId);
+    if (!session) {
       return {
         success: false,
-        error: { code: 40400, message: '竞拍不存在' },
+        error: { code: ErrorCodes.PRODUCT_NOT_FOUND, message: '竞拍不存在' },
       };
     }
 
-    const product = await productRepo.findById(productCheck.product_id);
+    const product = await productRepo.findById(session.product_id);
     if (!product) {
       return {
         success: false,
-        error: { code: 40400, message: '商品不存在' },
+        error: { code: ErrorCodes.PRODUCT_NOT_FOUND, message: '商品不存在' },
       };
     }
 
-    const rule = await auctionRuleRepo.findByProductId(productCheck.product_id);
+    const rule = await auctionRuleRepo.findByProductId(session.product_id);
     if (!rule) {
       return {
         success: false,
-        error: { code: 50000, message: '竞拍规则缺失' },
+        error: { code: ErrorCodes.RULE_MISSING, message: '竞拍规则缺失' },
       };
     }
 
     // ---- 3. Domain validation (before entering transaction) ----
     const validationError = validateBid(userId, {
-      auctionStatus: productCheck.status,
+      auctionStatus: session.status,
       sellerId: product.merchant_id,
-      currentPrice: Number(productCheck.current_price),
+      currentPrice: Number(session.current_price),
       bidIncrement: Number(rule.bid_increment),
       ceilingPrice: rule.ceiling_price ? Number(rule.ceiling_price) : null,
       idempotencyKeyExists: false,
@@ -411,12 +428,9 @@ export const bidService = {
     }
 
     // ---- 4. Calculate bid amount ----
-    const minBid = Number(productCheck.current_price) + Number(rule.bid_increment);
-    let bidAmount = clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid;
-    // Snap to increment grid
     const increment = Number(rule.bid_increment);
-    bidAmount = Math.round((bidAmount - Number(productCheck.current_price)) / increment) * increment + Number(productCheck.current_price);
-    bidAmount = Math.max(bidAmount, minBid);
+    const minBid = Number(session.current_price) + increment;
+    let bidAmount = snapToIncrementGrid(clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid, Number(session.current_price), increment, minBid);
     // Check ceiling price
     if (rule.ceiling_price != null && bidAmount > Number(rule.ceiling_price)) {
       bidAmount = Number(rule.ceiling_price);
@@ -424,9 +438,6 @@ export const bidService = {
 
     const ceilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
     const shouldEnd = ceilingPrice !== null && bidAmount >= ceilingPrice;
-    if (ceilingPrice !== null && bidAmount > ceilingPrice) {
-      bidAmount = ceilingPrice;
-    }
 
     // ---- 5. Execute in MySQL transaction ----
     let bidId: number | undefined;
@@ -437,21 +448,18 @@ export const bidService = {
         // Acquire row lock
         const session = await auctionSessionRepo.findByIdForUpdate(sessionId, trx);
         if (!session) {
-          throw Object.assign(new Error('SESSION_NOT_FOUND'), { _code: 40400 });
+          throw Object.assign(new Error('SESSION_NOT_FOUND'), { _code: ErrorCodes.AUCTION_NOT_FOUND });
         }
 
         if (session.status !== 'active') {
-          throw Object.assign(new Error('AUCTION_NOT_ACTIVE'), { _code: 40900 });
+          throw Object.assign(new Error('AUCTION_NOT_ACTIVE'), { _code: ErrorCodes.AUCTION_NOT_ACTIVE });
         }
 
         // Re-validate with locked data
         const lockedCurrentPrice = Number(session.current_price);
         const lockedIncrement = Number(rule.bid_increment);
         const lockedMinBid = lockedCurrentPrice + lockedIncrement;
-        let lockedBidAmount = clientAmount != null && clientAmount >= lockedMinBid ? Number(clientAmount) : lockedMinBid;
-        // Snap to increment grid
-        lockedBidAmount = Math.round((lockedBidAmount - lockedCurrentPrice) / lockedIncrement) * lockedIncrement + lockedCurrentPrice;
-        lockedBidAmount = Math.max(lockedBidAmount, lockedMinBid);
+        let lockedBidAmount = snapToIncrementGrid(clientAmount != null && clientAmount >= lockedMinBid ? Number(clientAmount) : lockedMinBid, lockedCurrentPrice, lockedIncrement, lockedMinBid);
         const lockedCeilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
         if (lockedCeilingPrice != null && lockedBidAmount > lockedCeilingPrice) {
           lockedBidAmount = lockedCeilingPrice;
@@ -478,14 +486,17 @@ export const bidService = {
         if (!lockedShouldEnd) {
           const extensionCount = session.extension_count || 0;
           if (extensionCount < rule.max_extensions) {
-            const currentEndTime = session.ended_at ? new Date(session.ended_at).getTime() : 0;
-            if (currentEndTime > 0) {
+            // Calculate expected end time: started_at + duration + extensions * extend_seconds
+            // (ended_at is NULL for active auctions, only set on actual termination)
+            const startedAtMs = session.started_at ? new Date(session.started_at).getTime() : 0;
+            const durationMs = Number(rule.duration_seconds) * 1000;
+            const extendMs = Number(rule.extend_seconds) * 1000;
+            const currentEndTime = startedAtMs + durationMs + (extensionCount * extendMs);
+            if (startedAtMs > 0 && currentEndTime > Date.now()) {
               const remainingMs = currentEndTime - Date.now();
               if (remainingMs < rule.extend_seconds * 1000) {
-                const newEndTime = new Date(Date.now() + rule.extend_seconds * 1000);
                 const newExtensions = extensionCount + 1;
                 await trx('auction_sessions').where({ id: sessionId }).update({
-                  ended_at: newEndTime,
                   extension_count: newExtensions,
                   updated_at: trx.fn.now(),
                 });
@@ -505,19 +516,19 @@ export const bidService = {
         logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'duplicate_idempotency_key' }, 'Bid rejected - duplicate idempotency key (MySQL path)');
         return {
           success: false,
-          error: { code: 40901, message: '重复的出价请求' },
+          error: { code: ErrorCodes.BID_DUPLICATE, message: '重复的出价请求' },
         };
       }
 
-      if (err._code === 40400) {
-        return { success: false, error: { code: 40400, message: '竞拍不存在' } };
+      if (err._code === ErrorCodes.AUCTION_NOT_FOUND) {
+        return { success: false, error: { code: ErrorCodes.AUCTION_NOT_FOUND, message: '竞拍不存在' } };
       }
-      if (err._code === 40900) {
-        return { success: false, error: { code: 40900, message: '竞拍已结束或未开始' } };
+      if (err._code === ErrorCodes.AUCTION_NOT_ACTIVE) {
+        return { success: false, error: { code: ErrorCodes.AUCTION_NOT_ACTIVE, message: '竞拍已结束或未开始' } };
       }
 
       logger.error({ err, sessionId, userId, bidAmount }, 'Bid persistence failed (MySQL path)');
-      return { success: false, error: { code: 50000, message: '出价处理失败，请重试' } };
+      return { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: '出价处理失败，请重试' } };
     }
 
     // ---- 6. Get rank from MySQL (outside transaction - read operation) ----

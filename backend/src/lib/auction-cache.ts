@@ -9,6 +9,8 @@ export async function cleanupAuctionCache(sessionId: number, roomId: number) {
     `auction:${sessionId}:room_id`,
     `auction:${sessionId}:top_bid`,
     `auction:${sessionId}:leaderboard`,
+    `auction:${sessionId}:rule`,
+    `auction:${sessionId}:merchant_id`,
     `room:${roomId}:active_session`,
     `room:${roomId}:participants`,
   ];

@@ -31,24 +31,17 @@ export default function CartPanel({
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   // 自动将讲解中商品置顶，同时保持原始序号
+  // 为每个 item 注入 _originalIndex 以避免 null sessionId 互相覆盖
   const sortedAuctions = useMemo(() => {
-    if (!currentSessionId) return auctions;
-    const currentIndex = auctions.findIndex((a) => a.sessionId === currentSessionId);
-    if (currentIndex <= 0) return auctions;
-    const result = [...auctions];
+    const annotated = auctions.map((item, idx) => ({ ...item, _originalIndex: idx }));
+    if (!currentSessionId) return annotated;
+    const currentIndex = annotated.findIndex((a) => a.sessionId === currentSessionId);
+    if (currentIndex <= 0) return annotated;
+    const result = [...annotated];
     const [currentItem] = result.splice(currentIndex, 1);
     result.unshift(currentItem);
     return result;
   }, [auctions, currentSessionId]);
-
-  // 原始序号映射（基于原始 auctions 数组，不随排序改变）
-  const originalIndexMap = useMemo(() => {
-    const map = new Map<number, number>();
-    auctions.forEach((item, idx) => {
-      map.set(item.sessionId, idx);
-    });
-    return map;
-  }, [auctions]);
 
   const handleSelect = useCallback(
     (item: RoomAuctionItem) => {
@@ -109,11 +102,11 @@ export default function CartPanel({
                 <div className="p-3 space-y-3">
                   {sortedAuctions.map((item) => (
                     <ProductCard
-                      key={item.sessionId}
+                      key={item.sessionId ?? `idx-${item._originalIndex}-${item.product?.id ?? 'noid'}`}
                       item={item}
-                      index={originalIndexMap.get(item.sessionId)}
+                      index={item._originalIndex}
                       isCurrent={item.sessionId === currentSessionId}
-                      myLastBid={myBids[item.sessionId] ?? null}
+                      myLastBid={item.sessionId != null ? myBids[item.sessionId] ?? null : null}
                       onSelect={() => handleSelect(item)}
                       onBid={() => { setBidSheetItem(item); setBidSheetOpen(true); }}
                     />

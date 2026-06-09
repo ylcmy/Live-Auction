@@ -96,7 +96,7 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
             )}
 
             {/* 讲解中渐变条带 */}
-            {isCurrent && (
+            {isCurrentActive && (
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-r from-red-500 via-red-500 to-pink-500 px-2 py-1 flex items-center justify-center gap-1.5">
                 <AudioWaveform />
                 <span className="text-white text-[10px] font-medium">讲解中</span>

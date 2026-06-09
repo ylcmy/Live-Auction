@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { env } from './config/env.js';
+import { env, CORS_WHITELIST } from './config/env.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { productRoutes } from './routes/product.routes.js';
@@ -27,7 +27,12 @@ export async function buildApp() {
     ajv: { customOptions: { coerceTypes: 'array' } },
   });
 
-  await app.register(cors, { origin: true, credentials: true });
+  await app.register(cors, {
+    // Wildcard is only allowed when the request is unauthenticated.
+    // For credentialed requests the CORS spec mandates an explicit origin.
+    origin: CORS_WHITELIST,
+    credentials: CORS_WHITELIST !== true,
+  });
 
   app.addHook('preSerialization', async (_req, _reply, payload) => {
     if (payload && typeof payload === 'object' && 'data' in payload) {
