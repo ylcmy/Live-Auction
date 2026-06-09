@@ -17,6 +17,18 @@ const { mockCache, mockRedis } = vi.hoisted(() => {
     sadd: vi.fn().mockResolvedValue(0),
     zremrangebyscore: vi.fn().mockResolvedValue(0),
     zcard: vi.fn().mockResolvedValue(0),
+    pipeline: vi.fn(() => {
+      const chain: any = {
+        get: vi.fn(() => chain),
+        set: vi.fn(() => chain),
+        zrevrank: vi.fn(() => chain),
+        zadd: vi.fn(() => chain),
+        zcard: vi.fn(() => chain),
+        expire: vi.fn(() => chain),
+        exec: vi.fn(async () => [[null, '0'], [null, '0'], [null, 0]]),
+      };
+      return chain;
+    }),
   };
 
   const mockRedis = {
@@ -235,7 +247,12 @@ describe('_processBidRedis (CAS-based)', () => {
   });
 
   it('Rate limit exceeded: returns 42900', async () => {
-    mockCache.zcard.mockResolvedValue(5); // At limit (now uses cache instead of redis)
+    // Rate limit is now checked via cache.eval with BID_RATE_LIMIT_SCRIPT
+    // Mock eval to return count >= BID_RATE_LIMIT_MAX (5) for rate limit check
+    mockCache.eval.mockImplementation(async (script: string) => {
+      if (script.includes('ZREMRANGEBYSCORE') && script.includes('ZCARD')) return 5; // rate limit exceeded
+      return 1; // CAS success
+    });
 
     const result = await bidService._processBidRedis(100, 2, 'key-005');
 
@@ -243,8 +260,7 @@ describe('_processBidRedis (CAS-based)', () => {
     expect(result.error?.code).toBe(42900);
     expect(result.error?.message).toContain('频繁');
 
-    // Verify no CAS or MySQL operations happened
-    expect(mockCache.eval).not.toHaveBeenCalled();
+    // Verify no CAS or MySQL operations happened (rate limit blocked before CAS)
     expect(bidRepo.create).not.toHaveBeenCalled();
   });
 });

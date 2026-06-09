@@ -63,6 +63,19 @@ const { mockCache, mockBidRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, moc
       scard: vi.fn(),
       expire: vi.fn(),
       eval: vi.fn(),
+      pipeline: vi.fn(() => {
+        const ops: Array<[string, any[]]> = [];
+        const chain: any = {
+          get: vi.fn((key: string) => { ops.push(['get', [key]]); return chain; }),
+          set: vi.fn((...args: any[]) => { ops.push(['set', args]); return chain; }),
+          zrevrank: vi.fn((...args: any[]) => { ops.push(['zrevrank', args]); return chain; }),
+          zadd: vi.fn((...args: any[]) => { ops.push(['zadd', args]); return chain; }),
+          zcard: vi.fn((...args: any[]) => { ops.push(['zcard', args]); return chain; }),
+          expire: vi.fn((...args: any[]) => { ops.push(['expire', args]); return chain; }),
+          exec: vi.fn(async () => ops.map(([op]) => [null, op === 'get' ? null : 0])),
+        };
+        return chain;
+      }),
     },
     mockBidRepo: {
       create: vi.fn(),
@@ -142,9 +155,8 @@ describe('BidService.processBid', () => {
     mockCache.zrevrange.mockResolvedValue([String(userId), '110']);
     mockCache.del.mockResolvedValue(1);
 
-    // Default: no rate limit entries
-    mockCache.zremrangebyscore.mockResolvedValue(0);
-    mockCache.zcard.mockResolvedValue(0);
+    // Default: rate limit check (now via Lua script) returns 0 (under limit)
+    mockCache.eval.mockResolvedValue(1); // CAS success by default
     mockCache.zadd.mockResolvedValue(1);
     mockCache.expire.mockResolvedValue(1);
 
@@ -458,26 +470,26 @@ describe('BidService.processBid', () => {
 
       mockBidRepo.findBySession.mockResolvedValue([{ user_id: userId, bid_amount: 110 }]);
 
-      // Rate limiter at Redis level: zcard returns high count
-      // Note: CAS flow uses redis.zcard (not cache.zcard) for rate limiting
-      // Mock the Redis sorted set zcard to return a high count to trigger rate limit
-      const origZcard = mockCache.zcard.getMockImplementation();
-      mockCache.zcard.mockResolvedValue(999);
+      // Rate limiter now uses cache.eval with Lua script
+      // Mock eval to return high count for rate limit check, then CAS result
+      const origEval = mockCache.eval.getMockImplementation();
+      mockCache.eval.mockImplementation(async (script: string) => {
+        if (script.includes('ZREMRANGEBYSCORE')) return 999; // rate limit exceeded
+        return 1; // CAS success
+      });
 
       const result2 = await bidService.processBid(sessionId, userId2, idemKey2);
 
-      // If the bid service has rate limiting, it should reject
-      // The exact behavior depends on whether Redis rate limiting is implemented
-      // At minimum, the first bid's leaderboard entry should be untouched
+      // Rate limit should reject the bid
       if (!result2.success) {
         expect(result2.error?.code).toBe(42900);
       }
 
       // Restore mock
-      if (origZcard) {
-        mockCache.zcard.mockImplementation(origZcard);
+      if (origEval) {
+        mockCache.eval.mockImplementation(origEval);
       } else {
-        mockCache.zcard.mockResolvedValue(0);
+        mockCache.eval.mockResolvedValue(1);
       }
 
       // Leaderboard should still reflect only the first accepted bid

@@ -66,6 +66,33 @@ end
 return 1
 `;
 
+/**
+ * 出价限流 Lua 脚本：原子执行 ZREMRANGEBYSCORE + ZCARD + ZADD + EXPIRE
+ *
+ * KEYS[1] = ratelimit:{sessionId}:{userId}
+ * ARGV[1] = now (ms)
+ * ARGV[2] = window start (ms)
+ * ARGV[3] = max rate
+ * ARGV[4] = TTL (seconds)
+ *
+ * returns: {currentCount} — 当前窗口内请求次数，>= maxRate 表示被限流
+ */
+export const BID_RATE_LIMIT_SCRIPT = `
+local rateKey  = KEYS[1]
+local now      = ARGV[1]
+local winStart = ARGV[2]
+local maxRate  = tonumber(ARGV[3])
+local ttl      = tonumber(ARGV[4])
+
+redis.call('ZREMRANGEBYSCORE', rateKey, 0, winStart)
+local count = redis.call('ZCARD', rateKey)
+if count < maxRate then
+  redis.call('ZADD', rateKey, now, now)
+  redis.call('EXPIRE', rateKey, ttl)
+end
+return count
+`;
+
 /** 分布式锁释放脚本：校验锁值后删除，防止误删 */
 export const LOCK_RELEASE_SCRIPT = `
   if redis.call('GET', KEYS[1]) == ARGV[1] then
