@@ -260,7 +260,7 @@ export const bidService = {
       const currentTopRaw = await cache.get(topBidKey);
       if (currentTopRaw) {
         const currentTop = JSON.parse(currentTopRaw);
-        if (Number(currentTop.amount) >= clientAmount) {
+        if (Number(currentTop.amount) > clientAmount) {
           await cache.del(idemKey);
           return { success: false, error: { code: ErrorCodes.BID_STALE_PRICE, message: '出价已过期，当前价格已更新，请重新出价' } };
         }

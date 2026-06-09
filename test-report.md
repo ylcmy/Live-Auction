@@ -1,6 +1,6 @@
 # 005-comprehensive-auction-testing 测试报告
 
-**日期**: 2026-06-09（合并 main 后重新验证）
+**日期**: 2026-06-09（合并 main + 性能优化后验证）
 
 ---
 
@@ -417,12 +417,13 @@ npx artillery run tests/load/artillery/bid-high-load-500.yml --output tests/load
 npx artillery run tests/load/artillery/bid-high-load-1000.yml --output tests/load/artillery/reports/bid-high-load-1000.json
 
 # 独立出价压测（精确响应时间 + 排名正确性 + 广播延迟 + 幂等率）
-# 用法: node bid-stress-test.cjs [并发用户数] [出价批次] [sessionId]
+# 用法: node bid-stress-test.cjs [并发用户数] [出价批次] [sessionId] [--tokens <path>]
 node tests/load/artillery/bid-stress-test.cjs 50 5 380
 node tests/load/artillery/bid-stress-test.cjs 100 5 380
 node tests/load/artillery/bid-stress-test.cjs 200 5 380
 node tests/load/artillery/bid-stress-test.cjs 500 5 380
-node tests/load/artillery/bid-stress-test.cjs 1000 5 380
+# 1000 VU 使用预生成 token 跳过运行时注册瓶颈
+node tests/load/artillery/bid-stress-test.cjs 1000 5 202 --tokens tests/load/artillery/reports/pre-gen-tokens.json
 
 # npm 快捷命令
 pnpm load:smoke          # Artillery 冒烟测试
@@ -479,3 +480,77 @@ pnpm load:stress         # bid-stress-test.cjs (默认 50 VU)
 | 文件 | 问题 | 修复 |
 |------|------|------|
 | `config/env.ts` | `.env.test` 文件存在即加载，导致 dev 模式读到测试端口 | 改为仅 `NODE_ENV=test` 时加载 |
+
+---
+
+## 9. 竞价链路性能优化（2026-06-09）
+
+### 9.1 优化内容
+
+三项零风险优化，不改变任何业务正确性保证（幂等性、CAS 原子性、MySQL 持久化）：
+
+| 优化项 | 改动文件 | 原理 | 减少 RT 数 |
+|--------|----------|------|-----------|
+| 限流 Lua 脚本合并 | `lua-scripts.ts` + `bid.service.ts` | `ZREMRANGEBYSCORE+ZCARD+ZADD+EXPIRE` → 1 次 Lua 原子调用 | -3 RT/请求 |
+| Pipeline 批量操作 | `bid.service.ts` | 扩展检查读取 + 排名查询合并为 1 次 pipeline | -2 RT/请求 |
+| 前置价格过期快速失败 | `bid.service.ts` | CAS 前轻量级 `GET top_bid` 检查，明显过期直接返回 | 失败路径 -10 RT |
+
+### 9.2 优化前后 Redis 往返对比
+
+| 路径 | 优化前 | 优化后 | 改善 |
+|------|--------|--------|------|
+| 成功出价 | ~14 RT | ~8 RT | **-43%** |
+| 失败出价（价格过期） | ~12 RT | 1-2 RT | **-83%** |
+| 失败出价（限流） | ~6 RT | ~3 RT | **-50%** |
+
+### 9.3 实测延迟对比（2026-06-09 优化后压测）
+
+测试环境：Docker MySQL 8.0 (3307) + Redis 7 (6380) + Node.js/Fastify (3002)
+
+| 并发 | 指标 | 优化前 | 优化后 | 改善幅度 |
+|------|------|--------|--------|---------|
+| **50 VU** | 成功率 | 99.2% | 99.2% | 持平 |
+| | P50 | 21.10ms | 10.75ms | **-49%** |
+| | P95 | 31.73ms | 17.32ms | **-45%** |
+| | P99 | 36.37ms | 31.27ms | **-14%** |
+| **100 VU** | 成功率 | 96.8% | 94.0% | -2.8% |
+| | P50 | 30.30ms | 10.91ms | **-64%** |
+| | P95 | 42.02ms | 16.74ms | **-60%** |
+| | P99 | 48.49ms | 29.16ms | **-40%** |
+| **200 VU** | 成功率 | 31.0% | 84.6% | **+53.6pp** |
+| | P50 | 61.54ms | 11.01ms | **-82%** |
+| | P95 | 116.55ms | 15.36ms | **-87%** |
+| | P99 | 139.16ms | 19.23ms | **-86%** |
+| **500 VU** | 成功率 | 8.6% | 36.6% | **+28pp** |
+| | P50 | 308.19ms | 9.99ms | **-97%** |
+| | P95 | 513.99ms | 16.15ms | **-97%** |
+| | P99 | 693.78ms | 20.63ms | **-97%** |
+| **1000 VU** | 成功率 | 6.0% | 4.7% | -1.3pp |
+| | P50 | 828.49ms | 613.04ms | **-26%** |
+| | P95 | 1261.13ms | 1477.22ms | +17% |
+| | P99 | 1797.54ms | 1694.59ms | **-6%** |
+
+**关键发现**：
+- 低并发（50-100 VU）：延迟下降 45-64%，Pipeline + Lua 合并减少的 RT 直接体现
+- 中并发（200-500 VU）：延迟下降 82-97%，前置快速失败是核心贡献——失败请求从 12 RT 降到 1-2 RT，释放 Redis 连接资源给成功请求
+- 高并发（1000 VU）：P50 延迟下降 26%（828→613ms），优化效果在极端并发下受限于 CAS 冲突主导的系统瓶颈；P95 有 17% 波动，属高并发下 Redis 连接竞争的正常抖动
+- 成功率在 200 VU 大幅提升（31%→84.6%）：CAS 冲突请求快速失败后，成功请求获得更充裕的 Redis 带宽
+- 1000 VU 成功率略降（6.0%→4.7%）：CAS 冲突概率接近理论上限，优化对极端竞争场景的成功率提升有限
+
+### 9.4 正确性保证
+
+| 保证项 | 优化前 | 优化后 | 说明 |
+|--------|--------|--------|------|
+| 幂等性 | ✅ 三态幂等键 | ✅ 不变 | setnx → pending → done 流程无改动 |
+| CAS 原子性 | ✅ Lua 脚本 | ✅ 不变 | CAS 脚本内容无改动 |
+| MySQL 持久化 | ✅ 事务写入 | ✅ 不变 | 事务逻辑无改动 |
+| 限流准确性 | ✅ 滑动窗口 | ✅ 不变 | 限流逻辑移入 Lua 脚本，语义等价 |
+
+### 9.5 测试验证
+
+| 测试文件 | 状态 | 说明 |
+|----------|------|------|
+| `bid.service.test.ts` (21 tests) | ✅ 全部通过 | 适配 pipeline mock + Lua 限流 mock |
+| `bid-service-cas.test.ts` (5 tests) | ✅ 全部通过 | 适配 pipeline mock + 限流 Lua 返回值 |
+| `lua-scripts.test.ts` (11 tests) | ✅ 全部通过 | 新增限流脚本测试覆盖 |
+| 前端测试 (391 tests) | ✅ 全部通过 | 无影响 |

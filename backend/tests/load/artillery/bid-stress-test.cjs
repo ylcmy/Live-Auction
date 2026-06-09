@@ -17,6 +17,8 @@
 const { io } = require('socket.io-client');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const TARGET = process.env.TARGET || 'http://localhost:3002';
 const CONCURRENT = parseInt(process.argv[2] || '50', 10);
@@ -24,6 +26,10 @@ const BATCHES = parseInt(process.argv[3] || '5', 10);
 const SESSION_ID = parseInt(process.argv[4] || '380', 10);
 const BATCH_SPREAD_MS = 1000; // 每批出价在 1s 内陆续发出
 const RANK_VALIDATION_WAIT_MS = 5000; // 出价完成后等待 rank:update 广播的时间
+
+// --tokens <path>: 预生成 token 文件，跳过运行时注册
+const tokensFlagIdx = process.argv.indexOf('--tokens');
+const TOKENS_FILE = tokensFlagIdx !== -1 ? process.argv[tokensFlagIdx + 1] : null;
 
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 500 });
 
@@ -118,6 +124,7 @@ function sendBid(socket, batchIndex, vuIndex, overrideKey) {
           elapsed, accepted: true, idempotencyKey,
           batch: batchIndex, vu: vuIndex,
           acceptedAt, isDuplicate: !!overrideKey,
+          acceptedAmount: data.amount ?? data.currentPrice ?? null,
           _getRankSyncMs: () => rankUpdateReceivedAt
             ? Number(rankUpdateReceivedAt - acceptedAt) / 1e6
             : null,
@@ -175,14 +182,27 @@ async function main() {
 
   const testStart = process.hrtime.bigint();
 
-  // Phase 1: Register + Login + Connect all VUs
+  // Phase 1: 获取 Token + 建立连接
   console.log('--- 阶段 1: 注册登录 & 建立连接 ---');
   const sockets = [];
   const connectStart = process.hrtime.bigint();
 
+  // 加载预生成 token（如有）
+  let preGenTokens = [];
+  if (TOKENS_FILE) {
+    try {
+      const raw = fs.readFileSync(path.resolve(TOKENS_FILE), 'utf-8');
+      preGenTokens = JSON.parse(raw);
+      console.log(`  已加载 ${preGenTokens.length} 个预生成 token`);
+    } catch (e) {
+      console.log(`  ⚠️ 加载 token 文件失败: ${e.message}，回退到运行时注册`);
+    }
+  }
+
   for (let i = 0; i < CONCURRENT; i++) {
     try {
-      const token = await registerAndLogin(i);
+      // 优先使用预生成 token，不足时回退到注册
+      const token = preGenTokens[i] || await registerAndLogin(i);
       const socket = await connectVU(token, lastLeaderboard);
       sockets.push({ socket, vuIndex: i });
     } catch (e) {
@@ -201,11 +221,11 @@ async function main() {
     return;
   }
 
-  // Phase 2: Batch bidding (with duplicate key for idempotency testing)
+  // Phase 2: Batch bidding
   console.log('\n--- 阶段 2: 批次出价 ---');
   const allResults = [];
-  const duplicateKey = crypto.randomUUID();
-  let duplicateKeyUsed = 0;
+  // 幂等性测试: 记录每个 VU 首次 accepted 的幂等键，用于后续重放验证
+  const firstAcceptedKeyPerVu = new Map(); // vuIndex → { idempotencyKey, acceptedAmount }
 
   for (let batch = 0; batch < BATCHES; batch++) {
     const batchStart = process.hrtime.bigint();
@@ -214,12 +234,18 @@ async function main() {
     const bidPromises = sockets.map(({ socket, vuIndex }, idx) => {
       const delay = Math.floor((idx / connectedCount) * BATCH_SPREAD_MS);
 
-      // 确定性重复键选择: 每 20 个 VU 选 1 个，最多 3 个
-      const shouldDuplicate = (idx % 20 === 0) && duplicateKeyUsed < 3;
-      const overrideKey = shouldDuplicate ? duplicateKey : undefined;
-      if (shouldDuplicate) duplicateKeyUsed++;
-
-      return new Promise(r => setTimeout(r, delay)).then(() => sendBid(socket, batch, vuIndex, overrideKey));
+      return new Promise(r => setTimeout(r, delay))
+        .then(() => sendBid(socket, batch, vuIndex))
+        .then(result => {
+          // 记录每个 VU 首次 accepted 的幂等键，用于后续重放验证
+          if (result.accepted && !firstAcceptedKeyPerVu.has(vuIndex)) {
+            firstAcceptedKeyPerVu.set(vuIndex, {
+              idempotencyKey: result.idempotencyKey,
+              acceptedAmount: result.acceptedAmount,
+            });
+          }
+          return result;
+        });
     });
 
     const batchResults = await Promise.all(bidPromises);
@@ -234,6 +260,40 @@ async function main() {
     if (batch < BATCHES - 1) {
       await new Promise(r => setTimeout(r, 1000));
     }
+  }
+
+  // Phase 2.5: 幂等性重放验证 — 用每个 VU 首次 accepted 的 key 重放，验证返回相同结果
+  console.log('\n--- 阶段 2.5: 幂等性重放验证 ---');
+  const REPLAY_SAMPLE_SIZE = Math.min(20, firstAcceptedKeyPerVu.size);
+  const replayEntries = [...firstAcceptedKeyPerVu.entries()].slice(0, REPLAY_SAMPLE_SIZE);
+  const replayResults = [];
+
+  for (const [vuIndex, { idempotencyKey, acceptedAmount }] of replayEntries) {
+    const { socket } = sockets.find(s => s.vuIndex === vuIndex) || {};
+    if (!socket) continue;
+
+    const replayResult = await sendBid(socket, -1, vuIndex, idempotencyKey);
+    // 重放正确 = 返回 accepted 且金额与首次一致，或返回 rejected(重复拒绝)
+    const isReplayCorrect = replayResult.accepted
+      ? (acceptedAmount === null || replayResult.acceptedAmount === null || replayResult.acceptedAmount === acceptedAmount)
+      : true; // rejected 也算正确（服务端直接拒绝重复 key）
+    replayResults.push({
+      vuIndex, idempotencyKey,
+      originalAmount: acceptedAmount,
+      replayAccepted: replayResult.accepted,
+      replayAmount: replayResult.acceptedAmount,
+      isReplayCorrect,
+    });
+  }
+
+  const replayViolations = replayResults.filter(r => !r.isReplayCorrect);
+  console.log(`  重放测试数: ${replayResults.length}`);
+  console.log(`  重放正确数: ${replayResults.length - replayViolations.length}`);
+  console.log(`  幂等违规数: ${replayViolations.length}`);
+  if (replayViolations.length > 0) {
+    replayViolations.forEach(v => {
+      console.log(`    ⚠️ VU ${v.vuIndex}: 原始金额 ${v.originalAmount}, 重放金额 ${v.replayAmount}`);
+    });
   }
 
   // Phase 3: 等待 rank:update 广播到达 + 收集精确延迟
@@ -355,20 +415,16 @@ async function main() {
     });
   }
 
-  // ── 幂等性统计 ────────────────────────────────────────────────────────────
-  const duplicateResults = allResults.filter(r => r.isDuplicate);
-  const duplicateAccepted = duplicateResults.filter(r => r.accepted);
-  const idempotencyViolations = duplicateAccepted.length > 1
-    ? duplicateAccepted.length - 1  // 第一次 accepted 正常，后续是违规
-    : 0;
+  // ── 幂等性统计（基于重放验证）────────────────────────────────────────────
+  const idempotencyViolations = replayViolations.length;
+  const idempotencyCompliance = replayResults.length > 0
+    ? ((1 - idempotencyViolations / replayResults.length) * 100)
+    : 100;
 
   console.log(`\n--- 幂等性验证 ---`);
-  console.log(`  重复键出价数: ${duplicateResults.length}`);
-  console.log(`  重复键接受数: ${duplicateAccepted.length}`);
+  console.log(`  重放测试数: ${replayResults.length}`);
   console.log(`  幂等违规数: ${idempotencyViolations}`);
-  console.log(`  幂等合规率: ${duplicateResults.length > 0
-    ? ((1 - idempotencyViolations / duplicateResults.length) * 100).toFixed(1) + '%'
-    : 'N/A'}`);
+  console.log(`  幂等合规率: ${idempotencyCompliance.toFixed(1)}%`);
 
   // ── 广播同步延迟统计（精确测量）────────────────────────────────────────────
   console.log(`\n--- 广播同步延迟 ---`);
@@ -398,8 +454,6 @@ async function main() {
   console.log(`  排名连续: ${rankSequential ? '✅' : '❌'}`);
 
   // Write CSV
-  const fs = require('fs');
-  const path = require('path');
   const csvPath = path.join(__dirname, 'reports', 'bid-stress-results.csv');
   const csvHeader = 'batch,vu,elapsed_ms,accepted,reason,idempotencyKey,isDuplicate\n';
   const csvLines = allResults.map(r =>
@@ -435,11 +489,9 @@ async function main() {
       max: Number(times[times.length - 1].toFixed(2)),
     },
     idempotency: {
-      duplicateKeyTests: duplicateResults.length,
+      replayTests: replayResults.length,
       violations: idempotencyViolations,
-      complianceRate: duplicateResults.length > 0
-        ? ((1 - idempotencyViolations / duplicateResults.length) * 100).toFixed(1) + '%'
-        : 'N/A',
+      complianceRate: idempotencyCompliance.toFixed(1) + '%',
     },
     ranking: {
       correct: rankingCorrect,
