@@ -81,7 +81,7 @@ export class BidEventBus extends EventEmitter {
     this.on('bid:committed', (event: BidCommittedEvent) => {
       if (!this.io) return;
 
-      if (event.isLeading && event.previousTopBidderId !== null) {
+      if (event.isLeading && event.previousTopBidderId !== null && event.previousTopBidderId !== event.userId) {
         const roomSockets = this.io.sockets.adapter.rooms.get(event.roomId);
         if (roomSockets) {
           for (const socketId of roomSockets) {
