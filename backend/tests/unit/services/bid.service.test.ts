@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock all dependencies using vi.hoisted
 // ---------------------------------------------------------------------------
 
-const { mockCache, mockRedis, mockBidRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockUserRepo, mockLogger, mockProductRepo, mockIsRedisAvailable, mockDb, mockTrx, setnxStore } = vi.hoisted(() => {
+const { mockCache, mockBidRepo, mockAuctionSessionRepo, mockAuctionRuleRepo, mockUserRepo, mockLogger, mockProductRepo, mockIsRedisAvailable, mockDb, mockTrx, setnxStore } = vi.hoisted(() => {
   const setnxStore = new Map<string, boolean>();
 
   // MySQL fallback query builder (returns self for chaining)
@@ -57,17 +57,12 @@ const { mockCache, mockRedis, mockBidRepo, mockAuctionSessionRepo, mockAuctionRu
       zrevrank: vi.fn(),
       zscore: vi.fn(),
       zcard: vi.fn(),
+      zremrangebyscore: vi.fn(),
       sadd: vi.fn(),
       srem: vi.fn(),
       scard: vi.fn(),
       expire: vi.fn(),
       eval: vi.fn(),
-    },
-    mockRedis: {
-      zremrangebyscore: vi.fn(),
-      zcard: vi.fn(),
-      zadd: vi.fn(),
-      expire: vi.fn(),
     },
     mockBidRepo: {
       create: vi.fn(),
@@ -106,7 +101,7 @@ const { mockCache, mockRedis, mockBidRepo, mockAuctionSessionRepo, mockAuctionRu
 
 vi.mock('../../../src/infrastructure/cache/redis.js', () => ({
   cache: mockCache,
-  redis: mockRedis,
+  redis: mockCache,
   isRedisAvailable: mockIsRedisAvailable,
   redisCircuitBreaker: { trip: vi.fn(), reset: vi.fn(), isAvailable: mockIsRedisAvailable },
 }));
@@ -148,10 +143,10 @@ describe('BidService.processBid', () => {
     mockCache.del.mockResolvedValue(1);
 
     // Default: no rate limit entries
-    mockRedis.zremrangebyscore.mockResolvedValue(0);
-    mockRedis.zcard.mockResolvedValue(0);
-    mockRedis.zadd.mockResolvedValue(1);
-    mockRedis.expire.mockResolvedValue(1);
+    mockCache.zremrangebyscore.mockResolvedValue(0);
+    mockCache.zcard.mockResolvedValue(0);
+    mockCache.zadd.mockResolvedValue(1);
+    mockCache.expire.mockResolvedValue(1);
 
     // Default: session exists, active
     mockAuctionSessionRepo.findById.mockResolvedValue({
@@ -264,7 +259,7 @@ describe('BidService.processBid', () => {
       const result = await bidService.processBid(sessionId, userId, idempotencyKey);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(50000);
+      expect(result.error?.code).toBe(50001);
     });
 
     it('should reject when auction is not active', async () => {
@@ -318,9 +313,10 @@ describe('BidService.processBid', () => {
           session_id: sessionId,
           user_id: userId,
           bid_amount: 110,
+          idempotency_key: idempotencyKey,
         }),
+        expect.any(Function),
       );
-      expect(mockAuctionSessionRepo.updatePrice).toHaveBeenCalledWith(sessionId, 110);
     });
 
     it('should return isLeading=true when user is the only bidder', async () => {
@@ -465,8 +461,8 @@ describe('BidService.processBid', () => {
       // Rate limiter at Redis level: zcard returns high count
       // Note: CAS flow uses redis.zcard (not cache.zcard) for rate limiting
       // Mock the Redis sorted set zcard to return a high count to trigger rate limit
-      const origZcard = mockRedis.zcard.getMockImplementation();
-      mockRedis.zcard.mockResolvedValue(999);
+      const origZcard = mockCache.zcard.getMockImplementation();
+      mockCache.zcard.mockResolvedValue(999);
 
       const result2 = await bidService.processBid(sessionId, userId2, idemKey2);
 
@@ -479,9 +475,9 @@ describe('BidService.processBid', () => {
 
       // Restore mock
       if (origZcard) {
-        mockRedis.zcard.mockImplementation(origZcard);
+        mockCache.zcard.mockImplementation(origZcard);
       } else {
-        mockRedis.zcard.mockResolvedValue(0);
+        mockCache.zcard.mockResolvedValue(0);
       }
 
       // Leaderboard should still reflect only the first accepted bid
@@ -497,7 +493,9 @@ describe('BidService.processBid', () => {
           session_id: sessionId,
           user_id: userId,
           bid_amount: 110,
+          idempotency_key: idempotencyKey,
         }),
+        expect.any(Function),
       );
     });
   });

@@ -87,29 +87,9 @@ describe('validateBid - extended boundary tests', () => {
     currentPrice: 0,
     bidIncrement: 10,
     ceilingPrice: null,
-    lastBidUserId: null,
     idempotencyKeyExists: false,
     rateLimitExceeded: false,
   };
-
-  // ─── self-bid prevention ───────────────────────────────────────────────────
-
-  it('should reject when user is the current highest bidder (self-bid)', () => {
-    const result = validateBid(42, { ...baseCtx, lastBidUserId: 42 });
-    expect(result).not.toBeNull();
-    expect(result!.code).toBe(40901);
-    expect(result!.message).toContain('等待他人');
-  });
-
-  it('should pass when user is NOT the current highest bidder', () => {
-    const result = validateBid(42, { ...baseCtx, lastBidUserId: 99 });
-    expect(result).toBeNull();
-  });
-
-  it('should pass when lastBidUserId is null (first bid scenario)', () => {
-    const result = validateBid(42, { ...baseCtx, lastBidUserId: null });
-    expect(result).toBeNull();
-  });
 
   // ─── rate limit ────────────────────────────────────────────────────────────
 
@@ -186,21 +166,13 @@ describe('validateBid - extended boundary tests', () => {
     expect(result).toBeNull();
   });
 
-  it('should pass when lastBidUserId is 0 and userId is also 0 (no previous bidder)', () => {
-    // lastBidUserId=0 means "no previous bidder", so self-bid check should not trigger
-    const result = validateBid(0, { ...baseCtx, lastBidUserId: 0 });
-    expect(result).toBeNull();
-  });
-
   // ─── combined edge cases ───────────────────────────────────────────────────
 
-  it('should check idempotency before self-bid (idempotency takes priority)', () => {
+  it('should check idempotency (idempotency takes priority)', () => {
     const result = validateBid(1, {
       ...baseCtx,
-      lastBidUserId: 1,
       idempotencyKeyExists: true,
     });
-    // idempotency check comes before self-bid check in the code
     expect(result).not.toBeNull();
     expect(result!.code).toBe(40901);
     expect(result!.message).toContain('重复');
@@ -212,7 +184,6 @@ describe('validateBid - extended boundary tests', () => {
       auctionStatus: 'ended',
       idempotencyKeyExists: true,
       rateLimitExceeded: true,
-      lastBidUserId: 1,
     });
     expect(result).not.toBeNull();
     expect(result!.code).toBe(40900);

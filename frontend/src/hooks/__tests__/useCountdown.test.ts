@@ -149,7 +149,7 @@ describe('useCountdown', () => {
     });
 
     act(() => {
-      result.current.extend(15000);
+      result.current.extend({ sessionId: 1, extendMs: 15000, serverTime: Date.now() });
     });
 
     // Allow the new effect tick to start

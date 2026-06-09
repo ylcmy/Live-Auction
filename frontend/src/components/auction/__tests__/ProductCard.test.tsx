@@ -1,7 +1,8 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ProductCard from '../ProductCard';
 import { mockRoomAuctionItem, mockListedAuction, mockEndedAuction } from '@/tests/fixtures/auction';
+import { useAuctionStore } from '@/store/auctionStore';
 
 vi.mock('framer-motion', () => {
   const React = require('react');
@@ -66,11 +67,13 @@ describe('ProductCard', () => {
   });
 
   test('shows "讲解中" indicator when isCurrent is true', () => {
+    useAuctionStore.setState({ currentAuction: { sessionId: 1 } as any });
     render(<ProductCard {...defaultProps} isCurrent={true} />);
     expect(screen.getByText('讲解中')).toBeInTheDocument();
   });
 
   test('does not show "讲解中" when isCurrent is false', () => {
+    useAuctionStore.setState({ currentAuction: { sessionId: 1 } as any });
     render(<ProductCard {...defaultProps} isCurrent={false} />);
     expect(screen.queryByText('讲解中')).not.toBeInTheDocument();
   });

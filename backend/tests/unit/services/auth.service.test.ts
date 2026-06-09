@@ -23,10 +23,11 @@ const { mockUserRepo, mockBcrypt, mockJwt } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../src/repositories/user.repo.js', () => ({ userRepo: mockUserRepo }));
-vi.mock('bcryptjs', () => ({ default: mockBcrypt }));
+vi.mock('bcrypt', () => ({ default: mockBcrypt }));
 vi.mock('jsonwebtoken', () => ({ default: mockJwt }));
 vi.mock('../../../src/config/env.js', () => ({
   env: {
+    BCRYPT_COST: 10,
     JWT_SECRET: 'test-secret',
     JWT_EXPIRES_IN: 3600,
   },

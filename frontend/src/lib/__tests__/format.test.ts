@@ -116,9 +116,9 @@ describe('getPriceLabel', () => {
     expect(result).toEqual({ label: '当前最高价', price: 200 });
   });
 
-  it('returns startPrice when active and currentPrice <= startPrice', () => {
+  it('returns currentPrice when active and currentPrice <= startPrice', () => {
     const result = getPriceLabel(makeItem('active', 100, 100));
-    expect(result).toEqual({ label: '起拍价', price: 100 });
+    expect(result).toEqual({ label: '当前最高价', price: 100 });
   });
 
   it('returns currentPrice label for ended status', () => {

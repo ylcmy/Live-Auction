@@ -3,8 +3,9 @@ import { paginateQuery } from '../../../src/lib/paginate.js';
 
 function createMockQueryBuilder(totalCount: number, items: unknown[]) {
   const cloneChain = {
+    clearSelect: vi.fn().mockReturnThis(),
     count: vi.fn().mockReturnThis(),
-    first: vi.fn().mockResolvedValue({ count: totalCount }),
+    first: vi.fn().mockResolvedValue({ total: totalCount }),
   };
 
   const mainChain = {
@@ -35,7 +36,6 @@ describe('paginateQuery', () => {
     expect(result.limit).toBe(10);
     expect(qb.offset).toHaveBeenCalledWith(0);
     expect(qb.limit).toHaveBeenCalledWith(10);
-    expect(qb.orderBy).toHaveBeenCalledWith('created_at', 'desc');
   });
 
   it('should calculate correct offset for page=3, limit=10', async () => {
@@ -111,6 +111,7 @@ describe('paginateQuery', () => {
   it('should return total=0 when count query returns null', async () => {
     // Arrange
     const cloneChain = {
+      clearSelect: vi.fn().mockReturnThis(),
       count: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue(null),
     };

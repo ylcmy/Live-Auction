@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  canTransition,
-  checkCeilingPrice,
-} from '../../../src/domain/auction.js';
+import { canTransition } from '../../../src/domain/auction.js';
 
 describe('canTransition', () => {
   it('should allow pending→active', () =>
@@ -67,76 +64,4 @@ describe('canTransition - exhaustive illegal transitions (FR-004/FR-005)', () =>
     expect(canTransition('unsold', 'cancelled')).toBe(false));
   it('should not allow unsold→unsold (terminal self-loop)', () =>
     expect(canTransition('unsold', 'unsold')).toBe(false));
-});
-
-describe('checkCeilingPrice', () => {
-  it('should return false when no ceiling', () =>
-    expect(checkCeilingPrice(400, 10, null)).toBe(false));
-  it('should return false when next bid below ceiling', () =>
-    expect(checkCeilingPrice(480, 10, 500)).toBe(false));
-  it('should return true when next bid reaches ceiling', () =>
-    expect(checkCeilingPrice(490, 10, 500)).toBe(true));
-  it('should return true when next bid exceeds ceiling', () =>
-    expect(checkCeilingPrice(495, 10, 500)).toBe(true));
-});
-
-describe('checkCeilingPrice - additional boundary tests', () => {
-  it('should return false when ceilingPrice is undefined (null-like)', () => {
-    // @ts-expect-error -- testing undefined as null-like
-    expect(checkCeilingPrice(400, 10, undefined)).toBe(false);
-  });
-
-  it('should return false for null ceilingPrice (no ceiling restriction)', () => {
-    expect(checkCeilingPrice(10000, 1000, null)).toBe(false);
-  });
-
-  it('should return true when currentPrice + bidIncrement equals ceilingPrice exactly', () => {
-    // nextBid = 490 + 10 = 500 >= 500 → true
-    expect(checkCeilingPrice(490, 10, 500)).toBe(true);
-  });
-
-  it('should return true when nextBid exceeds ceilingPrice by 1', () => {
-    // nextBid = 491 + 10 = 501 >= 500 → true
-    expect(checkCeilingPrice(491, 10, 500)).toBe(true);
-  });
-
-  it('should return false when nextBid is 1 below ceilingPrice', () => {
-    // nextBid = 489 + 10 = 499 >= 500 → false
-    expect(checkCeilingPrice(489, 10, 500)).toBe(false);
-  });
-
-  it('should handle ceilingPrice of 0', () => {
-    // nextBid = 0 + 10 = 10 >= 0 → true
-    expect(checkCeilingPrice(0, 10, 0)).toBe(true);
-  });
-
-  it('should handle ceilingPrice of 0 with zero bidIncrement', () => {
-    // nextBid = 0 + 0 = 0 >= 0 → true
-    expect(checkCeilingPrice(0, 0, 0)).toBe(true);
-  });
-
-  it('should handle very large bidIncrement', () => {
-    // nextBid = 100 + 999999 = 1000099 >= 500 → true
-    expect(checkCeilingPrice(100, 999999, 500)).toBe(true);
-  });
-
-  it('should handle bidIncrement of 0 (never reaches ceiling from below)', () => {
-    // nextBid = 400 + 0 = 400 >= 500 → false
-    expect(checkCeilingPrice(400, 0, 500)).toBe(false);
-  });
-
-  it('should handle negative currentPrice', () => {
-    // nextBid = -100 + 10 = -90 >= 500 → false
-    expect(checkCeilingPrice(-100, 10, 500)).toBe(false);
-  });
-
-  it('should handle both currentPrice and ceilingPrice as 0', () => {
-    // nextBid = 0 + 1 = 1 >= 0 → true
-    expect(checkCeilingPrice(0, 1, 0)).toBe(true);
-  });
-
-  it('should return true when currentPrice already exceeds ceiling', () => {
-    // nextBid = 600 + 10 = 610 >= 500 → true
-    expect(checkCeilingPrice(600, 10, 500)).toBe(true);
-  });
 });

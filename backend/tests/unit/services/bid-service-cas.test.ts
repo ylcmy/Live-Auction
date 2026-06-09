@@ -104,8 +104,8 @@ function resetMocks() {
   // Default: setnx returns 'OK' (idempotency key acquired)
   mockCache.setnx.mockResolvedValue('OK');
   // Default: redis rate limit allows
-  mockRedis.zcard.mockResolvedValue(0);
-  mockRedis.zremrangebyscore.mockResolvedValue(0);
+  mockCache.zcard.mockResolvedValue(0);
+  mockCache.zremrangebyscore.mockResolvedValue(0);
   // Default: CAS script succeeds
   mockCache.eval.mockResolvedValue(1);
   // Default: no cached context (fallback to MySQL)

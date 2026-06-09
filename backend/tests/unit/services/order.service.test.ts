@@ -10,7 +10,7 @@ const { mockOrderRepo, mockProductRepo, mockLogger } = vi.hoisted(() => ({
     create: vi.fn(),
     findById: vi.fn(),
     findByBuyer: vi.fn(),
-    findByMerchantProductIds: vi.fn(),
+    findByProductIds: vi.fn(),
     updateStatus: vi.fn(),
     findExpiredPendingOrders: vi.fn(),
   },
@@ -60,15 +60,15 @@ describe('OrderService', () => {
       expect(result).toEqual(mockResult);
     });
 
-    it('should call findByMerchantProductIds for merchant role', async () => {
+    it('should call findByProductIds for merchant role', async () => {
       mockProductRepo.findAll.mockResolvedValue({ items: [{ id: 10 }, { id: 20 }] });
       const mockResult = { items: [{ id: 1 }], total: 1, page: 1, limit: 20 };
-      mockOrderRepo.findByMerchantProductIds.mockResolvedValue(mockResult);
+      mockOrderRepo.findByProductIds.mockResolvedValue(mockResult);
 
       const result = await orderService.getOrders(1, 'merchant', 1, 20, 'paid');
 
       expect(mockProductRepo.findAll).toHaveBeenCalledWith({ merchant_id: 1, limit: 1000 });
-      expect(mockOrderRepo.findByMerchantProductIds).toHaveBeenCalledWith([10, 20], 1, 20, 'paid');
+      expect(mockOrderRepo.findByProductIds).toHaveBeenCalledWith([10, 20], 1, 20, 'paid');
       expect(result).toEqual(mockResult);
     });
 

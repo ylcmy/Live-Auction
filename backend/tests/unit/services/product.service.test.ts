@@ -235,7 +235,7 @@ describe('ProductService', () => {
 
       const result = await productService.updateRules(merchantId, productId, { bidIncrement: 5 });
 
-      expect(result).toEqual({ ruleId: productId });
+      expect(result).toEqual({ productId });
     });
 
     it('should throw 400 when bidIncrement is 0', async () => {

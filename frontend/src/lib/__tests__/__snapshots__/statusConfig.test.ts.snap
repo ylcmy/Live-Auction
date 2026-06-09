@@ -42,6 +42,11 @@ exports[`statusConfig snapshots > ORDER_STATUS_CONFIG serializable fields remain
     "label": "已完成",
     "variant": "secondary",
   },
+  "expired": {
+    "className": "bg-red-500/20 text-red-400 border-red-500/30",
+    "label": "已超时",
+    "variant": "destructive",
+  },
   "paid": {
     "className": "bg-emerald-50 text-emerald-600 border-emerald-200",
     "label": "已支付",

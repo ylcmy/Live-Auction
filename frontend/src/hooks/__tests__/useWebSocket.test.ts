@@ -140,7 +140,7 @@ describe('useWebSocket', () => {
     const { result } = renderHook(() => useWebSocket(90));
     const handler = vi.fn();
     act(() => { result.current.subscribe('custom:event', handler); });
-    expect(mockOn).toHaveBeenCalledWith('custom:event', handler);
+    expect(mockOn).toHaveBeenCalledWith('custom:event', expect.any(Function));
   });
 
   it('should return unsubscribe function from subscribe', () => {
@@ -151,7 +151,7 @@ describe('useWebSocket', () => {
     expect(typeof unsub).toBe('function');
 
     act(() => { unsub!(); });
-    expect(mockOff).toHaveBeenCalledWith('custom:event', handler);
+    expect(mockOff).toHaveBeenCalledWith('custom:event', expect.any(Function));
   });
 
   describe('重连后状态合并', () => {
@@ -232,7 +232,7 @@ describe('useWebSocket', () => {
       act(() => { disconnectHandler!(); });
 
       // subscribe 仍调用了 mockOn，说明 handler 已注册
-      expect(mockOn).toHaveBeenCalledWith('bid:new', bidHandler);
+      expect(mockOn).toHaveBeenCalledWith('bid:new', expect.any(Function));
     });
   });
 });

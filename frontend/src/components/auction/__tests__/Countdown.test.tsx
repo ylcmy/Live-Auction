@@ -18,9 +18,10 @@ vi.mock('framer-motion', () => {
   };
 });
 
-vi.mock('lucide-react', () => ({
-  Timer: () => <span data-testid="timer-icon" />,
-}));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return Object.fromEntries(Object.keys(actual).map(k => [k, () => <span data-testid={`icon-${k}`} />]));
+});
 
 // Import after mocks
 import Countdown from '../Countdown';

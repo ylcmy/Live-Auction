@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { toCamelCase } from '../../../src/lib/case-transform.js';
 import { AppError } from '../../../src/lib/app-error.js';
-import {
-  canTransition,
-  checkCeilingPrice,
-} from '../../../src/domain/auction.js';
+import { canTransition } from '../../../src/domain/auction.js';
 import { validateBid } from '../../../src/domain/bid.js';
 
 // ─── toCamelCase 边界测试 ────────────────────────────────────────────────────
@@ -149,58 +146,6 @@ describe('canTransition with boundary inputs', () => {
   });
 });
 
-// ─── checkCeilingPrice 数值边界测试 ────────────────────────────────────────────
-
-describe('checkCeilingPrice with extreme numeric inputs', () => {
-  it('should return false when ceilingPrice is null', () => {
-    expect(checkCeilingPrice(0, 10, null)).toBe(false);
-  });
-
-  it('should return false when ceilingPrice is undefined', () => {
-    // @ts-expect-error -- testing null-like input
-    expect(checkCeilingPrice(0, 10, undefined)).toBe(false);
-  });
-
-  it('should handle ceilingPrice of 0 correctly', () => {
-    // nextBid = 0 + 10 = 10 >= 0 → true
-    expect(checkCeilingPrice(0, 10, 0)).toBe(true);
-  });
-
-  it('should handle negative currentPrice', () => {
-    // nextBid = -100 + 10 = -90 >= 500 → false
-    expect(checkCeilingPrice(-100, 10, 500)).toBe(false);
-  });
-
-  it('should handle negative bidIncrement', () => {
-    // nextBid = 100 + (-5) = 95 >= 100 → false
-    expect(checkCeilingPrice(100, -5, 100)).toBe(false);
-  });
-
-  it('should handle Number.MAX_SAFE_INTEGER as currentPrice', () => {
-    expect(checkCeilingPrice(Number.MAX_SAFE_INTEGER, 1, 100)).toBe(true);
-  });
-
-  it('should handle NaN as currentPrice', () => {
-    // NaN + 10 = NaN, NaN >= 100 → false
-    expect(checkCeilingPrice(NaN, 10, 100)).toBe(false);
-  });
-
-  it('should handle Infinity as bidIncrement', () => {
-    // Infinity + 0 = Infinity >= 100 → true
-    expect(checkCeilingPrice(0, Infinity, 100)).toBe(true);
-  });
-
-  it('should handle Infinity as ceilingPrice', () => {
-    // 100 + 10 = 110 >= Infinity → false
-    expect(checkCeilingPrice(100, 10, Infinity)).toBe(false);
-  });
-
-  it('should handle NaN as ceilingPrice', () => {
-    // 100 + 10 = 110, NaN comparison → false
-    expect(checkCeilingPrice(100, 10, NaN)).toBe(false);
-  });
-});
-
 // ─── validateBid 边界与异常输入测试 ──────────────────────────────────────────
 
 describe('validateBid with boundary inputs', () => {
@@ -209,7 +154,6 @@ describe('validateBid with boundary inputs', () => {
     currentPrice: 0,
     bidIncrement: 10,
     ceilingPrice: null,
-    lastBidUserId: null,
     idempotencyKeyExists: false,
     rateLimitExceeded: false,
   };

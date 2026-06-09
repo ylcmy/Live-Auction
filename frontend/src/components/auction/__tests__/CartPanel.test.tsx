@@ -21,6 +21,7 @@ vi.mock('framer-motion', () => {
 
 const mockStoreState: Record<string, unknown> = {
   myBids: mockMyBids,
+  currentAuction: { sessionId: 1 },
 };
 
 vi.mock('@/store/auctionStore', () => ({

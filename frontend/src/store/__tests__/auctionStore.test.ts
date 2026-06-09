@@ -144,9 +144,9 @@ describe('auctionStore', () => {
     });
   });
 
-  describe('setBidResult', () => {
+  describe('setMyRank', () => {
     test('从竞价结果中设置 myRank', () => {
-      useAuctionStore.getState().setBidResult({
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 101,
         amount: 200,
@@ -159,7 +159,7 @@ describe('auctionStore', () => {
     });
 
     test('更新排名为非第一名', () => {
-      useAuctionStore.getState().setBidResult({
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 102,
         amount: 150,
@@ -421,8 +421,8 @@ describe('auctionStore', () => {
   });
 
   describe('排名/差距实时更新', () => {
-    test('setBidResult 应更新 myRank', () => {
-      useAuctionStore.getState().setBidResult({
+    test('setMyRank 应更新 myRank', () => {
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 101,
         amount: 200,
@@ -434,8 +434,8 @@ describe('auctionStore', () => {
       expect(useAuctionStore.getState().myRank).toBe(1);
     });
 
-    test('连续多次 setBidResult 应反映最新排名', () => {
-      useAuctionStore.getState().setBidResult({
+    test('连续多次 setMyRank 应反映最新排名', () => {
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 101,
         amount: 200,
@@ -444,7 +444,7 @@ describe('auctionStore', () => {
         gapToLeader: 0,
       });
 
-      useAuctionStore.getState().setBidResult({
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 102,
         amount: 180,
@@ -469,7 +469,7 @@ describe('auctionStore', () => {
 
     test('setAuction 的 myRank 为 null 时保留之前的状态', () => {
       // 先设为 rank 1
-      useAuctionStore.getState().setBidResult({
+      useAuctionStore.getState().setMyRank({
         sessionId: 1,
         bidId: 101,
         amount: 200,
@@ -551,12 +551,12 @@ describe('auctionStore', () => {
       expect(elapsed).toBeLessThan(50);
     });
 
-    test('连续 50 次 setBidResult 更新耗时不超过 50ms', () => {
+    test('连续 50 次 setMyRank 更新耗时不超过 50ms', () => {
       const iterations = 50;
       const start = performance.now();
 
       for (let i = 0; i < iterations; i++) {
-        useAuctionStore.getState().setBidResult({
+        useAuctionStore.getState().setMyRank({
           sessionId: 1,
           bidId: 100 + i,
           amount: 200 + i * 5,
@@ -610,7 +610,7 @@ describe('auctionStore', () => {
         useAuctionStore.getState().setLeaderboard(entries);
 
         // 出价结果
-        useAuctionStore.getState().setBidResult({
+        useAuctionStore.getState().setMyRank({
           sessionId: 1,
           bidId: 200 + i,
           amount: 200 + i * 10,

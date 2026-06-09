@@ -19,11 +19,10 @@ vi.mock('framer-motion', () => {
   };
 });
 
-vi.mock('lucide-react', () => ({
-  Crown: () => <span data-testid="crown-icon" />,
-  Medal: () => <span data-testid="medal-icon" />,
-  Award: () => <span data-testid="award-icon" />,
-}));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return Object.fromEntries(Object.keys(actual).map(k => [k, () => <span data-testid={`icon-${k}`} />]));
+});
 
 vi.mock('@/design-system/components/ui/scroll-area', () => ({
   ScrollArea: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as React.ReactNode}</div>,
