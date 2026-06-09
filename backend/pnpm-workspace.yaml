@@ -1,4 +1,7 @@
 allowBuilds:
+  '@playwright/browser-chromium': true
   bcrypt: true
   esbuild: false
   msgpackr-extract: true
+  protobufjs: true
+  unix-dgram: true
