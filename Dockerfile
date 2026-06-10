@@ -37,8 +37,9 @@ COPY --from=builder /app/backend/dist ./backend/dist
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY --from=builder /app/backend/package.json ./backend/package.json
 
-# 复制后端 TS 源码中的 migrations（tsx 运行时需要）
+# 复制后端 TS 源码中的 migrations 和 knexfile（tsx 运行时需要）
 COPY --from=builder /app/backend/src/infrastructure/db/migrations ./backend/src/infrastructure/db/migrations
+COPY --from=builder /app/backend/knexfile.js ./backend/knexfile.js
 
 # 复制前端构建产物（后端在 production 模式下 serve）
 COPY --from=builder /app/frontend/dist ./frontend/dist
@@ -52,4 +53,4 @@ EXPOSE 3001
 ENV NODE_ENV=production
 
 WORKDIR /app/backend
-CMD ["sh", "-c", "tsx node_modules/knex/bin/cli.js migrate:latest --knexfile src/infrastructure/db/knex.ts && node dist/server.js"]
+CMD ["sh", "-c", "tsx node_modules/knex/bin/cli.js migrate:latest --knexfile knexfile.js && node dist/server.js"]
