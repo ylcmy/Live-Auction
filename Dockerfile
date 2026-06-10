@@ -28,7 +28,6 @@ RUN cd backend && pnpm build
 # ─── Production Stage ───
 FROM node:20-alpine
 
-RUN corepack enable && corepack prepare pnpm@9 --activate
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
@@ -37,15 +36,8 @@ COPY --from=builder /app/backend/dist ./backend/dist
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY --from=builder /app/backend/package.json ./backend/package.json
 
-# 复制后端 TS 源码中的 migrations 和迁移脚本（tsx 运行时需要）
-COPY --from=builder /app/backend/src/infrastructure/db/migrations ./backend/src/infrastructure/db/migrations
-COPY --from=builder /app/backend/migrate.ts ./backend/migrate.ts
-
 # 复制前端构建产物（后端在 production 模式下 serve）
 COPY --from=builder /app/frontend/dist ./frontend/dist
-
-# 全局安装 tsx（运行 TypeScript migrations 需要）
-RUN npm install -g tsx
 
 USER appuser
 
@@ -53,4 +45,4 @@ EXPOSE 3001
 ENV NODE_ENV=production
 
 WORKDIR /app/backend
-CMD ["sh", "-c", "tsx migrate.ts && node dist/server.js"]
+CMD ["node", "dist/server.js"]
