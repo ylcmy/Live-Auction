@@ -44,7 +44,7 @@ COPY --from=builder /app/backend/src/infrastructure/db/migrations ./backend/src/
 COPY --from=builder /app/frontend/dist ./frontend/dist
 
 # 全局安装 tsx（运行 TypeScript migrations 需要）
-RUN pnpm add -g tsx
+RUN npm install -g tsx
 
 USER appuser
 
