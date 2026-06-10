@@ -14,9 +14,17 @@ services:
         length: 64
       - key: BCRYPT_COST
         value: "12"
+      - key: DB_SSL
+        value: "true"
+      # Render 自动注入 Redis 连接地址
+      - key: REDIS_URL
+        fromService:
+          name: live-auction-redis
+          type: redis
+          property: connectionString
     healthCheckPath: /api/health
 
-  # ─── Redis 缓存（Render 自动注入 REDIS_URL）───
+  # ─── Redis 缓存 ───
   - type: redis
     name: live-auction-redis
     plan: free
