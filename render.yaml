@@ -1,0 +1,24 @@
+services:
+  # ─── Web Service: 后端 + 前端静态文件 ───
+  - type: web
+    name: live-auction
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+        length: 64
+      - key: BCRYPT_COST
+        value: "12"
+    healthCheckPath: /api/health
+
+  # ─── Redis 缓存（Render 自动注入 REDIS_URL）───
+  - type: redis
+    name: live-auction-redis
+    plan: free
+    region: singapore
+    ipAllowList: []

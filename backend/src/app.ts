@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { env, CORS_WHITELIST } from './config/env.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 import { authRoutes } from './routes/auth.routes.js';
@@ -49,6 +52,27 @@ export async function buildApp() {
   await app.register(auctionRoutes);
   await app.register(orderRoutes);
   await app.register(userRoutes);
+
+  // In production, serve frontend static files
+  if (env.NODE_ENV === 'production') {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const frontendPath = join(__dirname, '../../frontend/dist');
+
+    await app.register(fastifyStatic, {
+      root: frontendPath,
+      prefix: '/',
+      wildcard: false,
+    });
+
+    // SPA fallback: return index.html for any non-API, non-asset route
+    app.setNotFoundHandler(async (request, reply) => {
+      if (request.url.startsWith('/api/') || request.url.startsWith('/socket.io/')) {
+        reply.code(404).send({ code: 1, message: 'Not Found' });
+        return;
+      }
+      return reply.sendFile('index.html');
+    });
+  }
 
   app.get('/api/health', async (_request, reply) => {
     const checks: Record<string, unknown> = {};
