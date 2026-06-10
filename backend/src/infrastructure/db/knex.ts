@@ -9,6 +9,7 @@ const knexConfig = {
     user: env.DB_USER,
     password: env.DB_PASSWORD,
     database: env.DB_NAME,
+    ssl: env.DB_SSL ? { rejectUnauthorized: true } : undefined,
   },
   pool: { min: 2, max: 20 },
   migrations: { tableName: 'knex_migrations', directory: './migrations' },

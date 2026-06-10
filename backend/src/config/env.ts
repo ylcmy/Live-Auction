@@ -21,6 +21,7 @@ export const env = {
   DB_USER: process.env.DB_USER || 'root',
   DB_PASSWORD: process.env.DB_PASSWORD || 'root123',
   DB_NAME: process.env.DB_NAME || 'live_auction',
+  DB_SSL: process.env.DB_SSL === 'true',
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
   JWT_SECRET: process.env.JWT_SECRET || 'dev-secret-change-in-production',
   JWT_EXPIRES_IN: parseInt(process.env.JWT_EXPIRES_IN || '3600', 10),
