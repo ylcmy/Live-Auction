@@ -6,22 +6,7 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: singapore
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: JWT_SECRET
-        generateValue: true
-        length: 64
-      - key: BCRYPT_COST
-        value: "12"
-      - key: DB_SSL
-        value: "true"
-      # Render 自动注入 Redis 连接地址
-      - key: REDIS_URL
-        fromService:
-          name: live-auction-redis
-          type: redis
-          property: connectionString
+    # 所有环境变量均在 Render Dashboard 中统一管理
     healthCheckPath: /api/health
 
   # ─── Redis 缓存 ───
