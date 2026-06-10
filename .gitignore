@@ -54,3 +54,5 @@ docs/
 .agents/
 skills-lock.json
 
+*.sql
+DELIVERY.md
