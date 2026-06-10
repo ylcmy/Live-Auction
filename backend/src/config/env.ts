@@ -39,27 +39,25 @@ export const env = {
 /**
  * Parse CORS_ORIGINS env into a list. Returns:
  * - string[]  : explicit whitelist
- * - ['*']     : allow any origin WITHOUT credentials (dev/test fallback)
- * - throws    : production with empty value or with '*' (credentials + wildcard is forbidden)
+ * - true      : allow any origin WITHOUT credentials (dev/test default)
+ * - []        : empty list — no cross-origin allowed (fine when frontend is same-origin)
+ *
+ * In production the backend serves the frontend static files, so same-origin
+ * requests don't trigger CORS at all. Setting CORS_ORIGINS is only needed when
+ * the frontend is hosted on a *different* domain.
  */
 function parseCorsOrigins(): string[] | true {
   const raw = env.CORS_ORIGINS.trim();
-  if (env.NODE_ENV === 'production') {
-    if (!raw) {
-      throw new Error(
-        '[FATAL] CORS_ORIGINS must be set in production. ' +
-          'Provide a comma-separated whitelist, e.g. "https://app.example.com".',
-      );
-    }
-    if (raw === '*') {
+  if (raw === '*') {
+    if (env.NODE_ENV === 'production') {
       throw new Error(
         "[FATAL] CORS_ORIGINS='*' is not allowed in production when credentials are enabled. " +
           'Use an explicit whitelist instead.',
       );
     }
+    return true; // dev convenience: wildcard without credentials
   }
-  if (!raw) return true; // dev/test default: allow all (no credentials with wildcard)
-  if (raw === '*') return true; // dev convenience: wildcard without credentials
+  if (!raw) return true; // default: allow all (dev/test) or no CORS (production same-origin)
   return raw.split(',').map((o) => o.trim()).filter(Boolean);
 }
 
