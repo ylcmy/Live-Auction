@@ -9,13 +9,13 @@ import { CheckCircle, XCircle, Clock, Store, ChevronLeft, ChevronRight } from 'l
 
 interface Application {
   id: number;
-  user_id: number;
+  userId: number;
   username: string;
   nickname: string;
-  shop_name: string;
+  shopName: string;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected';
-  created_at: string;
+  createdAt: string;
 }
 
 const STATUS_TABS = [
@@ -130,7 +130,7 @@ export default function MerchantApplications() {
                   <div className="flex-1 min-w-0" onClick={() => navigate(`/admin/applications/${app.id}`)}>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="text-text-primary font-semibold group-hover:text-brand transition-colors">
-                        {app.shop_name}
+                        {app.shopName}
                       </span>
                       <span className="inline-flex items-center text-text-tertiary text-xs bg-surface-secondary border border-slate-200 rounded-md px-1.5 py-0.5">
                         #{app.id}
@@ -144,7 +144,7 @@ export default function MerchantApplications() {
                     )}
                     <p className="text-text-tertiary text-xs mt-2 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(app.created_at).toLocaleString('zh-CN')}
+                      {new Date(app.createdAt).toLocaleString('zh-CN')}
                     </p>
                   </div>
 
