@@ -14,7 +14,7 @@ export interface RegisterRequest {
   username: string;
   password: string;
   nickname: string;
-  role: 'merchant' | 'user';
+  role: 'merchant' | 'user' | 'admin';
 }
 
 export interface AuthData {
@@ -108,7 +108,7 @@ export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled' | 'completed'
 export interface User {
   id: number;
   username: string;
-  role: 'merchant' | 'user';
+  role: 'merchant' | 'user' | 'admin';
   nickname: string;
   avatarUrl: string | null;
 }

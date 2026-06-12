@@ -32,3 +32,40 @@ export function disconnectSocket(): void {
     socket = null;
   }
 }
+
+/**
+ * Refresh the JWT token and update the socket auth for reconnection.
+ * Called when a reconnect_attempt detects an expired token.
+ *
+ * @returns true if refresh succeeded, false if refresh failed (caller should redirect to login)
+ */
+export async function refreshAndReconnect(): Promise<boolean> {
+  try {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return false;
+
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) return false;
+
+    const json = await response.json();
+    const newToken = json.data?.accessToken;
+    if (!newToken) return false;
+
+    // Update stored token
+    localStorage.setItem('accessToken', newToken);
+
+    // Update socket auth token for next reconnection attempt
+    if (socket) {
+      socket.auth = { token: newToken };
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}

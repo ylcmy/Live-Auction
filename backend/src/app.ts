@@ -11,6 +11,7 @@ import { roomRoutes } from './routes/room.routes.js';
 import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { userRoutes } from './routes/user.routes.js';
+import { merchantApplicationRoutes } from './routes/merchant-application.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
 import { redis, getRedisMode } from './infrastructure/cache/redis.js';
 import { db } from './infrastructure/db/knex.js';
@@ -28,6 +29,7 @@ export async function buildApp() {
         : undefined,
     },
     ajv: { customOptions: { coerceTypes: 'array' } },
+    trustProxy: env.TRUST_PROXY,
   });
 
   await app.register(cors, {
@@ -52,6 +54,7 @@ export async function buildApp() {
   await app.register(auctionRoutes);
   await app.register(orderRoutes);
   await app.register(userRoutes);
+  await app.register(merchantApplicationRoutes);
 
   // In production, serve frontend static files
   if (env.NODE_ENV === 'production') {

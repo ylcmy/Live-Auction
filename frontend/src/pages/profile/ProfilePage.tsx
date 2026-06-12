@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { fadeUp } from '../../lib/animations';
-import { UserCircle, Pencil, Package, RefreshCw, LogOut, ChevronRight } from 'lucide-react';
+import { UserCircle, Pencil, Package, RefreshCw, LogOut, ChevronRight, Store } from 'lucide-react';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import {
@@ -52,6 +52,10 @@ export default function ProfilePage() {
   const menuItems = [
     { icon: Pencil, label: '编辑资料', action: () => setEditOpen(true) },
     { icon: Package, label: '我的订单', action: () => navigate('/me/orders') },
+    // Only show merchant application for non-merchant users
+    ...(user?.role !== 'merchant'
+      ? [{ icon: Store, label: '申请成为商户', action: () => navigate('/me/apply') }]
+      : []),
     { icon: RefreshCw, label: '切换账号', action: () => setConfirmDialog('switch') },
     { icon: LogOut, label: '退出登录', action: () => setConfirmDialog('logout') },
   ];

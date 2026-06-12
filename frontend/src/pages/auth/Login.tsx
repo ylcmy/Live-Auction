@@ -9,20 +9,26 @@ import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
 import { Eye, EyeOff } from 'lucide-react';
 
-const DEMO_ACCOUNTS: Record<'merchant' | 'user', { username: string; password: string }> = {
-  merchant: { username: 'merchant_1', password: 'pass1234' },
-  user: { username: 'user_1', password: 'pass1234' },
-};
+// Demo credentials — only available in development builds.
+// Vite tree-shakes this block away in production via import.meta.env.DEV.
+const DEMO_ACCOUNTS = import.meta.env.DEV
+  ? {
+      merchant: { username: 'merchant_1', password: 'pass1234' },
+      user: { username: 'user_1', password: 'pass1234' },
+      admin: { username: 'admin', password: 'admin123456' },
+    }
+  : null;
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
-  const [username, setUsername] = useState(DEMO_ACCOUNTS.merchant.username);
-  const [password, setPassword] = useState(DEMO_ACCOUNTS.merchant.password);
+  const [username, setUsername] = useState(DEMO_ACCOUNTS?.merchant.username ?? '');
+  const [password, setPassword] = useState(DEMO_ACCOUNTS?.merchant.password ?? '');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<'merchant' | 'user'>('merchant');
+  const [role, setRole] = useState<'merchant' | 'user' | 'admin'>('merchant');
 
   useEffect(() => {
+    if (!DEMO_ACCOUNTS) return;
     const demo = DEMO_ACCOUNTS[role];
     setUsername(demo.username);
     setPassword(demo.password);
@@ -36,7 +42,13 @@ export default function Login() {
     if (token) {
       try {
         const payload = decodeJwtPayload<{ role: string }>(token);
-        navigate(payload?.role === 'merchant' ? '/admin' : '/live');
+        if (payload?.role === 'admin') {
+          navigate('/admin');
+        } else if (payload?.role === 'merchant') {
+          navigate('/merchant');
+        } else {
+          navigate('/live');
+        }
       } catch {
         navigate('/live');
       }
@@ -115,34 +127,28 @@ export default function Login() {
                   </div>
                 </div>
 
-                {/* Role Selector */}
+                {/* Role Selector — DEV only quick-fill */}
+                {DEMO_ACCOUNTS && (
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1.5">角色</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setRole('merchant')}
-                      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                        role === 'merchant'
-                          ? 'bg-brand/15 border-brand text-brand shadow-[0_0_12px_rgba(254,44,85,0.2)]'
-                          : 'bg-surface-secondary text-text-secondary border-white/10 hover:border-white/20'
-                      }`}
-                    >
-                      商家
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRole('user')}
-                      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                        role === 'user'
-                          ? 'bg-brand/15 border-brand text-brand shadow-[0_0_12px_rgba(254,44,85,0.2)]'
-                          : 'bg-surface-secondary text-text-secondary border-white/10 hover:border-white/20'
-                      }`}
-                    >
-                      用户
-                    </button>
+                  <label className="block text-sm font-medium text-text-secondary mb-1.5">快速登录</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['merchant', 'user', 'admin'] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRole(r)}
+                        className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                          role === r
+                            ? 'bg-brand/15 border-brand text-brand shadow-[0_0_12px_rgba(254,44,85,0.2)]'
+                            : 'bg-surface-secondary text-text-secondary border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        {r === 'merchant' ? '商家' : r === 'admin' ? '管理员' : '用户'}
+                      </button>
+                    ))}
                   </div>
                 </div>
+                )}
 
                 {/* Error */}
                 {error && (

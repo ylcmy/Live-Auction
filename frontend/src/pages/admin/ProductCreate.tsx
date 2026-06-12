@@ -79,7 +79,7 @@ export default function ProductCreate() {
       const response = (await api.post('/products', payload)) as any;
       void response;
       toast({ title: '商品已创建，请上架后开始竞拍', variant: 'success' });
-      navigate('/admin/products');
+      navigate('/merchant/products');
     } catch (err: any) {
       toast({ title: err?.response?.data?.message || '创建失败，请重试', variant: 'destructive' });
     } finally {
@@ -103,7 +103,7 @@ export default function ProductCreate() {
     <div className="space-y-6 max-w-4xl">
       {/* Breadcrumb */}
       <button
-        onClick={() => navigate('/admin/products')}
+        onClick={() => navigate('/merchant/products')}
         className="inline-flex items-center gap-2 text-text-tertiary hover:text-text-primary transition-colors text-sm"
       >
         <ArrowLeft className="w-4 h-4" />

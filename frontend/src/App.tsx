@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import AdminLayout from './pages/admin/AdminLayout';
+import MerchantLayout from './pages/merchant/MerchantLayout';
 import Dashboard from './pages/admin/Dashboard';
 import ProductCreate from './pages/admin/ProductCreate';
 import ProductDetail from './pages/admin/ProductDetail';
@@ -20,6 +21,8 @@ import ProfilePage from './pages/profile/ProfilePage';
 import MyOrders from './pages/profile/MyOrders';
 import OrderDetail from './pages/profile/OrderDetail';
 import AdminOrderDetail from './pages/admin/OrderDetail';
+import MerchantApplications from './pages/admin/MerchantApplications';
+import ApplyMerchant from './pages/profile/ApplyMerchant';
 import { Toaster } from './design-system/components/ui/toaster';
 import { ConfirmProvider } from './components/admin/ConfirmDialog';
 
@@ -32,8 +35,12 @@ const antdTheme = {
   },
 };
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
+function MerchantRoute({ children }: { children: React.ReactNode }) {
   return <ProtectedRoute requiredRole="merchant">{children}</ProtectedRoute>;
+}
+
+function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
+  return <ProtectedRoute requiredRole="admin">{children}</ProtectedRoute>;
 }
 
 export default function App() {
@@ -46,12 +53,13 @@ export default function App() {
               <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              {/* Merchant routes */}
               <Route
-                path="/admin"
+                path="/merchant"
                 element={
-                  <AdminRoute>
-                    <AdminLayout />
-                  </AdminRoute>
+                  <MerchantRoute>
+                    <MerchantLayout />
+                  </MerchantRoute>
                 }
               >
                 <Route index element={<Dashboard />} />
@@ -63,9 +71,22 @@ export default function App() {
                 <Route path="orders/:id" element={<AdminOrderDetail />} />
                 <Route path="auction" element={<AuctionManage />} />
               </Route>
+              {/* Admin routes */}
+              <Route
+                path="/admin"
+                element={
+                  <AdminOnlyRoute>
+                    <AdminLayout />
+                  </AdminOnlyRoute>
+                }
+              >
+                <Route index element={<Navigate to="/admin/applications" replace />} />
+                <Route path="applications" element={<MerchantApplications />} />
+              </Route>
               <Route element={<UserLayout />}>
                 <Route path="/live" element={<LiveRoomList />} />
                 <Route path="/me" element={<ProfilePage />} />
+                <Route path="/me/apply" element={<ApplyMerchant />} />
                 <Route path="/me/orders" element={<MyOrders />} />
                 <Route path="/me/orders/:id" element={<OrderDetail />} />
               </Route>

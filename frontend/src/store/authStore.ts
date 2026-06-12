@@ -9,7 +9,7 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, nickname: string, role: 'merchant' | 'user') => Promise<void>;
+  register: (username: string, password: string, nickname: string, captchaToken: string) => Promise<void>;
   logout: () => void;
   setUser: (user: User) => void;
   clearError: () => void;
@@ -68,10 +68,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  register: async (username, password, nickname, role) => {
+  register: async (username, password, nickname, captchaToken) => {
     set({ isLoading: true, error: null });
     try {
-      await api.post('/auth/register', { username, password, nickname, role });
+      await api.post('/auth/register', { username, password, nickname, captchaToken });
       set({ isLoading: false });
     } catch (err: any) {
       set({

@@ -34,6 +34,13 @@ export const env = {
   CORS_ORIGINS: process.env.CORS_ORIGINS || '',
   NODE_ENV: process.env.NODE_ENV || 'development',
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  // Trust X-Forwarded-For header from reverse proxy (Render.com, Nginx, etc.)
+  // Required for accurate req.ip extraction behind a load balancer.
+  TRUST_PROXY: process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production',
+  // Comma-separated IP whitelist for rate limiter (skips 429 enforcement).
+  // Default includes loopback addresses for local development convenience.
+  IP_RATE_LIMIT_WHITELIST:
+    process.env.IP_RATE_LIMIT_WHITELIST || '127.0.0.1,::1,::ffff:127.0.0.1',
 };
 
 /**

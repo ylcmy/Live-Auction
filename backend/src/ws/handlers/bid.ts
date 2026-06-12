@@ -2,6 +2,7 @@
  * WebSocket Bid Handler
  *
  * 幂等由 processBid 内部统一处理，handler 仅负责:
+ *   0. 校验用户是否已加入目标房间 (安全检查)
  *   1. 获取前领先者 (异步通知)
  *   2. 调用 bidService.processBid
  *   3. 返回 accepted
@@ -13,12 +14,35 @@ import { bidService, type BidProcessResult } from '../../services/bid.service.js
 import { auctionSessionRepo } from '../../repositories/auction-session.repo.js';
 import { cache } from '../../infrastructure/cache/redis.js';
 import { bidEventBus } from '../bid-event-bus.js';
+import { logger } from '../../middleware/logger.js';
 
 export function registerBidHandlers(io: Server, socket: Socket) {
   const userId = (socket as any).userId as number;
 
   socket.on('bid:submit', async (data: { sessionId: number; amount?: number; idempotencyKey: string }, ack?: (response: { success: boolean; data?: any; error?: any }) => void) => {
     const { sessionId, amount, idempotencyKey } = data;
+
+    // ---- 0. 房间成员校验 ----
+    try {
+      const session = await auctionSessionRepo.findById(sessionId);
+      if (!session) {
+        const rejected = { sessionId, idempotencyKey, reason: '拍卖场次不存在', code: 'SESSION_NOT_FOUND' };
+        socket.emit('bid:rejected', rejected);
+        if (ack) ack({ success: false, error: rejected });
+        return;
+      }
+
+      const roomId = String(session.room_id);
+      if (!socket.rooms.has(roomId)) {
+        logger.warn({ event: 'bid.room_not_joined', userId, sessionId, roomId });
+        const rejected = { sessionId, idempotencyKey, reason: '请先加入直播间再出价', code: 'ROOM_NOT_JOINED' };
+        socket.emit('bid:rejected', rejected);
+        if (ack) ack({ success: false, error: rejected });
+        return;
+      }
+    } catch {
+      // Room check failure should not block bid if it's a transient error
+    }
 
     // ---- 1. 获取前领先者 (异步通知需要) ----
     let previousTopBidderId: number | null = null;

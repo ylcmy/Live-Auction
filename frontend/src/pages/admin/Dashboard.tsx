@@ -235,7 +235,7 @@ export default function Dashboard() {
               <h2 className="text-base font-bold text-text-primary">商品概览</h2>
             </div>
             <button
-              onClick={() => navigate('/admin/products')}
+              onClick={() => navigate('/merchant/products')}
               className="inline-flex items-center gap-1 text-brand text-sm font-medium hover:underline"
             >
               查看全部
@@ -248,7 +248,7 @@ export default function Dashboard() {
               return (
                 <div
                   key={product.id}
-                  onClick={() => navigate(`/admin/products/${product.id}`)}
+                  onClick={() => navigate(`/merchant/products/${product.id}`)}
                   className="flex items-center gap-4 p-4 hover:bg-slate-50 cursor-pointer transition-colors"
                 >
                   <div className="w-10 h-10 rounded-lg bg-surface-secondary flex items-center justify-center flex-shrink-0 border border-slate-200">
@@ -285,7 +285,7 @@ export default function Dashboard() {
               <h2 className="text-base font-bold text-text-primary">最近订单</h2>
             </div>
             <button
-              onClick={() => navigate('/admin/orders')}
+              onClick={() => navigate('/merchant/orders')}
               className="inline-flex items-center gap-1 text-brand text-sm font-medium hover:underline"
             >
               查看全部

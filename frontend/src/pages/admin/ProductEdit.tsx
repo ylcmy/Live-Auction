@@ -58,7 +58,7 @@ export default function ProductEdit() {
         maxExtensions: form.maxExtensions,
       };
       await api.put(`/products/${id}/rules`, payload);
-      navigate(`/admin/products/${id}`);
+      navigate(`/merchant/products/${id}`);
     } catch (err: any) {
       toast({ title: '更新失败', description: err?.data?.message || '请重试', variant: 'destructive' });
     } finally {
@@ -80,7 +80,7 @@ export default function ProductEdit() {
         <AlertTriangle className="w-16 h-16 mb-4 opacity-30" />
         <p className="text-lg font-medium">商品不存在或已被删除</p>
         <button
-          onClick={() => navigate('/admin/products')}
+          onClick={() => navigate('/merchant/products')}
           className="mt-4 px-5 py-2.5 bg-surface-card border border-slate-200 rounded-lg text-text-secondary hover:bg-surface-secondary transition-all"
         >
           返回商品列表
@@ -97,7 +97,7 @@ export default function ProductEdit() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate(`/admin/products/${id}`)}
+          onClick={() => navigate(`/merchant/products/${id}`)}
           className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium"
         >
           <ArrowLeft className="w-4 h-4" />

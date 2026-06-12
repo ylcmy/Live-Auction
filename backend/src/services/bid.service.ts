@@ -6,14 +6,14 @@
  * Redis path:
  * 1. Three-state idempotency check (GET → replay / pending recovery / SETNX)
  * 2. Fetch context from Redis cache (rule, merchantId, roomId), fallback to MySQL
- * 3. Rate limit via Redis sorted set sliding window
+ * 3. Rate limit via rate-limiter-flexible
  * 4. Calculate bid amount + ceiling price truncation
  * 5. Atomic CAS write via Lua (compare-and-set top_bid + ZADD leaderboard + SADD participants)
  * 6. Persist to MySQL (with Redis rollback on failure)
  * 7. Extension check + rank query
  *
  * MySQL fallback path:
- * 1. In-memory rate limiting
+ * 1. In-memory rate limiting (via rate-limiter-flexible Memory fallback)
  * 2. Fetch context (session, rules) via MySQL
  * 3. Domain validation (pure)
  * 4. MySQL transaction: SELECT FOR UPDATE + INSERT bid_record + UPDATE session
@@ -23,7 +23,8 @@
  */
 
 import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
-import { BID_CAS_SCRIPT, BID_ROLLBACK_SCRIPT, BID_RATE_LIMIT_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
+import { BID_CAS_SCRIPT, BID_ROLLBACK_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
+import { createRateLimiter } from '../infrastructure/rate-limiter.factory.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
@@ -35,10 +36,26 @@ import { db } from '../infrastructure/db/knex.js';
 import { ErrorCodes } from '../lib/error-codes.js';
 
 const BID_RATE_LIMIT_MAX = 5;
-const BID_RATE_LIMIT_WINDOW_MS = 1000;
-const BID_RATE_LIMIT_TTL_S = 2;
+const BID_RATE_LIMIT_DURATION = 1; // 1 second window
 const IDEMPOTENCY_PENDING_TTL = 30;
 const IDEMPOTENCY_RESULT_TTL = 3600;
+
+/**
+ * 惰性创建出价限流器。
+ * 不能在模块顶层创建，否则 isRedisAvailable() 在模块加载时
+ * 可能尚未就绪，会误降级为 RateLimiterMemory。
+ */
+let _bidLimiter: ReturnType<typeof createRateLimiter> | null = null;
+function getBidLimiter() {
+  if (!_bidLimiter) {
+    _bidLimiter = createRateLimiter({
+      keyPrefix: 'rl:bid',
+      points: BID_RATE_LIMIT_MAX,
+      duration: BID_RATE_LIMIT_DURATION,
+    });
+  }
+  return _bidLimiter;
+}
 
 export interface BidProcessResult {
   success: boolean;
@@ -62,55 +79,8 @@ export interface LeaderboardEntry {
 }
 
 // ---- Task 6: In-Memory Rate Limiter ----
-
-class InMemoryRateLimiter {
-  private store = new Map<string, number[]>();
-  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
-
-  constructor() {
-    // Periodic cleanup every 60 seconds to prevent memory leaks
-    this.cleanupTimer = setInterval(() => this.cleanup(), 60_000);
-    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
-      this.cleanupTimer.unref();
-    }
-  }
-
-  /**
-   * Check if a request is allowed within the sliding window.
-   * @returns true if the request is allowed, false if rate limit exceeded
-   */
-  check(key: string, limit: number, windowMs: number): boolean {
-    const now = Date.now();
-    const windowStart = now - windowMs;
-    let timestamps = this.store.get(key) || [];
-
-    // Remove expired entries
-    timestamps = timestamps.filter(ts => ts > windowStart);
-
-    if (timestamps.length >= limit) {
-      this.store.set(key, timestamps);
-      return false;
-    }
-
-    timestamps.push(now);
-    this.store.set(key, timestamps);
-    return true;
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [key, timestamps] of this.store) {
-      const filtered = timestamps.filter(ts => ts > now - 60_000);
-      if (filtered.length === 0) {
-        this.store.delete(key);
-      } else {
-        this.store.set(key, filtered);
-      }
-    }
-  }
-}
-
-const rateLimiter = new InMemoryRateLimiter();
+// Replaced by rate-limiter-flexible via createRateLimiter factory.
+// The `bidLimiter` instance above handles both Redis and Memory paths.
 
 interface AuctionContextFromCache {
   currentPrice: number;
@@ -302,17 +272,19 @@ export const bidService = {
 
     const { currentPrice, rule } = ctx;
 
-    // ---- 4. Rate limiting (single Lua script) ----
-    const rateKey = `ratelimit:${sessionId}:${userId}`;
-    const now = Date.now();
-    const rateCount = await cache.eval(
-      BID_RATE_LIMIT_SCRIPT,
-      [rateKey],
-      [String(now), String(now - BID_RATE_LIMIT_WINDOW_MS), BID_RATE_LIMIT_MAX, BID_RATE_LIMIT_TTL_S],
-    );
-    if (Number(rateCount) >= BID_RATE_LIMIT_MAX) {
-      await cache.del(idemKey);
-      return { success: false, error: { code: ErrorCodes.BID_RATE_LIMITED, message: '出价过于频繁，请稍后再试' } };
+    // ---- 4. Rate limiting (rate-limiter-flexible) ----
+    const rateKey = `s${sessionId}:u${userId}`;
+    try {
+      await getBidLimiter().consume(rateKey);
+    } catch (err) {
+      if (err instanceof Error) {
+        // Redis/runtime error → fail-open
+        logger.warn({ err }, 'Bid rate limiter error, failing open');
+      } else {
+        // RateLimiterRes → rate limit exceeded
+        await cache.del(idemKey);
+        return { success: false, error: { code: ErrorCodes.BID_RATE_LIMITED, message: '出价过于频繁，请稍后再试' } };
+      }
     }
 
     // ---- 5. Calculate amount ----
@@ -421,14 +393,22 @@ export const bidService = {
   ): Promise<BidProcessResult> {
     logger.info({ event: 'bid_attempt_mysql', sessionId, userId, idempotencyKey }, 'Bid processing started (MySQL path)');
 
-    // ---- 1. In-memory rate limiting ----
-    const rateKey = `ratelimit:${sessionId}:${userId}`;
-    if (!rateLimiter.check(rateKey, BID_RATE_LIMIT_MAX, BID_RATE_LIMIT_WINDOW_MS)) {
-      logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'rate_limit' }, 'Bid rejected - rate limit exceeded (MySQL path)');
-      return {
-        success: false,
-        error: { code: 42900, message: '出价过于频繁，请稍后再试' },
-      };
+    // ---- 1. Rate limiting (rate-limiter-flexible) ----
+    const rateKey = `s${sessionId}:u${userId}`;
+    try {
+      await getBidLimiter().consume(rateKey);
+    } catch (err) {
+      if (err instanceof Error) {
+        // Redis/runtime error → fail-open
+        logger.warn({ err }, 'Bid rate limiter error, failing open');
+      } else {
+        // RateLimiterRes → rate limit exceeded
+        logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'rate_limit' }, 'Bid rejected - rate limit exceeded (MySQL path)');
+        return {
+          success: false,
+          error: { code: 42900, message: '出价过于频繁，请稍后再试' },
+        };
+      }
     }
 
     // ---- 2. Fetch context (outside transaction) ----
