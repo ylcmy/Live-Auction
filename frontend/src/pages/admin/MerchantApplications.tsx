@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { fadeUp } from '../../lib/animations';
 import api from '../../services/api';
@@ -24,6 +25,7 @@ const STATUS_TABS = [
 ];
 
 export default function MerchantApplications() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [applications, setApplications] = useState<Application[]>([]);
   const [total, setTotal] = useState(0);
@@ -81,7 +83,7 @@ export default function MerchantApplications() {
   return (
     <motion.div variants={fadeUp} initial="initial" animate="animate" className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">商户申请管理</h1>
+        <h1 className="text-2xl font-bold text-text-primary">商户申请管理</h1>
         <span className="text-text-tertiary text-sm">共 {total} 条</span>
       </div>
 
@@ -93,10 +95,10 @@ export default function MerchantApplications() {
             <button
               key={tab.key}
               onClick={() => { setActiveTab(tab.key); setPage(1); }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.key
-                  ? 'bg-brand/15 text-brand border border-brand/30'
-                  : 'bg-surface-secondary text-text-tertiary border border-white/10 hover:border-white/20'
+                  ? 'bg-brand-subtle text-brand border border-brand/30 shadow-sm'
+                  : 'bg-surface-card text-text-secondary border border-slate-200 hover:border-slate-300 hover:text-text-primary'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -119,31 +121,40 @@ export default function MerchantApplications() {
       ) : (
         <div className="space-y-3">
           {applications.map((app) => (
-            <Card key={app.id} className="bg-surface-card border-white/10">
+            <Card
+              key={app.id}
+              className="group bg-surface-card border border-slate-200 shadow-sm hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-white font-medium">{app.shop_name}</span>
+                  <div className="flex-1 min-w-0" onClick={() => navigate(`/admin/applications/${app.id}`)}>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="text-text-primary font-semibold group-hover:text-brand transition-colors">
+                        {app.shopName}
+                      </span>
+                      <span className="inline-flex items-center text-text-tertiary text-xs bg-surface-secondary border border-slate-200 rounded-md px-1.5 py-0.5">
+                        #{app.id}
+                      </span>
                       <span className="text-text-tertiary text-xs">
                         申请人：{app.nickname}（{app.username}）
                       </span>
                     </div>
                     {app.reason && (
-                      <p className="text-text-secondary text-sm mt-1 line-clamp-2">{app.reason}</p>
+                      <p className="text-text-secondary text-sm mt-1.5 line-clamp-2 leading-relaxed">{app.reason}</p>
                     )}
-                    <p className="text-text-tertiary text-xs mt-2">
-                      申请时间：{new Date(app.created_at).toLocaleString('zh-CN')}
+                    <p className="text-text-tertiary text-xs mt-2 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {new Date(app.createdAt).toLocaleString('zh-CN')}
                     </p>
                   </div>
 
                   {activeTab === 'pending' && (
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleApprove(app.id)}
                         disabled={actionLoading === app.id}
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        className="bg-success hover:bg-success/90 text-white"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
                         通过
@@ -153,7 +164,7 @@ export default function MerchantApplications() {
                         variant="outline"
                         onClick={() => handleReject(app.id)}
                         disabled={actionLoading === app.id}
-                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                        className="border-danger/30 text-danger hover:bg-danger/10"
                       >
                         <XCircle className="w-4 h-4 mr-1" />
                         驳回
@@ -169,19 +180,19 @@ export default function MerchantApplications() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex items-center justify-center gap-3 pt-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="p-2 rounded-lg bg-surface-secondary text-text-tertiary hover:text-white disabled:opacity-30 transition-colors"
+            className="p-2 rounded-lg bg-surface-card border border-slate-200 text-text-tertiary hover:text-text-primary hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-text-secondary text-sm">{page} / {totalPages}</span>
+          <span className="text-text-secondary text-sm tabular-nums">{page} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="p-2 rounded-lg bg-surface-secondary text-text-tertiary hover:text-white disabled:opacity-30 transition-colors"
+            className="p-2 rounded-lg bg-surface-card border border-slate-200 text-text-tertiary hover:text-text-primary hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
