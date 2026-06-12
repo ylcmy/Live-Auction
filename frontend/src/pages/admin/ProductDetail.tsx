@@ -42,7 +42,7 @@ export default function ProductDetail() {
     setDeleteLoading(true);
     try {
       await api.put(`/products/${id}/status`, { status: 'deleted' });
-      navigate('/admin/products');
+      navigate('/merchant/products');
     } catch {
       // ignore
     } finally {
@@ -64,7 +64,7 @@ export default function ProductDetail() {
         <Package className="w-16 h-16 mb-4 opacity-30" />
         <p className="text-lg font-medium">商品不存在</p>
         <button
-          onClick={() => navigate('/admin/products')}
+          onClick={() => navigate('/merchant/products')}
           className="mt-4 text-brand text-sm font-medium hover:underline"
         >
           返回商品列表
@@ -79,7 +79,7 @@ export default function ProductDetail() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <button
-        onClick={() => navigate('/admin/products')}
+        onClick={() => navigate('/merchant/products')}
         className="inline-flex items-center gap-2 text-text-tertiary hover:text-text-primary transition-colors text-sm"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -97,7 +97,7 @@ export default function ProductDetail() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate(`/admin/products/${id}/edit`)}
+            onClick={() => navigate(`/merchant/products/${id}/edit`)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface-card border border-slate-200 rounded-lg text-text-secondary hover:bg-surface-secondary hover:text-text-primary transition-all text-sm font-medium"
           >
             <Edit className="w-4 h-4" />
@@ -105,7 +105,7 @@ export default function ProductDetail() {
           </button>
           {product.status === 'listed' && (
             <button
-              onClick={() => navigate(`/admin/auction?productId=${id}`)}
+              onClick={() => navigate(`/merchant/auction?productId=${id}`)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-medium transition-all shadow-glow-brand hover:shadow-lg active:scale-[0.98] text-sm"
             >
               <Play className="w-4 h-4" />

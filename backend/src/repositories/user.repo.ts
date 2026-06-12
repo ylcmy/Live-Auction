@@ -4,7 +4,7 @@ export interface UserRow {
   id: number;
   username: string;
   password_hash: string;
-  role: 'merchant' | 'user';
+  role: 'merchant' | 'user' | 'admin';
   nickname: string;
   avatar_url: string | null;
   created_at: string;
@@ -19,7 +19,7 @@ export const userRepo = {
   async create(data: {
     username: string;
     password_hash: string;
-    role: 'merchant' | 'user';
+    role: 'merchant' | 'user' | 'admin';
     nickname: string;
   }): Promise<number> {
     const [id] = await db('users').insert(data);

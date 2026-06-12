@@ -403,7 +403,7 @@ export default function ProductList() {
           <p className="text-text-tertiary text-sm mt-1">管理您的直播竞拍商品，共 {total} 个商品</p>
         </div>
         <button
-          onClick={() => navigate('/admin/products/create')}
+          onClick={() => navigate('/merchant/products/create')}
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-medium transition-all shadow-glow-brand hover:shadow-lg active:scale-[0.98]"
         >
           <Plus className="w-4 h-4" />
@@ -643,7 +643,7 @@ export default function ProductList() {
                     {/* Actions */}
                     <div className="lg:col-span-1 flex items-center justify-end gap-1 w-full">
                       <button
-                        onClick={() => navigate(`/admin/products/${product.id}`)}
+                        onClick={() => navigate(`/merchant/products/${product.id}`)}
                         className="p-1.5 text-text-tertiary hover:text-brand hover:bg-brand/5 rounded-lg transition-all"
                         title="查看详情"
                       >
@@ -660,7 +660,7 @@ export default function ProductList() {
                       ) : product.status === 'listed' ? (
                         <>
                           <button
-                            onClick={() => navigate(`/admin/auction?productId=${product.id}`)}
+                            onClick={() => navigate(`/merchant/auction?productId=${product.id}`)}
                             className="p-1.5 text-text-tertiary hover:text-brand hover:bg-brand/5 rounded-lg transition-all"
                             title="开始竞拍"
                           >

@@ -3,6 +3,15 @@ import { paginateQuery } from '../lib/paginate.js';
 
 const ACTIVE_STATUSES = ['pending', 'active'];
 
+/**
+ * Trim sensitive internal fields from an auction session row for non-owner views.
+ * Strips: winner_id, rule_id, start_price, active_room_id
+ */
+export function toPublicSessionView(session: Record<string, any>): Record<string, any> {
+  const { winner_id, rule_id, start_price, active_room_id, ...publicFields } = session;
+  return publicFields;
+}
+
 export const auctionSessionRepo = {
   async create(data: { product_id: number; rule_id: number; room_id: number; current_price?: number }) {
     const [id] = await db('auction_sessions').insert({

@@ -78,7 +78,7 @@ export default function AdminOrderDetail() {
         <ShoppingCart className="w-16 h-16 mb-4 opacity-30" />
         <p className="text-lg font-medium">订单不存在</p>
         <button
-          onClick={() => navigate('/admin/orders')}
+          onClick={() => navigate('/merchant/orders')}
           className="mt-4 text-brand text-sm font-medium hover:underline"
         >
           返回订单列表
@@ -95,7 +95,7 @@ export default function AdminOrderDetail() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <button
-        onClick={() => navigate('/admin/orders')}
+        onClick={() => navigate('/merchant/orders')}
         className="inline-flex items-center gap-2 text-text-tertiary hover:text-text-primary transition-colors text-sm"
       >
         <ArrowLeft className="w-4 h-4" />

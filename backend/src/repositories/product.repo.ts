@@ -1,6 +1,19 @@
 import { db } from '../infrastructure/db/knex.js';
 import { paginateQuery } from '../lib/paginate.js';
 
+/**
+ * Trim sensitive merchant rule fields from a product row for non-owner views.
+ * Returns only publicly safe fields.
+ */
+export function toPublicProductView(product: Record<string, any>): Record<string, any> {
+  const { start_price, bid_increment, ceiling_price, duration, merchant_id, rule, ...publicFields } = product;
+  // Also strip nested rule object if present
+  if (publicFields.rule) {
+    delete publicFields.rule;
+  }
+  return publicFields;
+}
+
 export const productRepo = {
   async create(data: {
     merchant_id: number;

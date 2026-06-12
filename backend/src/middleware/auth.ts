@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 
-export interface AuthPayload { userId: number; role: 'merchant' | 'user'; nickname: string; }
+export interface AuthPayload { userId: number; role: 'merchant' | 'user' | 'admin'; nickname: string; }
 
 declare module 'fastify' {
   interface FastifyRequest { auth: AuthPayload; }
@@ -21,9 +21,9 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
   }
 }
 
-export function requireRole(role: 'merchant' | 'user') {
+export function requireRole(...roles: Array<'merchant' | 'user' | 'admin'>) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    if (request.auth.role !== role) {
+    if (!roles.includes(request.auth.role)) {
       return reply.code(403).send({ code: 40300, message: '无权限', data: null, timestamp: Date.now() });
     }
   };

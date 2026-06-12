@@ -1,48 +1,78 @@
 /**
- * Rate limiter middleware using Redis sorted sets (sliding window).
+ * Rate limiter middleware for Fastify.
  *
- * Limits the number of requests per user within a configurable time window.
- * Uses a sorted set where scores are timestamps, allowing efficient
- * window-based counting and cleanup.
+ * Uses rate-limiter-flexible via the shared factory. Only IP-based
+ * limiting is exposed (userId-based limiter was unused dead code).
+ *
+ * Fail-open: when Redis is unavailable the middleware skips limiting.
  */
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { cache, redis, isRedisAvailable } from '../infrastructure/cache/redis.js';
+import type { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
+import { createRateLimiter } from '../infrastructure/rate-limiter.factory.js';
+import { logger } from './logger.js';
+import { env } from '../config/env.js';
 
 /**
- * Create a rate limiter middleware.
+ * IP addresses exempt from IP-based rate limiting.
+ * Sourced from IP_RATE_LIMIT_WHITELIST env var (comma-separated).
+ * Defaults to loopback addresses for local development.
+ */
+const IP_WHITELIST: ReadonlySet<string> = new Set(
+  env.IP_RATE_LIMIT_WHITELIST.split(',').map((s) => s.trim()).filter(Boolean),
+);
+
+/** Cache of limiter instances keyed by "points:duration" */
+const limiterCache = new Map<string, RateLimiterRedis | RateLimiterMemory>();
+
+function getOrCreateLimiter(maxRequests: number, windowSeconds: number) {
+  const cacheKey = `${maxRequests}:${windowSeconds}`;
+  let limiter = limiterCache.get(cacheKey);
+  if (!limiter) {
+    limiter = createRateLimiter({
+      keyPrefix: `rl:ip`,
+      points: maxRequests,
+      duration: windowSeconds,
+    });
+    limiterCache.set(cacheKey, limiter);
+  }
+  return limiter;
+}
+
+/**
+ * Create a rate limiter middleware keyed by client IP.
+ * Intended for unauthenticated endpoints (login, register) where no userId exists.
  *
  * @param maxRequests - Maximum requests allowed within the window
  * @param windowSeconds - Time window in seconds
  */
-export function rateLimiter(maxRequests: number, windowSeconds: number) {
+export function ipRateLimiter(maxRequests: number, windowSeconds: number) {
+  const limiter = getOrCreateLimiter(maxRequests, windowSeconds);
+
   return async (req: FastifyRequest, reply: FastifyReply) => {
-    const userId = (req as any).auth?.userId;
-    if (!userId) return; // Skip if no user (auth middleware handles this)
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-    // Redis 不可用时限流器降级跳过（fail open）
-    if (!isRedisAvailable()) return;
+    // 白名单 IP 直接放行，跳过限流（本地开发或可信内网场景）
+    if (IP_WHITELIST.has(ip)) return;
 
-    const key = `ratelimit:${userId}`;
-    const now = Date.now();
-    const windowMs = windowSeconds * 1000;
+    try {
+      await limiter.consume(ip);
+    } catch (err) {
+      // rate-limiter-flexible throws RateLimiterRes when limit exceeded,
+      // and throws Error on Redis connection failure.
+      if (err instanceof Error) {
+        // Redis 运行时故障，fail-open 放行
+        logger.warn({ err, event: 'rate_limiter.fallback' }, 'Rate limiter error, failing open');
+        return;
+      }
 
-    // Remove entries outside the sliding window
-    await redis.zremrangebyscore(key, 0, now - windowMs);
-
-    // Count current entries in window
-    const count = await cache.zcard(key);
-
-    if (count >= maxRequests) {
+      // RateLimiterRes → 真正被限流
+      logger.warn({ event: 'auth.rate_limited', ip, maxRequests, windowSeconds });
       reply.code(429).send({
         code: 42900,
         message: '请求过于频繁，请稍后再试',
       });
-      return;
+      return reply;
     }
-
-    // Add current request timestamp
-    await cache.zadd(key, now, String(now));
-    await cache.expire(key, windowSeconds);
   };
 }

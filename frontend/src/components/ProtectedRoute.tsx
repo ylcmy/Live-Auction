@@ -4,10 +4,11 @@ import { decodeJwtPayload } from '../lib/jwt';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'merchant' | 'user';
+  requiredRole?: 'merchant' | 'user' | 'admin';
+  allowedRoles?: Array<'merchant' | 'user' | 'admin'>;
 }
 
-export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, requiredRole, allowedRoles }: ProtectedRouteProps) {
   const token = useAuthStore((s) => s.token);
 
   if (!token) {
@@ -15,8 +16,19 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   }
 
   const payload = decodeJwtPayload<{ role: string; exp: number }>(token);
-  if (!payload || (requiredRole && payload.role !== requiredRole)) {
+  if (!payload) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Check role access
+  if (allowedRoles) {
+    if (!allowedRoles.includes(payload.role as any)) {
+      return <Navigate to="/login" replace />;
+    }
+  } else if (requiredRole) {
+    if (payload.role !== requiredRole) {
+      return <Navigate to="/login" replace />;
+    }
   }
 
   if (payload.exp && payload.exp * 1000 < Date.now()) {

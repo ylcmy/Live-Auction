@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { connectSocket, getSocket } from '../services/socket';
+import { connectSocket, getSocket, refreshAndReconnect } from '../services/socket';
 import { useAuthStore } from '../store/authStore';
+import { decodeJwtPayload } from '../lib/jwt';
 import type { WsEvents } from '../types/ws';
 
 // Reference-counting map for joined rooms to prevent duplicate joins across components
@@ -43,7 +44,28 @@ export function useWebSocket(roomId: number | null) {
     const onDisconnect = () => {
       setIsConnected(false);
     };
-    const onReconnectAttempt = () => setIsReconnecting(true);
+    const onReconnectAttempt = async () => {
+      setIsReconnecting(true);
+      // Check if the current token is expired and try to refresh before reconnecting
+      const currentToken = useAuthStore.getState().token;
+      if (currentToken) {
+        const payload = decodeJwtPayload<{ exp: number }>(currentToken);
+        if (payload?.exp && payload.exp * 1000 < Date.now()) {
+          const refreshed = await refreshAndReconnect();
+          if (refreshed) {
+            // Update the auth store with the new token
+            const newToken = localStorage.getItem('accessToken');
+            if (newToken) {
+              useAuthStore.setState({ token: newToken });
+            }
+          } else {
+            // Refresh failed — token expired, redirect to login
+            useAuthStore.getState().logout();
+            window.location.href = '/login';
+          }
+        }
+      }
+    };
     const onReconnect = () => {
       setIsConnected(true);
       setIsReconnecting(false);

@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---- Mocks (vi.hoisted so vi.mock factories can reference them) ----
 
-const { mockCache, mockRedis } = vi.hoisted(() => {
+const { mockCache, mockRedis, mockConsume, mockPipeline } = vi.hoisted(() => {
+  const mockPipeline = {
+    get: vi.fn().mockReturnThis(),
+    zrevrank: vi.fn().mockReturnThis(),
+    exec: vi.fn().mockResolvedValue([[null, '0'], [null, null], [null, 0]]),
+  };
   const mockCache = {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue('OK' as const),
@@ -15,24 +20,24 @@ const { mockCache, mockRedis } = vi.hoisted(() => {
     zscore: vi.fn().mockResolvedValue(null as string | null),
     expire: vi.fn().mockResolvedValue(0),
     sadd: vi.fn().mockResolvedValue(0),
-    zremrangebyscore: vi.fn().mockResolvedValue(0),
-    zcard: vi.fn().mockResolvedValue(0),
+    pipeline: vi.fn().mockReturnValue(mockPipeline),
   };
 
-  const mockRedis = {
-    zremrangebyscore: vi.fn().mockResolvedValue(0),
-    zcard: vi.fn().mockResolvedValue(0),
-    zadd: vi.fn().mockResolvedValue(1),
-    expire: vi.fn().mockResolvedValue(1),
-  };
+  const mockRedis = {};
 
-  return { mockCache, mockRedis };
+  const mockConsume = vi.fn().mockResolvedValue(undefined);
+
+  return { mockCache, mockRedis, mockConsume, mockPipeline };
 });
 
 vi.mock('../../../src/infrastructure/cache/redis.js', () => ({
   cache: mockCache,
   redis: mockRedis,
   isRedisAvailable: () => true,
+}));
+
+vi.mock('../../../src/infrastructure/rate-limiter.factory.js', () => ({
+  createRateLimiter: vi.fn(() => ({ consume: mockConsume })),
 }));
 
 vi.mock('../../../src/repositories/bid.repo.js', () => ({
@@ -103,9 +108,8 @@ function resetMocks() {
 
   // Default: setnx returns 'OK' (idempotency key acquired)
   mockCache.setnx.mockResolvedValue('OK');
-  // Default: redis rate limit allows
-  mockRedis.zcard.mockResolvedValue(0);
-  mockRedis.zremrangebyscore.mockResolvedValue(0);
+  // Default: rate limiter allows
+  mockConsume.mockResolvedValue(undefined);
   // Default: CAS script succeeds
   mockCache.eval.mockResolvedValue(1);
   // Default: no cached context (fallback to MySQL)
@@ -235,7 +239,8 @@ describe('_processBidRedis (CAS-based)', () => {
   });
 
   it('Rate limit exceeded: returns 42900', async () => {
-    mockCache.zcard.mockResolvedValue(5); // At limit (now uses cache instead of redis)
+    // rate-limiter-flexible throws RateLimiterRes object when limit exceeded
+    mockConsume.mockRejectedValue({ consumedPoints: 5, remainingPoints: 0, msBeforeNext: 500 });
 
     const result = await bidService._processBidRedis(100, 2, 'key-005');
 

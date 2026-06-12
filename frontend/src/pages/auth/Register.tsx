@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Modal } from 'antd';
 import { stagger, fadeUp } from '../../lib/animations';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
 import { Eye, EyeOff } from 'lucide-react';
+import SliderCaptcha from '../../components/SliderCaptcha';
 
 export default function Register() {
   const { register, isLoading, error, clearError } = useAuthStore();
@@ -14,13 +16,23 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [nickname, setNickname] = useState('');
-  const [role, setRole] = useState<'merchant' | 'user'>('merchant');
   const [success, setSuccess] = useState(false);
+
+  // Captcha modal state
+  const [captchaOpen, setCaptchaOpen] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     clearError();
-    await register(username, password, nickname, role);
+    // Show captcha modal — actual registration happens after captcha verification
+    setCaptchaKey((k) => k + 1);
+    setCaptchaOpen(true);
+  };
+
+  const handleCaptchaVerified = async (captchaToken: string) => {
+    setCaptchaOpen(false);
+    await register(username, password, nickname, captchaToken);
     const currentError = useAuthStore.getState().error;
     if (!currentError) {
       setSuccess(true);
@@ -156,35 +168,6 @@ export default function Register() {
                   />
                 </div>
 
-                {/* Role Selector */}
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1.5">角色</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setRole('merchant')}
-                      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                        role === 'merchant'
-                          ? 'bg-brand/15 border-brand text-brand shadow-[0_0_12px_rgba(254,44,85,0.2)]'
-                          : 'bg-surface-secondary text-text-secondary border-white/10 hover:border-white/20'
-                      }`}
-                    >
-                      商家
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRole('user')}
-                      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                        role === 'user'
-                          ? 'bg-brand/15 border-brand text-brand shadow-[0_0_12px_rgba(254,44,85,0.2)]'
-                          : 'bg-surface-secondary text-text-secondary border-white/10 hover:border-white/20'
-                      }`}
-                    >
-                      用户
-                    </button>
-                  </div>
-                </div>
-
                 {/* Error */}
                 {error && (
                   <motion.div
@@ -216,6 +199,21 @@ export default function Register() {
           </Card>
         </motion.div>
       </motion.div>
+
+      {/* Captcha Modal — shown after clicking register */}
+      <Modal
+        open={captchaOpen}
+        title="安全验证"
+        onCancel={() => setCaptchaOpen(false)}
+        footer={null}
+        centered
+        width={340}
+        destroyOnClose
+      >
+        <div className="py-2">
+          <SliderCaptcha key={captchaKey} onVerified={handleCaptchaVerified} />
+        </div>
+      </Modal>
     </div>
   );
 }

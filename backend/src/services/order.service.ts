@@ -1,5 +1,6 @@
 import { orderRepo } from '../repositories/order.repo.js';
 import { productRepo } from '../repositories/product.repo.js';
+import { db } from '../infrastructure/db/knex.js';
 import { AppError } from '../lib/app-error.js';
 import { logger } from '../middleware/logger.js';
 
@@ -8,7 +9,7 @@ function generateTransactionId(): string {
 }
 
 export const orderService = {
-  async getOrders(userId: number, role: 'merchant' | 'user', page = 1, limit = 20, status?: string) {
+  async getOrders(userId: number, role: 'merchant' | 'user' | 'admin', page = 1, limit = 20, status?: string) {
     // Cancel expired pending orders on-demand before returning
     await this.autoCancelExpiredOrders();
 
@@ -18,7 +19,7 @@ export const orderService = {
     return orderRepo.findByProductIds(productIds, page, limit, status);
   },
 
-  async getOrderDetail(orderId: number, userId: number, role: 'merchant' | 'user') {
+  async getOrderDetail(orderId: number, userId: number, role: 'merchant' | 'user' | 'admin') {
     const order = await orderRepo.findById(orderId);
     if (!order) throw new AppError('订单不存在', 404);
 
@@ -39,41 +40,51 @@ export const orderService = {
     return order;
   },
 
-  async mockPay(orderId: number, userId: number, role: 'merchant' | 'user') {
-    const order = await orderRepo.findById(orderId);
-    if (!order) throw new AppError('订单不存在', 404);
-    if (order.status !== 'pending_payment') throw new AppError('订单状态不正确', 409);
+  async mockPay(orderId: number, userId: number, role: 'merchant' | 'user' | 'admin') {
+    // Use transaction with SELECT FOR UPDATE to prevent concurrent duplicate payments
+    return db.transaction(async (trx) => {
+      // Lock the order row to serialize concurrent payment requests
+      const order = await trx('orders').where({ id: orderId }).forUpdate().first();
+      if (!order) throw new AppError('订单不存在', 404);
+      if (order.status !== 'pending_payment') {
+        logger.warn({ event: 'order.duplicate_pay', userId, orderId, currentStatus: order.status });
+        throw new AppError('订单状态不正确', 409);
+      }
 
-    if (role === 'user') {
-      if (order.buyer_id !== userId) throw new AppError('无权操作此订单', 403);
-    } else if (role === 'merchant') {
-      const product = await productRepo.findById(order.product_id);
-      if (!product || product.merchant_id !== userId) throw new AppError('无权操作此订单', 403);
-    }
+      // Authorization check
+      if (role === 'user') {
+        if (order.buyer_id !== userId) throw new AppError('无权操作此订单', 403);
+      } else if (role === 'merchant') {
+        const product = await productRepo.findById(order.product_id);
+        if (!product || product.merchant_id !== userId) throw new AppError('无权操作此订单', 403);
+      }
 
-    const now = new Date();
-    const transactionId = generateTransactionId();
+      const now = new Date();
+      const transactionId = generateTransactionId();
 
-    await orderRepo.updateStatus(orderId, 'completed', {
-      paid_at: now,
-      completed_at: now,
-      payment_method: 'mock',
-      transaction_id: transactionId,
+      await trx('orders').where({ id: orderId }).update({
+        status: 'completed',
+        paid_at: now,
+        completed_at: now,
+        payment_method: 'mock',
+        transaction_id: transactionId,
+        updated_at: now,
+      });
+
+      logger.info({ event: 'order_paid', orderId, transactionId }, 'Order paid and completed');
+
+      return {
+        orderId,
+        status: 'completed',
+        paidAt: now.toISOString(),
+        completedAt: now.toISOString(),
+        transactionId,
+        paymentMethod: 'mock',
+      };
     });
-
-    logger.info({ event: 'order_paid', orderId, transactionId }, 'Order paid and completed');
-
-    return {
-      orderId,
-      status: 'completed',
-      paidAt: now.toISOString(),
-      completedAt: now.toISOString(),
-      transactionId,
-      paymentMethod: 'mock',
-    };
   },
 
-  async updateStatus(orderId: number, newStatus: string, userId: number, role: 'merchant' | 'user') {
+  async updateStatus(orderId: number, newStatus: string, userId: number, role: 'merchant' | 'user' | 'admin') {
     const VALID_TRANSITIONS: Record<string, string[]> = {
       pending_payment: ['paid', 'cancelled'],
       paid: ['completed'],

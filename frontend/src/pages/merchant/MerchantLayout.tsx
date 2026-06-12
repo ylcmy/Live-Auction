@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  Gavel,
   LogOut,
   User,
   ChevronLeft,
   ChevronRight,
   Menu,
   X,
-  ClipboardCheck,
-  Gavel,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -20,13 +22,28 @@ interface MenuItem {
 
 const menuData: MenuItem[] = [
   {
-    path: '/admin/applications',
-    name: '申请审批',
-    icon: <ClipboardCheck className="w-5 h-5" />,
+    path: '/merchant',
+    name: '数据看板',
+    icon: <LayoutDashboard className="w-5 h-5" />,
+  },
+  {
+    path: '/merchant/products',
+    name: '商品管理',
+    icon: <Package className="w-5 h-5" />,
+  },
+  {
+    path: '/merchant/orders',
+    name: '订单管理',
+    icon: <ShoppingCart className="w-5 h-5" />,
+  },
+  {
+    path: '/merchant/auction',
+    name: '拍卖管理',
+    icon: <Gavel className="w-5 h-5" />,
   },
 ];
 
-export default function AdminLayout() {
+export default function MerchantLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -50,7 +67,12 @@ export default function AdminLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isActive = (path: string) => location.pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (path === '/merchant') {
+      return location.pathname === '/merchant';
+    }
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <div className="min-h-screen bg-surface-primary flex">
@@ -74,7 +96,7 @@ export default function AdminLayout() {
             <Gavel className="w-4 h-4 text-white" />
           </div>
           {!collapsed && (
-            <span className="text-text-primary font-bold text-lg tracking-tight">平台管理</span>
+            <span className="text-text-primary font-bold text-lg tracking-tight">竞拍管理</span>
           )}
           <button
             onClick={() => setMobileOpen(false)}
@@ -131,9 +153,9 @@ export default function AdminLayout() {
               {!collapsed && (
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-text-primary text-sm font-medium truncate">
-                    {user?.nickname || user?.username || '管理员'}
+                    {user?.nickname || user?.username || '商家用户'}
                   </p>
-                  <p className="text-text-tertiary text-xs">管理员</p>
+                  <p className="text-text-tertiary text-xs">商家</p>
                 </div>
               )}
             </button>
@@ -163,7 +185,7 @@ export default function AdminLayout() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-text-primary font-semibold">平台管理</span>
+          <span className="text-text-primary font-semibold">竞拍管理</span>
         </header>
 
         {/* Page Content */}

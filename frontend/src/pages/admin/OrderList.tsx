@@ -164,7 +164,7 @@ export default function OrderList() {
                 return (
                   <div
                     key={order.id}
-                    onClick={() => navigate(`/admin/orders/${order.id}`)}
+                    onClick={() => navigate(`/merchant/orders/${order.id}`)}
                     className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:gap-4 px-5 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center justify-between sm:col-span-1">
