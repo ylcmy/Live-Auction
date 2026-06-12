@@ -12,9 +12,9 @@ import { Store, ArrowLeft, CheckCircle, Clock, XCircle } from 'lucide-react';
 interface ApplicationStatus {
   id: number;
   status: 'pending' | 'approved' | 'rejected';
-  shop_name: string;
+  shopName: string;
   reason: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 const STATUS_CONFIG = {
@@ -100,11 +100,11 @@ export default function ApplyMerchant() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="bg-surface-secondary rounded-lg p-4 space-y-2">
-                <p className="text-text-secondary"><span className="text-text-tertiary">店铺名称：</span>{existingApplication.shop_name}</p>
+                <p className="text-text-secondary"><span className="text-text-tertiary">店铺名称：</span>{existingApplication.shopName}</p>
                 {existingApplication.reason && (
                   <p className="text-text-secondary"><span className="text-text-tertiary">申请理由：</span>{existingApplication.reason}</p>
                 )}
-                <p className="text-text-secondary"><span className="text-text-tertiary">申请时间：</span>{new Date(existingApplication.created_at).toLocaleString('zh-CN')}</p>
+                <p className="text-text-secondary"><span className="text-text-tertiary">申请时间：</span>{new Date(existingApplication.createdAt).toLocaleString('zh-CN')}</p>
               </div>
               {existingApplication.status === 'rejected' && (
                 <Button

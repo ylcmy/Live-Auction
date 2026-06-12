@@ -22,6 +22,7 @@ import MyOrders from './pages/profile/MyOrders';
 import OrderDetail from './pages/profile/OrderDetail';
 import AdminOrderDetail from './pages/admin/OrderDetail';
 import MerchantApplications from './pages/admin/MerchantApplications';
+import MerchantApplicationDetail from './pages/admin/MerchantApplicationDetail';
 import ApplyMerchant from './pages/profile/ApplyMerchant';
 import { Toaster } from './design-system/components/ui/toaster';
 import { ConfirmProvider } from './components/admin/ConfirmDialog';
@@ -82,6 +83,7 @@ export default function App() {
               >
                 <Route index element={<Navigate to="/admin/applications" replace />} />
                 <Route path="applications" element={<MerchantApplications />} />
+                <Route path="applications/:id" element={<MerchantApplicationDetail />} />
               </Route>
               <Route element={<UserLayout />}>
                 <Route path="/live" element={<LiveRoomList />} />

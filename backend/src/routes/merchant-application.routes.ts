@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { merchantApplicationService } from '../services/merchant-application.service.js';
+import { merchantApplicationRepo } from '../repositories/merchant-application.repo.js';
 import { replySuccess } from '../lib/reply.js';
+import { AppError } from '../lib/app-error.js';
 
 export async function merchantApplicationRoutes(app: FastifyInstance) {
   // POST / — Submit merchant application
@@ -31,6 +33,18 @@ export async function merchantApplicationRoutes(app: FastifyInstance) {
         limit ? parseInt(limit, 10) : 20,
       );
       return replySuccess(reply, data);
+    },
+  );
+
+  // GET /:id — Application detail (admin only)
+  app.get(
+    '/api/merchant-applications/:id',
+    { preHandler: [authMiddleware, requireRole('admin')] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const application = await merchantApplicationRepo.findById(parseInt(id, 10));
+      if (!application) throw new AppError('申请不存在', 404);
+      return replySuccess(reply, application);
     },
   );
 
