@@ -9,13 +9,13 @@ import { CheckCircle, XCircle, Clock, Store, ChevronLeft, ChevronRight } from 'l
 
 interface Application {
   id: number;
-  user_id: number;
+  userId: number;
   username: string;
   nickname: string;
-  shop_name: string;
+  shopName: string;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected';
-  created_at: string;
+  createdAt: string;
 }
 
 const STATUS_TABS = [
