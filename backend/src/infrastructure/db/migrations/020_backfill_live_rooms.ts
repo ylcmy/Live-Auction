@@ -8,7 +8,7 @@ export async function up(knex: Knex): Promise<void> {
     .where('u.role', 'merchant')
     .whereNotExists(function () {
       this.select('*').from('live_rooms').whereRaw('live_rooms.host_id = ma.user_id');
-    })
+    }) 
     .select('ma.user_id', 'ma.shop_name');
 
   if (approvedApps.length === 0) return;
