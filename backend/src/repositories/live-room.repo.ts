@@ -22,4 +22,7 @@ export const liveRoomRepo = {
   async updateStatus(id: number, status: 'offline' | 'live') {
     return db('live_rooms').where({ id }).update({ status });
   },
+  async update(id: number, data: { title?: string; stream_url?: string }) {
+    return db('live_rooms').where({ id }).update({ ...data, updated_at: new Date() });
+  },
 };

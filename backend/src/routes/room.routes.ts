@@ -160,6 +160,44 @@ export async function roomRoutes(app: FastifyInstance) {
     return replySuccess(reply, { ...data, items: itemsWithAuction });
   });
 
+  app.put('/api/rooms/:id', { onRequest: requireRole('merchant') }, async (req, reply) => {
+    const roomId = Number((req.params as any).id);
+    if (!Number.isFinite(roomId)) {
+      return replyError(reply, ErrorCodes.INVALID_PARAMS, '无效的直播间 ID', 400);
+    }
+
+    const room = await liveRoomRepo.findById(roomId);
+    if (!room) {
+      return replyError(reply, ErrorCodes.PRODUCT_NOT_FOUND, '直播间不存在', 404);
+    }
+    if (room.host_id !== req.auth.userId) {
+      return replyError(reply, ErrorCodes.ROOM_NOT_MERCHANT, '无权限操作此直播间', 403);
+    }
+
+    const body = req.body as { title?: string; streamUrl?: string };
+    const updates: { title?: string; stream_url?: string } = {};
+    if (body.title !== undefined) {
+      const trimmed = body.title.trim();
+      if (!trimmed || trimmed.length > 200) {
+        return replyError(reply, ErrorCodes.INVALID_PARAMS, '直播间标题长度需在 1-200 字符之间', 400);
+      }
+      updates.title = trimmed;
+    }
+    if (body.streamUrl !== undefined) {
+      updates.stream_url = body.streamUrl;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return replyError(reply, ErrorCodes.INVALID_PARAMS, '未提供需要更新的字段', 400);
+    }
+
+    await liveRoomRepo.update(roomId, updates);
+    logger.info({ event: 'room_updated', roomId, merchantId: req.auth.userId }, 'Room updated');
+
+    const updated = await liveRoomRepo.findById(roomId);
+    return replySuccess(reply, updated);
+  });
+
   app.put('/api/rooms/:id/status', { onRequest: requireRole('merchant') }, async (req, reply) => {
     const roomId = Number((req.params as any).id);
     const { status } = req.body as { status: 'offline' | 'live' };
