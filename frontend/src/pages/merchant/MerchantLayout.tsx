@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Video,
   Package,
   ShoppingCart,
   Gavel,
@@ -12,6 +13,11 @@ const menuItems: MenuItem[] = [
     label: '数据看板',
     icon: <LayoutDashboard className="w-5 h-5" />,
     end: true,
+  },
+  {
+    path: '/merchant/room',
+    label: '我的直播间',
+    icon: <Video className="w-5 h-5" />,
   },
   {
     path: '/merchant/products',
