@@ -51,6 +51,11 @@ export const merchantApplicationService = {
         role: 'merchant',
         updated_at: trx.fn.now(),
       });
+      await trx('live_rooms').insert({
+        host_id: application.user_id,
+        title: application.shop_name,
+        status: 'offline',
+      });
     });
 
     logger.info({
