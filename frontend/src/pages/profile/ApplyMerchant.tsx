@@ -2,12 +2,13 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { fadeUp } from '../../lib/animations';
+import { MERCHANT_APP_STATUS_CONFIG } from '../../lib/statusConfig';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
 import { Button } from '../../design-system/components/ui/button';
 import { Input } from '../../design-system/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/ui/card';
-import { Store, ArrowLeft, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { Store, ArrowLeft } from 'lucide-react';
 
 interface ApplicationStatus {
   id: number;
@@ -16,12 +17,6 @@ interface ApplicationStatus {
   reason: string | null;
   createdAt: string;
 }
-
-const STATUS_CONFIG = {
-  pending: { label: '审核中', color: 'text-yellow-500', icon: Clock },
-  approved: { label: '已通过', color: 'text-green-500', icon: CheckCircle },
-  rejected: { label: '已驳回', color: 'text-red-500', icon: XCircle },
-};
 
 export default function ApplyMerchant() {
   const navigate = useNavigate();
@@ -82,7 +77,7 @@ export default function ApplyMerchant() {
 
   // Show status if application exists
   if (existingApplication) {
-    const config = STATUS_CONFIG[existingApplication.status];
+    const config = MERCHANT_APP_STATUS_CONFIG[existingApplication.status];
     const StatusIcon = config.icon;
     return (
       <div className="max-w-lg mx-auto px-4 py-8">

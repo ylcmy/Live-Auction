@@ -4,9 +4,15 @@ import { generateIdempotencyKey } from '../lib/idempotency';
 
 export function useBid(sessionId: number | null) {
   const debounceRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const [bidError, setBidError] = useState<string | null>(null);
 
   const clearBidError = useCallback(() => setBidError(null), []);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+  }, []);
 
   // Listen for bid:rejected
   useEffect(() => {
@@ -40,7 +46,7 @@ export function useBid(sessionId: number | null) {
 
     socket.emit('bid:submit', { sessionId, amount, idempotencyKey: key });
 
-    setTimeout(() => { debounceRef.current = false; }, 300);
+    debounceTimerRef.current = setTimeout(() => { debounceRef.current = false; }, 300);
   }, [sessionId]);
 
   return { submitBid, bidError, clearBidError };

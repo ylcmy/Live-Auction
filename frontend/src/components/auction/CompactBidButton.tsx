@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useBid } from '../../hooks/useBid';
 import { useAuctionStore } from '../../store/auctionStore';
@@ -13,6 +13,11 @@ export default function CompactBidButton({ sessionId }: Props) {
   const { submitBid } = useBid(sessionId);
   const currentAuction = useAuctionStore((s) => s.currentAuction);
   const [isPressed, setIsPressed] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
 
   if (!currentAuction || !currentAuction.rule) return null;
 
@@ -27,7 +32,7 @@ export default function CompactBidButton({ sessionId }: Props) {
     if (disabled) return;
     setIsPressed(true);
     submitBid(nextBid);
-    setTimeout(() => setIsPressed(false), 300);
+    timerRef.current = setTimeout(() => setIsPressed(false), 300);
   };
 
   return (

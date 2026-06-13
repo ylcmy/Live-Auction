@@ -44,6 +44,11 @@ export class AuctionService {
     private timerManager: AuctionTimerManager,
   ) {}
 
+  /** Clear settlement timer for a session (used when canceling via product status change) */
+  clearTimer(sessionId: number): void {
+    this.timerManager.clear(sessionId);
+  }
+
   async startAuction(merchantId: number, productId: number, roomId: number) {
     const product = await productRepo.findById(productId);
     if (!product) throw new AppError('商品不存在', 404);

@@ -36,7 +36,7 @@ export function validateBid(
   if (context.ceilingPrice !== null && context.ceilingPrice !== undefined) {
     const nextBid = context.currentPrice + context.bidIncrement;
     if (nextBid > context.ceilingPrice) {
-      return { code: 40901, message: '已达到封顶价' };
+      return { code: 40903, message: '已达到封顶价' };
     }
   }
 

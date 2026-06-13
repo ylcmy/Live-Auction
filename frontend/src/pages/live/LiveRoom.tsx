@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuctionStore } from '../../store/auctionStore';
 import { useAuthStore } from '../../store/authStore';
@@ -36,7 +36,9 @@ interface LiveRoomData {
 
 export default function LiveRoom() {
   const { roomId } = useParams<{ roomId: string }>();
+  if (!roomId) return <Navigate to="/live" />;
   const id = Number(roomId);
+  if (!Number.isFinite(id)) return <Navigate to="/live" />;
   const { isConnected, isReconnecting, subscribe } = useWebSocket(id);
   const {
     setAuction,

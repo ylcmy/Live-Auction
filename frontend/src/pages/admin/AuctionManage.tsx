@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const SUCCESS_MSG_AUTO_DISMISS_MS = 3000;
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -21,9 +21,8 @@ import api from '../../services/api';
 import { toast } from '../../design-system/hooks/use-toast';
 import { ROOM_STATUS_STYLES } from '../../lib/statusConfig';
 import type { LiveRoom, Product } from '../../types/api';
-import type { AuctionState, CountdownSync, AuctionStartedEvent, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent } from '../../types/ws';
-import { useWebSocket } from '../../hooks/useWebSocket';
-import { useCountdown } from '../../hooks/useCountdown';
+import type { AuctionStartedEvent, AuctionEndResult } from '../../types/ws';
+import { useAuctionWebSocket } from '../../hooks/useAuctionWebSocket';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatMsCompact, formatPrice } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
@@ -52,114 +51,33 @@ export default function AuctionManage() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // WebSocket connection (auto-joins selectedRoom)
-  const { isConnected, subscribe } = useWebSocket(selectedRoom);
-
-  // Real-time auction data from Zustand store
-  const storeAuction = useAuctionStore((s) => s.currentAuction);
-  const countdownSync = useAuctionStore((s) => s.countdown);
-  const extendMs = useAuctionStore((s) => s.extendMs);
-  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
-  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
-  const leaderboard = useAuctionStore((s) => s.leaderboard);
-  const participantCount = useAuctionStore((s) => s.participantCount);
-  const onlineCount = useAuctionStore((s) => s.onlineCount);
-  const {
-    setAuction,
-    setLeaderboard,
-    setCountdown,
-    triggerExtend,
-    setParticipantCount,
-    setOnlineCount,
-    updateAuctionPrice,
-    updateAuctionStatus,
-    updateCountdownTick,
-  } = useAuctionStore();
-
-  // Countdown engine
-  const { sync, extend } = useCountdown({
-    onTick: updateCountdownTick,
-  });
-
-  useEffect(() => {
-    if (countdownSync && countdownSync.remainingMs > 0) {
-      sync(countdownSync);
-    }
-  }, [countdownSync, sync]);
-
-  useEffect(() => {
-    if (extendMs && extendMs.extendMs > 0) {
-      extend(extendMs);
-      useAuctionStore.setState({ extendMs: null });
-    }
-  }, [extendMs, extend]);
-
-  // Subscribe to real-time auction events
-  useEffect(() => {
-    if (!isConnected || !selectedRoom) return;
-    const unsubs = [
-      subscribe('auction:state', (data: AuctionState) => {
-        if (data.status === 'active') {
-          setAuction(data);
-          if (data.remainingMs != null) {
-            setCountdown({
-              sessionId: data.sessionId,
-              remainingMs: data.remainingMs,
-              serverTime: Date.now(),
-            });
-          }
-        }
-      }),
-      subscribe('bid:new', (data) => {
-        updateAuctionPrice(data.sessionId, data.amount);
-      }),
-      subscribe('rank:update', (data: LeaderboardEntry[]) => setLeaderboard(data)),
-      subscribe('countdown:sync', (data: CountdownSync) => setCountdown(data)),
-      subscribe('countdown:extend', (data: CountdownExtendEvent) => {
-        triggerExtend({ sessionId: data.sessionId, extendMs: data.extendSeconds * 1000, serverTime: data.serverTime ?? Date.now() });
-      }),
-      subscribe('room:count', (data) => {
-        setOnlineCount(data.onlineCount);
-        setParticipantCount(data.participantCount);
-      }),
-      subscribe('auction:started', (data: AuctionStartedEvent) => {
+  // Extra subscriptions for AuctionManage-specific events
+  const extraSubs = useCallback((subscribe: ReturnType<typeof useAuctionWebSocket>['subscribe']) => {
+    const selectedRoomRef = selectedRoom;
+    return [
+      subscribe('auction:started' as any, (data: AuctionStartedEvent) => {
         setCurrentAuction({
           id: data.sessionId,
           productId: data.product?.id ?? 0,
-          roomId: selectedRoom!,
+          roomId: selectedRoomRef!,
           status: 'active',
           currentPrice: data.currentPrice,
           createdAt: data.startedAt,
         });
-        setAuction({
-          sessionId: data.sessionId,
-          status: 'active',
-          product: data.product,
-          rule: data.rule,
-          currentPrice: data.currentPrice,
-          leaderboard: [],
-          myRank: null,
-          myBidAmount: null,
-          remainingMs: data.rule.durationSeconds * 1000,
-          startedAt: data.startedAt,
-          participantCount: 0,
-          extensionCount: 0,
-        });
-        if (data.rule.durationSeconds != null) {
-          setCountdown({
-            sessionId: data.sessionId,
-            remainingMs: data.rule.durationSeconds * 1000,
-            serverTime: Date.now(),
-          });
-        }
       }),
-      subscribe('auction:ended', (data: AuctionEndResult) => {
-        updateAuctionStatus(data.sessionId, data.status);
+      subscribe('auction:ended' as any, (data: AuctionEndResult) => {
         setCurrentAuction((prev) => prev ? { ...prev, status: data.status } : null);
       }),
     ];
-    return () => unsubs.forEach((fn) => fn());
-  }, [isConnected, selectedRoom, subscribe, setAuction, setLeaderboard, setCountdown, triggerExtend, setParticipantCount, setOnlineCount, updateAuctionPrice, updateAuctionStatus]);
+  }, [selectedRoom]);
+
+  const { isConnected, countdownRemainingMs, countdownIsUrgent } = useAuctionWebSocket(selectedRoom, extraSubs);
+
+  // Real-time auction data from Zustand store
+  const storeAuction = useAuctionStore((s) => s.currentAuction);
+  const leaderboard = useAuctionStore((s) => s.leaderboard);
+  const participantCount = useAuctionStore((s) => s.participantCount);
+  const onlineCount = useAuctionStore((s) => s.onlineCount);
 
   useEffect(() => {
     async function init() {

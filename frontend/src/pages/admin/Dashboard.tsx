@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import api from '../../services/api';
-import { PRODUCT_STATUS_STYLES, ORDER_STATUS_STYLES } from '../../lib/statusConfig';
+import { PRODUCT_STATUS_STYLES, ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
 import { formatPrice } from '../../lib/format';
 import type { Product, Order } from '../../types/api';
 
@@ -294,7 +294,7 @@ export default function Dashboard() {
           </div>
           <div className="divide-y divide-slate-100">
             {orders.slice(0, 5).map((order) => {
-              const status = ORDER_STATUS_STYLES[order.status] ?? ORDER_STATUS_STYLES.pending_payment;
+              const status = ORDER_STATUS_CONFIG[order.status as keyof typeof ORDER_STATUS_CONFIG] ?? ORDER_STATUS_CONFIG.pending_payment;
               return (
                 <div key={order.id} className="flex items-center justify-between p-4">
                   <div>
@@ -303,7 +303,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-brand font-semibold text-sm">{formatPrice(order.finalPrice)}</p>
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
                       {status.label}
                     </span>
                   </div>

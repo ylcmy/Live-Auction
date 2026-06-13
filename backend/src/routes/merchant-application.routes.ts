@@ -36,6 +36,16 @@ export async function merchantApplicationRoutes(app: FastifyInstance) {
     },
   );
 
+  // GET /my — View own application (MUST be registered before /:id to avoid route conflict)
+  app.get(
+    '/api/merchant-applications/my',
+    { preHandler: [authMiddleware] },
+    async (req, reply) => {
+      const data = await merchantApplicationService.getMyApplication(req.auth.userId);
+      return replySuccess(reply, data);
+    },
+  );
+
   // GET /:id — Application detail (admin only)
   app.get(
     '/api/merchant-applications/:id',
@@ -45,16 +55,6 @@ export async function merchantApplicationRoutes(app: FastifyInstance) {
       const application = await merchantApplicationRepo.findById(parseInt(id, 10));
       if (!application) throw new AppError('申请不存在', 404);
       return replySuccess(reply, application);
-    },
-  );
-
-  // GET /my — View own application
-  app.get(
-    '/api/merchant-applications/my',
-    { preHandler: [authMiddleware] },
-    async (req, reply) => {
-      const data = await merchantApplicationService.getMyApplication(req.auth.userId);
-      return replySuccess(reply, data);
     },
   );
 

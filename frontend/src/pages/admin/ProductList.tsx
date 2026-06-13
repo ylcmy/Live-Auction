@@ -22,12 +22,10 @@ import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
 import { PRODUCT_STATUS_STYLES } from '../../lib/statusConfig';
-import { useWebSocket } from '../../hooks/useWebSocket';
-import { useCountdown } from '../../hooks/useCountdown';
+import { useAuctionWebSocket } from '../../hooks/useAuctionWebSocket';
 import { useAuctionStore } from '../../store/auctionStore';
 import { formatMsCompact } from '../../lib/format';
 import type { Product, PaginatedData } from '../../types/api';
-import type { AuctionState, CountdownSync, AuctionStartedEvent, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent } from '../../types/ws';
 
 type StatusFilter = 'all' | 'pending' | 'listed' | 'active' | 'ended' | 'unsold' | 'deleted';
 
@@ -108,106 +106,16 @@ export default function ProductList() {
       .catch(() => {});
   }, []);
 
-  // WebSocket and auction store
-  const { isConnected, subscribe } = useWebSocket(roomId);
-  const {
-    setAuction,
-    setCountdown,
-    updateAuctionPrice,
-    updateAuctionStatus,
-    updateCountdownTick,
-    setLeaderboard,
-    setOnlineCount,
-    setParticipantCount,
-    triggerExtend,
-  } = useAuctionStore();
-  const countdownSync = useAuctionStore((s) => s.countdown);
-  const extendMs = useAuctionStore((s) => s.extendMs);
-  const countdownRemainingMs = useAuctionStore((s) => s.countdownRemainingMs);
-  const countdownIsUrgent = useAuctionStore((s) => s.countdownIsUrgent);
+  // WebSocket and auction store — use shared hook with extra subscriptions for refetch
+  const extraSubs = useCallback((subscribe: ReturnType<typeof useAuctionWebSocket>['subscribe']) => [
+    subscribe('auction:state' as any, () => fetchProducts()),
+    subscribe('bid:new' as any, () => fetchProducts()),
+    subscribe('auction:started' as any, () => fetchProducts()),
+    subscribe('auction:ended' as any, () => fetchProducts()),
+  ], [fetchProducts]);
+
+  const { countdownRemainingMs, countdownIsUrgent } = useAuctionWebSocket(roomId, extraSubs);
   const storeAuction = useAuctionStore((s) => s.currentAuction);
-
-  const { sync, extend } = useCountdown({ onTick: updateCountdownTick });
-
-  useEffect(() => {
-    if (countdownSync && countdownSync.remainingMs > 0) sync(countdownSync);
-  }, [countdownSync, sync]);
-
-  useEffect(() => {
-    if (extendMs && extendMs.extendMs > 0) {
-      extend(extendMs);
-      useAuctionStore.setState({ extendMs: null });
-    }
-  }, [extendMs, extend]);
-
-  // Subscribe to auction events and refetch on changes
-  useEffect(() => {
-    if (!isConnected || !roomId) return;
-    const unsubs = [
-      subscribe('auction:state', (data: AuctionState) => {
-        if (data.status === 'active') {
-          setAuction(data);
-          if (data.remainingMs != null) {
-            setCountdown({ sessionId: data.sessionId, remainingMs: data.remainingMs, serverTime: Date.now() });
-          }
-        }
-        fetchProducts();
-      }),
-      subscribe('bid:new', (data) => {
-        updateAuctionPrice(data.sessionId, data.amount);
-        fetchProducts();
-      }),
-      subscribe('rank:update', (data: LeaderboardEntry[]) => setLeaderboard(data)),
-      subscribe('countdown:sync', (data: CountdownSync) => setCountdown(data)),
-      subscribe('countdown:extend', (data: CountdownExtendEvent) => triggerExtend({ sessionId: data.sessionId, extendMs: data.extendSeconds * 1000, serverTime: data.serverTime ?? Date.now() })),
-      subscribe('room:count', (data) => {
-        setOnlineCount(data.onlineCount);
-        setParticipantCount(data.participantCount);
-      }),
-      subscribe('auction:started', (data: AuctionStartedEvent) => {
-        setAuction({
-          sessionId: data.sessionId,
-          status: 'active',
-          product: data.product,
-          rule: data.rule,
-          currentPrice: data.currentPrice,
-          leaderboard: [],
-          myRank: null,
-          myBidAmount: null,
-          remainingMs: data.rule.durationSeconds * 1000,
-          startedAt: data.startedAt,
-          participantCount: 0,
-          extensionCount: 0,
-        });
-        if (data.rule.durationSeconds != null) {
-          setCountdown({
-            sessionId: data.sessionId,
-            remainingMs: data.rule.durationSeconds * 1000,
-            serverTime: Date.now(),
-          });
-        }
-        fetchProducts();
-      }),
-      subscribe('auction:ended', (data: AuctionEndResult) => {
-        updateAuctionStatus(data.sessionId, data.status);
-        fetchProducts();
-      }),
-    ];
-    return () => unsubs.forEach((fn) => fn());
-  }, [
-    isConnected,
-    roomId,
-    subscribe,
-    fetchProducts,
-    setAuction,
-    setLeaderboard,
-    setCountdown,
-    triggerExtend,
-    setParticipantCount,
-    setOnlineCount,
-    updateAuctionPrice,
-    updateAuctionStatus,
-  ]);
 
   // Track elapsed time for active auctions (updates every second)
   useEffect(() => {

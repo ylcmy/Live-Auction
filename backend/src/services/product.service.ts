@@ -4,6 +4,7 @@ import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { db } from '../infrastructure/db/knex.js';
 import { cleanupAuctionCache } from '../lib/auction-cache.js';
 import { AppError } from '../lib/app-error.js';
+import { auctionService } from './auction.service.js';
 
 export const productService = {
   async createProduct(
@@ -144,6 +145,7 @@ export const productService = {
         .whereIn('status', ['active', 'pending']);
       for (const session of sessions) {
         await auctionSessionRepo.updateStatus(session.id, 'cancelled', { ended_at: db.fn.now() });
+        auctionService.clearTimer(session.id);
         await cleanupAuctionCache(session.id, session.room_id);
       }
     }
