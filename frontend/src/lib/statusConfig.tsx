@@ -1,4 +1,4 @@
-import { Clock, Gavel, CheckCircle2, XCircle } from 'lucide-react';
+import { Clock, Gavel, CheckCircle, CheckCircle2, XCircle } from 'lucide-react';
 import type { AuctionStatus, ProductStatus, OrderStatus } from '../types/api';
 
 export const AUCTION_STATUS_CONFIG: Record<AuctionStatus, { label: string; className: string; icon: React.ReactNode; priceLabel: string }> = {
@@ -76,14 +76,24 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatus | 'expired', { variant: 'de
   },
 };
 
-export const ORDER_STATUS_STYLES: Record<OrderStatus, { bg: string; text: string; label: string }> = {
-  pending_payment: { bg: 'bg-sky-50', text: 'text-sky-600', label: '待支付' },
-  paid: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: '已支付' },
-  completed: { bg: 'bg-green-50', text: 'text-green-600', label: '已完成' },
-  cancelled: { bg: 'bg-slate-100', text: 'text-slate-500', label: '已取消' },
+/** 直播间商品卡片的状态颜色（实色背景，区别于 AUCTION_STATUS_CONFIG 的半透明样式） */
+export const AUCTION_STATUS_CARD_COLORS: Record<AuctionStatus, { bg: string; text: string }> = {
+  active: { bg: 'bg-red-500', text: 'text-white' },
+  listed: { bg: 'bg-orange-400', text: 'text-white' },
+  ended: { bg: 'bg-gray-400', text: 'text-white' },
+  unsold: { bg: 'bg-gray-400', text: 'text-white' },
+  cancelled: { bg: 'bg-gray-400', text: 'text-white' },
 };
 
 export const ROOM_STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   live: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', label: '直播中' },
   offline: { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: '离线' },
+};
+
+export type MerchantAppStatus = 'pending' | 'approved' | 'rejected';
+
+export const MERCHANT_APP_STATUS_CONFIG: Record<MerchantAppStatus, { label: string; color: string; icon: typeof Clock }> = {
+  pending: { label: '审核中', color: 'text-yellow-500', icon: Clock },
+  approved: { label: '已通过', color: 'text-green-500', icon: CheckCircle },
+  rejected: { label: '已驳回', color: 'text-red-500', icon: XCircle },
 };

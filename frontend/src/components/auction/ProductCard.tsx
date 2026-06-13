@@ -1,6 +1,7 @@
 import { Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatMsCompact, formatPrice, getPriceLabel } from '../../lib/format';
+import { AUCTION_STATUS_CONFIG, AUCTION_STATUS_CARD_COLORS } from '../../lib/statusConfig';
 import { useAuctionStore } from '../../store/auctionStore';
 import type { RoomAuctionItem } from '../../types/api';
 
@@ -44,25 +45,8 @@ export default function ProductCard({ item, isCurrent, myLastBid: _myLastBid, on
   const currentAuction = useAuctionStore((s) => s.currentAuction);
   const isCurrentActive = isCurrent && isActive && currentAuction?.sessionId === item.sessionId;
 
-  // 状态标签颜色映射
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    active: { bg: 'bg-red-500', text: 'text-white' },
-    listed: { bg: 'bg-orange-400', text: 'text-white' },
-    ended: { bg: 'bg-gray-400', text: 'text-white' },
-    unsold: { bg: 'bg-gray-400', text: 'text-white' },
-    cancelled: { bg: 'bg-gray-400', text: 'text-white' },
-  };
-  const colors = statusColors[item.status] ?? statusColors.listed;
-
-  // 状态标签文字映射
-  const statusLabels: Record<string, string> = {
-    active: '竞拍中',
-    listed: '即将开拍',
-    ended: '已成交',
-    unsold: '流拍',
-    cancelled: '已取消',
-  };
-  const statusLabel = statusLabels[item.status] ?? '即将开拍';
+  const colors = AUCTION_STATUS_CARD_COLORS[item.status] ?? AUCTION_STATUS_CARD_COLORS.listed;
+  const statusLabel = AUCTION_STATUS_CONFIG[item.status]?.label ?? '即将开拍';
 
   return (
     <motion.div

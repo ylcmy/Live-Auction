@@ -5,6 +5,7 @@ import { formatPrice } from '../../lib/format';
 import { getOrderDisplayStatus } from '../../lib/order-utils';
 import { useOrderCountdown } from '../../hooks/useOrderCountdown';
 import { ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
+import { fadeUp } from '../../lib/animations';
 import { Badge } from '../../design-system/components/ui/badge';
 import { Button } from '../../design-system/components/ui/button';
 import { ArrowLeft, Package, Clock, Timer, CreditCard, CheckCircle2 } from 'lucide-react';
@@ -19,11 +20,6 @@ const FILTER_OPTIONS: { value: OrderStatus | 'all'; label: string }[] = [
   { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
 ];
-
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
-};
 
 export default function MyOrders() {
   const navigate = useNavigate();

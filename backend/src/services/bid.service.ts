@@ -109,8 +109,11 @@ async function getAuctionContextFromCache(sessionId: number): Promise<AuctionCon
   const rule = JSON.parse(ruleRaw);
   const topBid = topBidRaw ? JSON.parse(topBidRaw) : null;
 
+  // When no bids exist, use start_price from rule as currentPrice fallback
+  const startPrice = rule.start_price ? Number(rule.start_price) : 0;
+
   return {
-    currentPrice: topBid ? Number(topBid.amount) : 0,
+    currentPrice: topBid ? Number(topBid.amount) : startPrice,
     rule,
     merchantId: Number(merchantIdRaw),
     roomId,
@@ -416,7 +419,7 @@ export const bidService = {
     if (!session) {
       return {
         success: false,
-        error: { code: ErrorCodes.PRODUCT_NOT_FOUND, message: '竞拍不存在' },
+        error: { code: ErrorCodes.AUCTION_NOT_FOUND, message: '竞拍不存在' },
       };
     }
 

@@ -105,7 +105,12 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
       throw new Error('登录已过期，请重新登录');
     }
 
-    const json = await response.json();
+    let json: any;
+    try {
+      json = await response.json();
+    } catch {
+      throw new Error(`请求失败 (${response.status})`);
+    }
 
     if (!response.ok) {
       const error = new Error(json.message || `Request failed with status ${response.status}`);

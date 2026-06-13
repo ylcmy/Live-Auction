@@ -14,9 +14,9 @@ import api from '../../services/api';
 import { useConfirm } from '../../components/admin/ConfirmDialog';
 import { toast } from '../../design-system/hooks/use-toast';
 import { formatPrice, formatTime } from '../../lib/format';
-import { ORDER_STATUS_STYLES } from '../../lib/statusConfig';
+import { ORDER_STATUS_CONFIG } from '../../lib/statusConfig';
 import { getOrderDisplayStatus } from '../../lib/order-utils';
-import type { Order, OrderStatus } from '../../types/api';
+import type { Order } from '../../types/api';
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -89,7 +89,7 @@ export default function AdminOrderDetail() {
 
   const displayStatus = getOrderDisplayStatus(order);
   const isExpired = displayStatus === 'expired';
-  const status = ORDER_STATUS_STYLES[displayStatus as OrderStatus] ?? ORDER_STATUS_STYLES.pending_payment;
+  const status = ORDER_STATUS_CONFIG[displayStatus as keyof typeof ORDER_STATUS_CONFIG] ?? ORDER_STATUS_CONFIG.pending_payment;
 
   return (
     <div className="space-y-6">
@@ -105,7 +105,7 @@ export default function AdminOrderDetail() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${status.bg} ${status.text}`}>
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${status.className}`}>
             {isExpired ? '已截止' : status.label}
           </span>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">订单 #{order.id}</h1>
@@ -164,7 +164,7 @@ export default function AdminOrderDetail() {
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-lg border border-slate-100">
               <span className="text-text-tertiary text-xs">当前状态</span>
-              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
                 {isExpired ? '已截止' : status.label}
               </span>
             </div>

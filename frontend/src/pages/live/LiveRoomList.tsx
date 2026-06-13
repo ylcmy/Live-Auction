@@ -36,6 +36,7 @@ export default function LiveRoomList() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const hasMore = rooms.length < total;
@@ -95,6 +96,24 @@ export default function LiveRoomList() {
     return () => observer.disconnect();
   }, [loadMore]);
 
+  // Track socket connection state for re-registering listeners on reconnect
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    if (socket.connected) setSocketConnected(true);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
+
   useEffect(() => {
     const socket = getSocket();
     if (!socket?.connected) return;
@@ -144,7 +163,7 @@ export default function LiveRoomList() {
       socket.off('room-list:auction-ended', onAuctionEnded);
       socket.off('room-list:bid-new', onBidNew);
     };
-  }, []);
+  }, [socketConnected]);
 
   const handleEnterRoom = (roomId: number) => {
     navigate(`/live/${roomId}`);

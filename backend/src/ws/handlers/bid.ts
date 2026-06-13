@@ -40,8 +40,13 @@ export function registerBidHandlers(io: Server, socket: Socket) {
         if (ack) ack({ success: false, error: rejected });
         return;
       }
-    } catch {
-      // Room check failure should not block bid if it's a transient error
+    } catch (err) {
+      // Room check failure: reject bid for safety rather than silently allowing
+      logger.error({ err, event: 'bid.room_check_error', userId, sessionId }, 'Room membership check failed');
+      const rejected = { sessionId, idempotencyKey, reason: '房间校验失败，请重新加入直播间', code: 'ROOM_CHECK_ERROR' };
+      socket.emit('bid:rejected', rejected);
+      if (ack) ack({ success: false, error: rejected });
+      return;
     }
 
     // ---- 1. 获取前领先者 (异步通知需要) ----
@@ -68,7 +73,7 @@ export function registerBidHandlers(io: Server, socket: Socket) {
     const accepted = {
       sessionId,
       idempotencyKey,
-      bidId: 0,
+      bidId: result.bidId ?? 0,
       amount: result.amount,
       rank: result.rank,
       isLeading: result.isLeading,

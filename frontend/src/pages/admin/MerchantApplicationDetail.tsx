@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { fadeUp } from '../../lib/animations';
+import { MERCHANT_APP_STATUS_CONFIG } from '../../lib/statusConfig';
 import api from '../../services/api';
 import { Button } from '../../design-system/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../design-system/components/ui/card';
-import { CheckCircle, XCircle, Clock, Store, ArrowLeft, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Store, ArrowLeft, Loader2 } from 'lucide-react';
 
 interface ApplicationDetail {
   id: number;
@@ -18,12 +19,6 @@ interface ApplicationDetail {
   createdAt: string;
   updatedAt: string;
 }
-
-const STATUS_CONFIG = {
-  pending: { label: '审核中', color: 'text-yellow-500', icon: Clock },
-  approved: { label: '已通过', color: 'text-green-500', icon: CheckCircle },
-  rejected: { label: '已驳回', color: 'text-red-500', icon: XCircle },
-};
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -111,7 +106,7 @@ export default function MerchantApplicationDetail() {
 
   if (!app) return null;
 
-  const status = STATUS_CONFIG[app.status];
+  const status = MERCHANT_APP_STATUS_CONFIG[app.status];
   const StatusIcon = status.icon;
 
   return (
