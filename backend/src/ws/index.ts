@@ -131,7 +131,9 @@ export function initWebSocket(httpServer: HttpServer) {
       broadcastToRoom(io, rid, 'room:count', { roomId, onlineCount, participantCount });
     });
 
-    socket.on('disconnect', async () => {
+    // 使用 disconnecting 而非 disconnect：Socket.IO v4 在 disconnect 事件触发时
+    // socket.rooms 已清空，无法获取用户所在房间；disconnecting 时 rooms 仍完整
+    socket.on('disconnecting', async () => {
       const rooms = [...socket.rooms];
       for (const roomId of rooms) {
         if (roomId === socket.id) continue;
