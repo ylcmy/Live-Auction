@@ -11,6 +11,7 @@ export const ErrorCodes = {
   // 403 Forbidden
   BID_OWN_PRODUCT: 40300,
   NOT_ORDER_OWNER: 40301,
+  ROOM_NOT_MERCHANT: 40302,
 
   // 404 Not Found
   PRODUCT_NOT_FOUND: 40400,
