@@ -39,7 +39,7 @@ export const merchantApplicationService = {
     if (!application) throw new AppError('申请不存在', 404);
     if (application.status !== 'pending') throw new AppError('申请已审批，不可重复操作', 409);
 
-    // Transaction: update application status + update user role
+    // Transaction: update application status + update user role + create live room
     await db.transaction(async (trx) => {
       await trx('merchant_applications').where({ id: applicationId }).update({
         status: 'approved',
