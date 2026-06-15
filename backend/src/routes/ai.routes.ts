@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '@/middleware/auth.js'
 import { ipRateLimiter } from '@/middleware/rateLimiter.js'
 import { insightService } from '@/ai/insight.service.js'
 import { aiService } from '@/ai/ai.service.js'
+import { chatService } from '@/ai/chat.service.js'
 import {
   setupSSEHeaders,
   sendSSEData,
@@ -95,15 +96,27 @@ export async function aiRoutes(app: FastifyInstance) {
     setupSSEHeaders(reply)
 
     try {
-      // Phase 2: 将通过 chatService 处理
-      // 此处先返回占位响应
-      sendSSEData(reply, JSON.stringify({ content: 'AI 助手功能即将上线，敬请期待！' }))
-      sendSSEData(reply, JSON.stringify({ done: true }))
+      const userId = req.auth!.userId
+
+      for await (const chunk of chatService.generateChatStream({
+        roomId,
+        message,
+        userId,
+        history,
+      })) {
+        if (chunk.content) {
+          sendSSEData(reply, JSON.stringify({ content: chunk.content }))
+        }
+        if (chunk.done) {
+          sendSSEData(reply, JSON.stringify({ done: true }))
+          break
+        }
+      }
     } catch (err) {
       if (err instanceof AppError) {
         sendSSEError(reply, err.message)
       } else {
-        sendSSEError(reply, 'AI 服务暂时不可用')
+        sendSSEError(reply, 'AI 助手暂时不可用')
       }
     } finally {
       closeSSE(reply)
