@@ -4,6 +4,7 @@ import {
   Package,
   ShoppingCart,
   Gavel,
+  Sparkles,
 } from 'lucide-react';
 import DashboardLayout, { type MenuItem } from '../../components/DashboardLayout';
 
@@ -13,6 +14,11 @@ const menuItems: MenuItem[] = [
     label: '数据看板',
     icon: <LayoutDashboard className="w-5 h-5" />,
     end: true,
+  },
+  {
+    path: '/merchant/insight',
+    label: 'AI 洞察',
+    icon: <Sparkles className="w-5 h-5" />,
   },
   {
     path: '/merchant/room',

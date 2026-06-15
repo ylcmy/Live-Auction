@@ -17,6 +17,7 @@ import LiveRoom from './pages/live/LiveRoom';
 import LiveRoomList from './pages/live/LiveRoomList';
 import AuctionManage from './pages/admin/AuctionManage';
 import MerchantRoom from './pages/merchant/MerchantRoom';
+import Insight from './pages/merchant/Insight';
 import UserLayout from './components/UserLayout';
 import ProfilePage from './pages/profile/ProfilePage';
 import MyOrders from './pages/profile/MyOrders';
@@ -73,6 +74,7 @@ export default function App() {
                 <Route path="orders/:id" element={<AdminOrderDetail />} />
                 <Route path="auction" element={<AuctionManage />} />
                 <Route path="room" element={<MerchantRoom />} />
+                <Route path="insight" element={<Insight />} />
               </Route>
               {/* Admin routes */}
               <Route
