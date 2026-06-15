@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { env } from '@/config/env.js'
 import { AppError } from '@/lib/app-error.js'
-import logger from '@/middleware/logger.js'
+import { logger } from '@/middleware/logger.js'
 import type { AIProvider } from '../provider.interface.js'
 import type { AIChatRequest, AIChatResponse, AIStreamChunk } from '../types.js'
 

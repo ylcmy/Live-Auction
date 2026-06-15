@@ -2,7 +2,7 @@ import { insightRepo } from '@/repositories/insight.repo.js'
 import { promptManager } from './prompt-manager.js'
 import { aiService } from './ai.service.js'
 import { cache, isRedisAvailable } from '@/infrastructure/cache/redis.js'
-import logger from '@/middleware/logger.js'
+import { logger } from '@/middleware/logger.js'
 import type { MerchantInsightData, AIStreamChunk } from './types.js'
 
 // 加载 prompt 模板（side-effect import）

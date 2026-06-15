@@ -37,7 +37,7 @@ vi.mock('@/infrastructure/cache/circuit-breaker.js', () => ({
 }))
 
 vi.mock('@/middleware/logger.js', () => ({
-  default: {
+  logger: {
     error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),

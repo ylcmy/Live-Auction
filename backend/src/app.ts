@@ -9,6 +9,7 @@ import { auctionRoutes } from './routes/auction.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { merchantApplicationRoutes } from './routes/merchant-application.routes.js';
+import { aiRoutes } from './routes/ai.routes.js';
 import { toCamelCase } from './lib/case-transform.js';
 import { redis, getRedisMode } from './infrastructure/cache/redis.js';
 import { db } from './infrastructure/db/knex.js';
@@ -52,6 +53,7 @@ export async function buildApp() {
   await app.register(orderRoutes);
   await app.register(userRoutes);
   await app.register(merchantApplicationRoutes);
+  await app.register(aiRoutes);
 
   app.get('/api/health', async (_request, reply) => {
     const checks: Record<string, unknown> = {};

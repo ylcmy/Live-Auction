@@ -4,7 +4,7 @@ import type { AIChatRequest, AIChatResponse, AIStreamChunk } from './types.js'
 import { AppError } from '@/lib/app-error.js'
 import { createRateLimiter } from '@/infrastructure/rate-limiter.factory.js'
 import { CircuitBreaker } from '@/infrastructure/cache/circuit-breaker.js'
-import logger from '@/middleware/logger.js'
+import { logger } from '@/middleware/logger.js'
 
 function createProvider(): AIProvider {
   return createDeepSeekProvider()
