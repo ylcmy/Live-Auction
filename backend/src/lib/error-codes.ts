@@ -32,6 +32,12 @@ export const ErrorCodes = {
   // 500 Internal Server Error
   INTERNAL_ERROR: 50000,
   RULE_MISSING: 50001,
+
+  // AI 相关
+  AI_PROVIDER_ERROR: 50200,
+  AI_RATE_LIMITED: 42901,
+  AI_REQUEST_TIMEOUT: 40800,
+  AI_SERVICE_UNAVAILABLE: 50300,
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];

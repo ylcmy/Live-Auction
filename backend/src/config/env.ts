@@ -40,6 +40,13 @@ export const env = {
   // Default includes loopback addresses for local development convenience.
   IP_RATE_LIMIT_WHITELIST:
     process.env.IP_RATE_LIMIT_WHITELIST || '127.0.0.1,::1,::ffff:127.0.0.1',
+  // AI
+  AI_PROVIDER: process.env.AI_PROVIDER || 'deepseek',
+  AI_API_KEY: process.env.AI_API_KEY || '',
+  AI_BASE_URL: process.env.AI_BASE_URL || 'https://api.deepseek.com',
+  AI_MODEL: process.env.AI_MODEL || 'deepseek-chat',
+  AI_MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
+  AI_REQUESTS_PER_MINUTE: parseInt(process.env.AI_REQUESTS_PER_MINUTE || '20', 10),
 };
 
 /**
