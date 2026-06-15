@@ -20,7 +20,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
+import { Button } from '@/design-system/components/ui/button';
 import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock, Trophy } from 'lucide-react';
+import AIChatPanel from '@/components/ai/AIChatPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/design-system/components/ui/sheet';
+import { Bot } from 'lucide-react';
 import ChatInput from '../../components/auction/ChatInput';
 import type { AuctionState, CountdownSync, ChatMessage, AuctionEndResult, LeaderboardEntry, CountdownExtendEvent, AuctionStartedEvent } from '../../types/ws';
 import type { RoomAuctionItem } from '../../types/api';
@@ -104,6 +108,7 @@ export default function LiveRoom() {
     }
   }, [extendMs, extend]);
 
+  const [aiSheetOpen, setAiSheetOpen] = useState(false);
   const [bidSheetOpen, setBidSheetOpen] = useState(false);
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
   const [auctionResult, setAuctionResult] = useState<AuctionEndResult | null>(null);
@@ -384,6 +389,17 @@ export default function LiveRoom() {
           </div>
         ) : (
           <>
+            {/* AI assistant button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAiSheetOpen(true)}
+              className="fixed bottom-20 right-4 z-40 rounded-full shadow-lg"
+            >
+              <Bot className="h-4 w-4 mr-1" />
+              AI 助手
+            </Button>
+
             <div className="flex-1 max-w-md">
               <ChatInput onSend={handleSendMessage} />
             </div>
@@ -548,6 +564,22 @@ export default function LiveRoom() {
 
       {/* Emotion toasts — lead / overtaken / extended / ended */}
       <EmotionToast />
+
+      {/* AI assistant sheet */}
+      <Sheet open={aiSheetOpen} onOpenChange={(v) => !v && setAiSheetOpen(false)}>
+        <SheetContent side="bottom" className="h-[60vh]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              AI 竞拍助手
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              向 AI 助手提问关于当前竞拍的问题
+            </SheetDescription>
+          </SheetHeader>
+          <AIChatPanel roomId={roomId} />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
