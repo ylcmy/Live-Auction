@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---- Mocks (vi.hoisted so vi.mock factories can reference them) ----
 
-const { mockCache, mockRedis, mockConsume, mockPipeline } = vi.hoisted(() => {
+const { mockCache, mockRedis, mockPipeline } = vi.hoisted(() => {
   const mockPipeline = {
     get: vi.fn().mockReturnThis(),
     zrevrank: vi.fn().mockReturnThis(),
@@ -25,19 +25,13 @@ const { mockCache, mockRedis, mockConsume, mockPipeline } = vi.hoisted(() => {
 
   const mockRedis = {};
 
-  const mockConsume = vi.fn().mockResolvedValue(undefined);
-
-  return { mockCache, mockRedis, mockConsume, mockPipeline };
+  return { mockCache, mockRedis, mockPipeline };
 });
 
 vi.mock('../../../src/infrastructure/cache/redis.js', () => ({
   cache: mockCache,
   redis: mockRedis,
   isRedisAvailable: () => true,
-}));
-
-vi.mock('../../../src/infrastructure/rate-limiter.factory.js', () => ({
-  createRateLimiter: vi.fn(() => ({ consume: mockConsume })),
 }));
 
 vi.mock('../../../src/repositories/bid.repo.js', () => ({
@@ -108,8 +102,6 @@ function resetMocks() {
 
   // Default: setnx returns 'OK' (idempotency key acquired)
   mockCache.setnx.mockResolvedValue('OK');
-  // Default: rate limiter allows
-  mockConsume.mockResolvedValue(undefined);
   // Default: CAS script succeeds
   mockCache.eval.mockResolvedValue(1);
   // Default: no cached context (fallback to MySQL)
@@ -232,21 +224,6 @@ describe('_processBidRedis (CAS-based)', () => {
     expect(result.amount).toBe(110);
     expect(result.rank).toBe(1);
     expect(result.isLeading).toBe(true);
-
-    // Verify no CAS or MySQL operations happened
-    expect(mockCache.eval).not.toHaveBeenCalled();
-    expect(bidRepo.create).not.toHaveBeenCalled();
-  });
-
-  it('Rate limit exceeded: returns 42900', async () => {
-    // rate-limiter-flexible throws RateLimiterRes object when limit exceeded
-    mockConsume.mockRejectedValue({ consumedPoints: 5, remainingPoints: 0, msBeforeNext: 500 });
-
-    const result = await bidService._processBidRedis(100, 2, 'key-005');
-
-    expect(result.success).toBe(false);
-    expect(result.error?.code).toBe(42900);
-    expect(result.error?.message).toContain('频繁');
 
     // Verify no CAS or MySQL operations happened
     expect(mockCache.eval).not.toHaveBeenCalled();

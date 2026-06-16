@@ -26,9 +26,6 @@ export const ErrorCodes = {
   ROOM_ALREADY_EXISTS: 40904,
   AUCTION_IN_PROGRESS: 40905,
 
-  // 429 Too Many Requests
-  BID_RATE_LIMITED: 42900,
-
   // 500 Internal Server Error
   INTERNAL_ERROR: 50000,
   RULE_MISSING: 50001,
