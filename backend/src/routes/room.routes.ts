@@ -2,7 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { liveRoomRepo } from '../repositories/live-room.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
-import { cache } from '../infrastructure/cache/redis.js';
+import { bidRepo } from '../repositories/bid.repo.js';
+import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import { db } from '../infrastructure/db/knex.js';
 import { logger } from '../middleware/logger.js';
 import { broadcastRoomStatus } from '../ws/index.js';
@@ -47,6 +48,15 @@ async function buildCurrentAuction(roomId: number) {
   const topBid = topBidRaw ? (JSON.parse(topBidRaw) as { userId: number; amount: number }) : null;
   const currentPrice = topBid ? Number(topBid.amount) : activeAuction.currentPrice;
 
+  // 从 Redis 查询真实参与竞拍人数，而非硬编码 0
+  let participantCount = 0;
+  if (isRedisAvailable()) {
+    participantCount = (await cache.scard(`room:${roomId}:participants`)) || 0;
+  } else {
+    const lb = await bidRepo.findLeaderboard(activeAuction.sessionId, 1000);
+    participantCount = lb.length;
+  }
+
   return {
     sessionId: activeAuction.sessionId,
     status: activeAuction.status,
@@ -67,7 +77,7 @@ async function buildCurrentAuction(roomId: number) {
     currentPrice,
     leaderboard: [],
     startedAt: activeAuction.startedAt,
-    participantCount: 0,
+    participantCount,
     extensionCount: activeAuction.extensionCount,
   };
 }
