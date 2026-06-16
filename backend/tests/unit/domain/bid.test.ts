@@ -9,7 +9,6 @@ describe('validateBid', () => {
     bidIncrement: 10,
     ceilingPrice: null,
     idempotencyKeyExists: false,
-    rateLimitExceeded: false,
   };
 
   it('should pass for valid bid', () => {
@@ -27,12 +26,6 @@ describe('validateBid', () => {
     expect(result).not.toBeNull();
     expect(result!.code).toBe(40901);
     expect(result!.message).toContain('重复');
-  });
-
-  it('should reject rate limit exceeded', () => {
-    const result = validateBid(1, { ...baseCtx, rateLimitExceeded: true });
-    expect(result).not.toBeNull();
-    expect(result!.code).toBe(42900);
   });
 
   it('should allow consecutive self-bid', () => {

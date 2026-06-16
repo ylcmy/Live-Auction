@@ -9,7 +9,6 @@ describe('Bid idempotency', () => {
       bidIncrement: 10,
       ceilingPrice: null,
       idempotencyKeyExists: true,
-      rateLimitExceeded: false,
     };
     const result = (await import('../../../src/domain/bid.js')).validateBid(
       1,
@@ -26,7 +25,6 @@ describe('Bid idempotency', () => {
       bidIncrement: 10,
       ceilingPrice: null,
       idempotencyKeyExists: false,
-      rateLimitExceeded: false,
     };
     const result = (await import('../../../src/domain/bid.js')).validateBid(
       1,
