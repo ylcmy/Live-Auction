@@ -20,7 +20,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { formatMsCompact } from '../../lib/format';
 import { Badge } from '../../design-system/components/ui/badge';
-import { Button } from '@/design-system/components/ui/button';
 import { Users, Radio, Wifi, WifiOff, X, ShoppingBag, Clock, Trophy } from 'lucide-react';
 import AIChatPanel from '@/components/ai/AIChatPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/design-system/components/ui/sheet';
@@ -391,15 +390,16 @@ export default function LiveRoom() {
         ) : (
           <>
             {/* AI assistant button */}
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
               onClick={() => setAiSheetOpen(true)}
-              className="fixed bottom-20 right-4 z-40 rounded-full shadow-lg"
+              aria-label="打开 AI 竞拍助手"
+              className="fixed bottom-20 right-4 z-40 flex items-center gap-1.5 h-9 px-4 rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-white text-xs font-medium shadow-xl shadow-black/30 hover:bg-black/70 hover:border-white/25 active:scale-95 transition-all"
             >
-              <Bot className="h-4 w-4 mr-1" />
-              AI 助手
-            </Button>
+              <Bot className="h-4 w-4 text-accent" />
+              <span>AI 助手</span>
+              <span className="ml-0.5 w-1.5 h-1.5 rounded-full bg-accent animate-pulse" aria-hidden />
+            </button>
 
             <div className="flex-1 max-w-md">
               <ChatInput onSend={handleSendMessage} />
@@ -568,17 +568,34 @@ export default function LiveRoom() {
 
       {/* AI assistant sheet */}
       <Sheet open={aiSheetOpen} onOpenChange={(v) => !v && setAiSheetOpen(false)}>
-        <SheetContent side="bottom" className="h-[60vh]">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              AI 竞拍助手
+        <SheetContent
+          side="bottom"
+          className="bg-slate-900 text-slate-100 border-t border-white/10 rounded-t-2xl h-[75vh] max-h-[85vh] p-0 overflow-hidden shadow-2xl shadow-black/60 flex flex-col"
+        >
+          {/* Drag handle */}
+          <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="w-10 h-1 rounded-full bg-white/25" />
+          </div>
+
+          <SheetHeader className="px-5 pb-3 border-b border-white/10 flex flex-row items-center justify-between flex-shrink-0">
+            <SheetTitle className="text-white text-base font-semibold flex items-center gap-2">
+              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-brand to-brand-hover shadow-glow-brand">
+                <Bot className="h-4 w-4 text-white" />
+              </span>
+              <span>AI 竞拍助手</span>
+              <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
+                Beta
+              </span>
             </SheetTitle>
             <SheetDescription className="sr-only">
               向 AI 助手提问关于当前竞拍的问题
             </SheetDescription>
           </SheetHeader>
-          <AIChatPanel roomId={roomId} />
+
+          {/* Chat panel fills remaining space */}
+          <div className="flex-1 min-h-0">
+            <AIChatPanel roomId={roomId} />
+          </div>
         </SheetContent>
       </Sheet>
     </div>

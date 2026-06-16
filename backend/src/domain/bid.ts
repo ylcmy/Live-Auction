@@ -5,7 +5,6 @@ export interface BidValidationContext {
   bidIncrement: number;
   ceilingPrice: number | null;
   idempotencyKeyExists: boolean;
-  rateLimitExceeded: boolean;
 }
 
 export interface BidValidationError {
@@ -27,10 +26,6 @@ export function validateBid(
 
   if (context.idempotencyKeyExists) {
     return { code: 40901, message: '重复的出价请求' };
-  }
-
-  if (context.rateLimitExceeded) {
-    return { code: 42900, message: '出价过于频繁，请稍后再试' };
   }
 
   if (context.ceilingPrice !== null && context.ceilingPrice !== undefined) {

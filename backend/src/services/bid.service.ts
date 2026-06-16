@@ -6,25 +6,22 @@
  * Redis path:
  * 1. Three-state idempotency check (GET → replay / pending recovery / SETNX)
  * 2. Fetch context from Redis cache (rule, merchantId, roomId), fallback to MySQL
- * 3. Rate limit via rate-limiter-flexible
- * 4. Calculate bid amount + ceiling price truncation
- * 5. Atomic CAS write via Lua (compare-and-set top_bid + ZADD leaderboard + SADD participants)
- * 6. Persist to MySQL (with Redis rollback on failure)
- * 7. Extension check + rank query
+ * 3. Calculate bid amount + ceiling price truncation
+ * 4. Atomic CAS write via Lua (compare-and-set top_bid + ZADD leaderboard + SADD participants)
+ * 5. Persist to MySQL (with Redis rollback on failure)
+ * 6. Extension check + rank query
  *
  * MySQL fallback path:
- * 1. In-memory rate limiting (via rate-limiter-flexible Memory fallback)
- * 2. Fetch context (session, rules) via MySQL
- * 3. Domain validation (pure)
- * 4. MySQL transaction: SELECT FOR UPDATE + INSERT bid_record + UPDATE session
- * 5. Idempotency via MySQL unique constraint (ER_DUP_ENTRY)
- * 6. Extension check within transaction
- * 7. Rank from MySQL leaderboard query
+ * 1. Fetch context (session, rules) via MySQL
+ * 2. Domain validation (pure)
+ * 3. MySQL transaction: SELECT FOR UPDATE + INSERT bid_record + UPDATE session
+ * 4. Idempotency via MySQL unique constraint (ER_DUP_ENTRY)
+ * 5. Extension check within transaction
+ * 6. Rank from MySQL leaderboard query
  */
 
 import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import { BID_CAS_SCRIPT, BID_ROLLBACK_SCRIPT } from '../infrastructure/cache/lua-scripts.js';
-import { createRateLimiter } from '../infrastructure/rate-limiter.factory.js';
 import { bidRepo } from '../repositories/bid.repo.js';
 import { auctionSessionRepo } from '../repositories/auction-session.repo.js';
 import { auctionRuleRepo } from '../repositories/auction-rule.repo.js';
@@ -35,27 +32,8 @@ import { logger } from '../middleware/logger.js';
 import { db } from '../infrastructure/db/knex.js';
 import { ErrorCodes } from '../lib/error-codes.js';
 
-const BID_RATE_LIMIT_MAX = 5;
-const BID_RATE_LIMIT_DURATION = 1; // 1 second window
 const IDEMPOTENCY_PENDING_TTL = 30;
 const IDEMPOTENCY_RESULT_TTL = 3600;
-
-/**
- * 惰性创建出价限流器。
- * 不能在模块顶层创建，否则 isRedisAvailable() 在模块加载时
- * 可能尚未就绪，会误降级为 RateLimiterMemory。
- */
-let _bidLimiter: ReturnType<typeof createRateLimiter> | null = null;
-function getBidLimiter() {
-  if (!_bidLimiter) {
-    _bidLimiter = createRateLimiter({
-      keyPrefix: 'rl:bid',
-      points: BID_RATE_LIMIT_MAX,
-      duration: BID_RATE_LIMIT_DURATION,
-    });
-  }
-  return _bidLimiter;
-}
 
 export interface BidProcessResult {
   success: boolean;
@@ -77,10 +55,6 @@ export interface LeaderboardEntry {
   amount: number;
   timestamp: string;
 }
-
-// ---- Task 6: In-Memory Rate Limiter ----
-// Replaced by rate-limiter-flexible via createRateLimiter factory.
-// The `bidLimiter` instance above handles both Redis and Memory paths.
 
 interface AuctionContextFromCache {
   currentPrice: number;
@@ -275,22 +249,7 @@ export const bidService = {
 
     const { currentPrice, rule } = ctx;
 
-    // ---- 4. Rate limiting (rate-limiter-flexible) ----
-    const rateKey = `s${sessionId}:u${userId}`;
-    try {
-      await getBidLimiter().consume(rateKey);
-    } catch (err) {
-      if (err instanceof Error) {
-        // Redis/runtime error → fail-open
-        logger.warn({ err }, 'Bid rate limiter error, failing open');
-      } else {
-        // RateLimiterRes → rate limit exceeded
-        await cache.del(idemKey);
-        return { success: false, error: { code: ErrorCodes.BID_RATE_LIMITED, message: '出价过于频繁，请稍后再试' } };
-      }
-    }
-
-    // ---- 5. Calculate amount ----
+    // ---- 4. Calculate amount ----
     const increment = rule.bid_increment;
     const minBid = currentPrice + increment;
     const ceilingPrice = rule.ceiling_price;
@@ -305,7 +264,7 @@ export const bidService = {
 
     let bidAmount = snapToIncrementGrid(clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid, currentPrice, increment, minBid);
 
-    // ---- 6. CAS ----
+    // ---- 5. CAS ----
     const participantsKey = `room:${ctx.roomId}:participants`;
     const topBidData = JSON.stringify({ userId, amount: bidAmount, timestamp: new Date().toISOString() });
 
@@ -315,7 +274,7 @@ export const bidService = {
       return { success: false, error: { code: ErrorCodes.BID_STALE_PRICE, message: '出价已过期，当前价格已更新，请重新出价' } };
     }
 
-    // ---- 7. MySQL persistence (transactional) ----
+    // ---- 6. MySQL persistence (transactional) ----
     try {
       await db.transaction(async (trx) => {
         await bidRepo.create({ session_id: sessionId, user_id: userId, bid_amount: bidAmount, idempotency_key: idempotencyKey }, trx);
@@ -329,7 +288,7 @@ export const bidService = {
       return { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: '出价处理失败，请重试' } };
     }
 
-    // ---- 8. Post-bid pipeline: extension check + rank + idempotency result ----
+    // ---- 7. Post-bid pipeline: extension check + rank + idempotency result ----
     const extensionCheckKey1 = `auction:${sessionId}:extensions`;
     const extensionCheckKey2 = `auction:${sessionId}:end_time`;
 
@@ -385,8 +344,8 @@ export const bidService = {
   },
 
   /**
-   * MySQL fallback path: uses MySQL transaction for atomicity,
-   * in-memory rate limiting, and MySQL unique constraint for idempotency.
+   * MySQL fallback path: uses MySQL transaction for atomicity
+   * and MySQL unique constraint for idempotency.
    */
   async _processBidMySQL(
     sessionId: number,
@@ -396,25 +355,7 @@ export const bidService = {
   ): Promise<BidProcessResult> {
     logger.info({ event: 'bid_attempt_mysql', sessionId, userId, idempotencyKey }, 'Bid processing started (MySQL path)');
 
-    // ---- 1. Rate limiting (rate-limiter-flexible) ----
-    const rateKey = `s${sessionId}:u${userId}`;
-    try {
-      await getBidLimiter().consume(rateKey);
-    } catch (err) {
-      if (err instanceof Error) {
-        // Redis/runtime error → fail-open
-        logger.warn({ err }, 'Bid rate limiter error, failing open');
-      } else {
-        // RateLimiterRes → rate limit exceeded
-        logger.warn({ event: 'bid_rejected', sessionId, userId, idempotencyKey, reason: 'rate_limit' }, 'Bid rejected - rate limit exceeded (MySQL path)');
-        return {
-          success: false,
-          error: { code: 42900, message: '出价过于频繁，请稍后再试' },
-        };
-      }
-    }
-
-    // ---- 2. Fetch context (outside transaction) ----
+    // ---- 1. Fetch context (outside transaction) ----
     const session = await auctionSessionRepo.findById(sessionId);
     if (!session) {
       return {
@@ -439,7 +380,7 @@ export const bidService = {
       };
     }
 
-    // ---- 3. Domain validation (before entering transaction) ----
+    // ---- 2. Domain validation (before entering transaction) ----
     const validationError = validateBid(userId, {
       auctionStatus: session.status,
       sellerId: product.merchant_id,
@@ -447,7 +388,6 @@ export const bidService = {
       bidIncrement: Number(rule.bid_increment),
       ceilingPrice: rule.ceiling_price ? Number(rule.ceiling_price) : null,
       idempotencyKeyExists: false,
-      rateLimitExceeded: false,
     });
 
     if (validationError) {
@@ -455,7 +395,7 @@ export const bidService = {
       return { success: false, error: validationError };
     }
 
-    // ---- 4. Calculate bid amount ----
+    // ---- 3. Calculate bid amount ----
     const increment = Number(rule.bid_increment);
     const minBid = Number(session.current_price) + increment;
     let bidAmount = snapToIncrementGrid(clientAmount != null && clientAmount >= minBid ? Number(clientAmount) : minBid, Number(session.current_price), increment, minBid);
@@ -467,7 +407,7 @@ export const bidService = {
     const ceilingPrice = rule.ceiling_price ? Number(rule.ceiling_price) : null;
     const shouldEnd = ceilingPrice !== null && bidAmount >= ceilingPrice;
 
-    // ---- 5. Execute in MySQL transaction ----
+    // ---- 4. Execute in MySQL transaction ----
     let bidId: number | undefined;
     let extensionResult: { remainingMs: number; extensionCount: number } | null = null;
 
@@ -559,7 +499,7 @@ export const bidService = {
       return { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: '出价处理失败，请重试' } };
     }
 
-    // ---- 6. Get rank from MySQL (outside transaction - read operation) ----
+    // ---- 5. Get rank from MySQL (outside transaction - read operation) ----
     const leaderboard = await bidRepo.findLeaderboard(sessionId, 20);
     const myEntry = leaderboard.find(e => e.userId === userId);
     const myRank = myEntry?.rank || leaderboard.length + 1;

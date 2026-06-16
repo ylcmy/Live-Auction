@@ -27,7 +27,7 @@ export const ErrorCodes = {
   AUCTION_IN_PROGRESS: 40905,
 
   // 429 Too Many Requests
-  BID_RATE_LIMITED: 42900,
+  AI_RATE_LIMITED: 42901,
 
   // 500 Internal Server Error
   INTERNAL_ERROR: 50000,
@@ -35,7 +35,6 @@ export const ErrorCodes = {
 
   // AI 相关
   AI_PROVIDER_ERROR: 50200,
-  AI_RATE_LIMITED: 42901,
   AI_REQUEST_TIMEOUT: 40800,
   AI_SERVICE_UNAVAILABLE: 50300,
 } as const;

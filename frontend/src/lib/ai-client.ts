@@ -1,7 +1,47 @@
 export interface SSEChunk {
   content?: string
   done?: boolean
+  error?: boolean
 }
+
+// --- Token refresh (mirrors api.ts logic) ---
+
+let refreshPromise: Promise<string | null> | null = null
+
+async function getNewToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken')
+      if (!refreshToken) return null
+
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      })
+
+      if (!response.ok) return null
+
+      const json = await response.json()
+      const newToken = json.data?.accessToken
+      if (newToken) {
+        localStorage.setItem('accessToken', newToken)
+        return newToken
+      }
+      return null
+    } catch {
+      return null
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
+}
+
+// --- SSE stream parser ---
 
 async function* parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>
@@ -50,26 +90,21 @@ async function* parseSSEStream(
   }
 }
 
-export async function* streamAIResponse(
-  url: string,
-  body: unknown,
-  signal?: AbortSignal
-): AsyncGenerator<SSEChunk> {
-  const token = localStorage.getItem('accessToken')
+// --- Internal: fetch + parse SSE with a given token ---
 
+async function* doStream(
+  url: string,
+  init: RequestInit,
+  token: string | null
+): AsyncGenerator<SSEChunk> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string>),
   }
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  })
+  const response = await fetch(url, { ...init, headers })
 
   if (!response.ok) {
     throw new Error(`AI 请求失败: ${response.status}`)
@@ -87,35 +122,64 @@ export async function* streamAIResponse(
   }
 }
 
+// --- Public API ---
+
+/**
+ * POST SSE request with automatic 401 → token refresh → retry.
+ */
+export async function* streamAIResponse(
+  url: string,
+  body: unknown,
+  signal?: AbortSignal
+): AsyncGenerator<SSEChunk> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  }
+
+  const token = localStorage.getItem('accessToken')
+
+  try {
+    yield* doStream(url, init, token)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('401')) {
+      const newToken = await getNewToken()
+      if (newToken) {
+        yield* doStream(url, init, newToken)
+        return
+      }
+    }
+    throw err
+  }
+}
+
+/**
+ * GET SSE request with automatic 401 → token refresh → retry.
+ */
 export async function* streamAIGetResponse(
   url: string,
   signal?: AbortSignal
 ): AsyncGenerator<SSEChunk> {
+  const init: RequestInit = {
+    method: 'GET',
+    headers: {},
+    signal,
+  }
+
   const token = localStorage.getItem('accessToken')
 
-  const headers: Record<string, string> = {}
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers,
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error(`AI 请求失败: ${response.status}`)
-  }
-
-  if (!response.body) {
-    throw new Error('响应体为空')
-  }
-
-  const reader = response.body.getReader()
   try {
-    yield* parseSSEStream(reader)
-  } finally {
-    reader.releaseLock()
+    yield* doStream(url, init, token)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('401')) {
+      const newToken = await getNewToken()
+      if (newToken) {
+        yield* doStream(url, init, newToken)
+        return
+      }
+    }
+    throw err
   }
 }

@@ -6,8 +6,12 @@ import type { AIProvider } from '../provider.interface.js'
 import type { AIChatRequest, AIChatResponse, AIStreamChunk } from '../types.js'
 
 export function createDeepSeekProvider(): AIProvider {
+  if (!env.AI_API_KEY) {
+    logger.warn('AI_API_KEY is not configured — AI features will fail')
+  }
+
   const client = new OpenAI({
-    apiKey: env.AI_API_KEY,
+    apiKey: env.AI_API_KEY || 'missing-key',
     baseURL: env.AI_BASE_URL,
   })
 
@@ -35,8 +39,9 @@ export function createDeepSeekProvider(): AIProvider {
             : undefined,
         }
       } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
         logger.error({ err }, 'ai_provider_chat_error')
-        throw new AppError('AI Provider 请求失败', 502)
+        throw new AppError(`AI Provider 请求失败: ${detail}`, 502)
       }
     },
 
@@ -55,8 +60,9 @@ export function createDeepSeekProvider(): AIProvider {
           yield { content, done: false }
         }
       } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
         logger.error({ err }, 'ai_provider_stream_error')
-        throw new AppError('AI Provider 流式请求失败', 502)
+        throw new AppError(`AI Provider 流式请求失败: ${detail}`, 502)
       }
     },
   }

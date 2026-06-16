@@ -9,7 +9,6 @@ describe('Auction settlement flow (unit)', () => {
       bidIncrement: 10,
       ceilingPrice: null,
       idempotencyKeyExists: false,
-      rateLimitExceeded: false,
     };
     expect(validateBid(1, ctx)?.code).toBe(40900);
   });
@@ -21,7 +20,6 @@ describe('Auction settlement flow (unit)', () => {
       bidIncrement: 10,
       ceilingPrice: null,
       idempotencyKeyExists: false,
-      rateLimitExceeded: false,
     };
     expect(validateBid(1, ctx)?.code).toBe(40900);
   });

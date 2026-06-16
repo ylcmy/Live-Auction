@@ -22,6 +22,6 @@ export function closeSSE(reply: FastifyReply): void {
 }
 
 export function sendSSEError(reply: FastifyReply, message: string): void {
-  sendSSEEvent(reply, 'error', JSON.stringify({ message }))
+  sendSSEData(reply, JSON.stringify({ error: true, content: message }))
   closeSSE(reply)
 }

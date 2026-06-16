@@ -32,7 +32,8 @@ describe('AIChatPanel', () => {
 
   it('shows empty state message', () => {
     render(<AIChatPanel roomId="1" />)
-    expect(screen.getByText(/有什么想问的/)).toBeDefined()
+    expect(screen.getByText('AI 竞拍助手')).toBeDefined()
+    expect(screen.getByText(/分析当前竞拍情况/)).toBeDefined()
   })
 
   it('disables input when streaming', () => {
