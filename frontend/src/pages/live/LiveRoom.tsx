@@ -54,6 +54,7 @@ export default function LiveRoom() {
     setMyBid,
     currentAuction,
     onlineCount,
+    participantCount,
     roomAuctions,
     addChatMessage,
     chatMessages,
@@ -299,7 +300,7 @@ export default function LiveRoom() {
               productName={currentAuction?.product?.name ?? roomTitle}
               productImage={currentAuction?.product?.imageUrl ?? null}
               currentPrice={currentAuction?.currentPrice ?? 0}
-              participantCount={currentAuction?.participantCount ?? 0}
+              participantCount={participantCount}
             />
           )}
 

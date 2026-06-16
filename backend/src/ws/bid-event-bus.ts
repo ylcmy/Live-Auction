@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import type { Server } from 'socket.io';
-import { broadcastToRoom } from './rooms.js';
+import { broadcastToRoom, getOnlineCount } from './rooms.js';
 import { broadcastRoomListUpdate } from './index.js';
+import { cache, isRedisAvailable } from '../infrastructure/cache/redis.js';
 import { bidService } from '../services/bid.service.js';
 import { auctionService } from '../services/auction.service.js';
 
@@ -154,6 +155,31 @@ export class BidEventBus extends EventEmitter {
       if (event.shouldEnd) {
         auctionService.settleAuction(event.sessionId);
       }
+    });
+
+    // 6. 出价后广播参与竞拍人数更新
+    this.on('bid:committed', (event: BidCommittedEvent) => {
+      if (!this.io) return;
+
+      (async () => {
+        try {
+          let participantCount = 0;
+          if (isRedisAvailable()) {
+            participantCount = (await cache.scard(`room:${event.roomId}:participants`)) || 0;
+          } else {
+            const lb = await bidService.getLeaderboard(event.sessionId, 1000);
+            participantCount = lb.length;
+          }
+          const onlineCount = getOnlineCount(this.io!, event.roomId);
+          broadcastToRoom(this.io!, event.roomId, 'room:count', {
+            roomId: Number(event.roomId),
+            onlineCount,
+            participantCount,
+          });
+        } catch {
+          // 广播失败不影响出价流程
+        }
+      })();
     });
   }
 
