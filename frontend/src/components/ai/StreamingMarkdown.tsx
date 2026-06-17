@@ -14,6 +14,7 @@ import {
 interface StreamingMarkdownProps {
   content: string
   isStreaming: boolean
+  theme?: 'light' | 'dark'
   onComplete?: () => void
 }
 
@@ -69,6 +70,7 @@ function detectSectionIntent(text: string): {
 export default function StreamingMarkdown({
   content,
   isStreaming,
+  theme = 'light',
   onComplete,
 }: StreamingMarkdownProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -95,14 +97,59 @@ export default function StreamingMarkdown({
     }
   }, [isStreaming, content, onComplete])
 
+  const isDark = theme === 'dark'
+  const c = isDark
+    ? {
+        text: 'text-slate-200',
+        textMuted: 'text-slate-400',
+        heading: 'text-white',
+        headingSub: 'text-slate-100',
+        strong: 'font-semibold text-white bg-white/10 px-1 py-0.5 rounded',
+        em: 'italic text-slate-300',
+        quote: 'bg-white/5 border-l-slate-500',
+        quoteText: 'text-slate-300',
+        code: 'bg-white/10 text-emerald-300',
+        codeBlock: 'bg-slate-800 text-slate-200',
+        tableBorder: 'border-white/10',
+        thBg: 'bg-white/5',
+        thText: 'font-semibold text-slate-200',
+        tdText: 'text-slate-300',
+        listDot: 'bg-white/40',
+        marker: 'marker:text-slate-500',
+        link: 'text-emerald-400 hover:text-emerald-300 underline decoration-emerald-400/30',
+        hr: 'via-white/20',
+        accentBar: 'bg-white/30',
+      }
+    : {
+        text: 'text-slate-600',
+        textMuted: 'text-slate-500',
+        heading: 'text-slate-900',
+        headingSub: 'text-slate-800',
+        strong: 'font-semibold text-slate-900 bg-brand/5 px-1 py-0.5 rounded',
+        em: 'italic text-slate-500',
+        quote: 'bg-slate-50 border-l-slate-200',
+        quoteText: 'text-slate-600',
+        code: 'bg-slate-100 text-brand',
+        codeBlock: 'bg-slate-900 text-slate-100',
+        tableBorder: 'border-slate-200',
+        thBg: 'bg-slate-50',
+        thText: 'font-semibold text-slate-700',
+        tdText: 'text-slate-600',
+        listDot: 'bg-brand/50',
+        marker: 'marker:text-slate-400',
+        link: 'text-brand hover:text-brand-hover underline decoration-brand/30',
+        hr: 'via-slate-200',
+        accentBar: 'bg-brand/40',
+      }
+
   return (
     <div ref={containerRef} className="overflow-y-auto max-h-full">
-      <div className="text-slate-700 text-sm leading-relaxed space-y-4">
+      <div className={`text-sm leading-relaxed space-y-4 ${c.text}`}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
             h1: ({ children }) => (
-              <h1 className="text-xl font-bold text-slate-900 mt-6 mb-3 first:mt-0 flex items-center gap-2">
+              <h1 className={`text-xl font-bold ${c.heading} mt-6 mb-3 first:mt-0 flex items-center gap-2`}>
                 {children}
               </h1>
             ),
@@ -111,7 +158,7 @@ export default function StreamingMarkdown({
               const { icon: Icon, accent, iconColor } = detectSectionIntent(text)
               return (
                 <h2
-                  className={`text-base font-semibold text-slate-900 mt-6 mb-3 first:mt-0 pl-3 border-l-4 ${accent} flex items-center gap-2`}
+                  className={`text-base font-semibold ${c.heading} mt-6 mb-3 first:mt-0 pl-3 border-l-4 ${accent} flex items-center gap-2`}
                 >
                   {Icon && <Icon className={`h-4 w-4 ${iconColor}`} />}
                   <span>{children}</span>
@@ -119,24 +166,24 @@ export default function StreamingMarkdown({
               )
             },
             h3: ({ children }) => (
-              <h3 className="text-sm font-semibold text-slate-800 mt-4 mb-2 flex items-center gap-1.5">
-                <span className="w-1 h-4 rounded-full bg-brand/40" />
+              <h3 className={`text-sm font-semibold ${c.headingSub} mt-4 mb-2 flex items-center gap-1.5`}>
+                <span className={`w-1 h-4 rounded-full ${c.accentBar}`} />
                 {children}
               </h3>
             ),
             h4: ({ children }) => (
-              <h4 className="text-sm font-medium text-slate-700 mt-3 mb-1.5">
+              <h4 className={`text-sm font-medium ${c.text} mt-3 mb-1.5`}>
                 {children}
               </h4>
             ),
             p: ({ children }) => (
-              <p className="text-sm leading-relaxed text-slate-600 my-2 whitespace-pre-line">{children}</p>
+              <p className={`text-sm leading-relaxed ${c.text} my-2 whitespace-pre-line`}>{children}</p>
             ),
             ul: ({ children }) => (
               <ul className="space-y-1.5 my-3 pl-1">{children}</ul>
             ),
             ol: ({ children }) => (
-              <ol className="space-y-1.5 my-3 pl-1 list-decimal list-inside marker:text-slate-400 marker:font-medium">
+              <ol className={`space-y-1.5 my-3 pl-1 list-decimal list-inside ${c.marker} marker:font-medium`}>
                 {children}
               </ol>
             ),
@@ -144,49 +191,49 @@ export default function StreamingMarkdown({
               const isOrdered = (props as unknown as { ordered?: boolean }).ordered
               if (isOrdered) {
                 return (
-                  <li className="text-sm text-slate-600 pl-1 leading-relaxed">
+                  <li className={`text-sm ${c.text} pl-1 leading-relaxed`}>
                     {children}
                   </li>
                 )
               }
               return (
-                <li className="text-sm text-slate-600 flex items-start gap-2 leading-relaxed">
-                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand/50 flex-shrink-0" />
+                <li className={`text-sm ${c.text} flex items-start gap-2 leading-relaxed`}>
+                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full ${c.listDot} flex-shrink-0`} />
                   <span className="flex-1">{children}</span>
                 </li>
               )
             },
             strong: ({ children }) => (
-              <strong className="font-semibold text-slate-900 bg-brand/5 px-1 py-0.5 rounded">
+              <strong className={c.strong}>
                 {children}
               </strong>
             ),
             em: ({ children }) => (
-              <em className="italic text-slate-500">{children}</em>
+              <em className={c.em}>{children}</em>
             ),
             blockquote: ({ children }) => (
-              <blockquote className="my-4 pl-4 pr-3 py-3 bg-slate-50 border-l-4 border-slate-200 rounded-r-lg">
-                <div className="text-sm text-slate-600 [&>p]:my-0">{children}</div>
+              <blockquote className={`my-4 pl-4 pr-3 py-3 ${c.quote} border-l-4 rounded-r-lg`}>
+                <div className={`text-sm ${c.quoteText} [&>p]:my-0`}>{children}</div>
               </blockquote>
             ),
             hr: () => (
-              <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+              <hr className={`my-6 border-0 h-px bg-gradient-to-r from-transparent ${c.hr} to-transparent`} />
             ),
             table: ({ children }) => (
-              <div className="my-4 overflow-x-auto rounded-xl border border-slate-200">
+              <div className={`my-4 overflow-x-auto rounded-xl border ${c.tableBorder}`}>
                 <table className="w-full text-sm border-collapse">{children}</table>
               </div>
             ),
             thead: ({ children }) => (
-              <thead className="bg-slate-50">{children}</thead>
+              <thead className={c.thBg}>{children}</thead>
             ),
             th: ({ children }) => (
-              <th className="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-200 first:rounded-tl-xl last:rounded-tr-xl">
+              <th className={`px-3 py-2 text-left ${c.thText} border-b ${c.tableBorder} first:rounded-tl-xl last:rounded-tr-xl`}>
                 {children}
               </th>
             ),
             td: ({ children }) => (
-              <td className="px-3 py-2 text-slate-600 border-b border-slate-100 [&:last-child>tr:last-child]:border-b-0">
+              <td className={`px-3 py-2 ${c.tdText} border-b ${c.tableBorder}`}>
                 {children}
               </td>
             ),
@@ -200,13 +247,13 @@ export default function StreamingMarkdown({
                 )
               }
               return (
-                <code className="px-1.5 py-0.5 rounded bg-slate-100 text-brand text-[0.85em] font-mono" {...props}>
+                <code className={`px-1.5 py-0.5 rounded ${c.code} text-[0.85em] font-mono`} {...props}>
                   {children}
                 </code>
               )
             },
             pre: ({ children }) => (
-              <pre className="my-3 p-3 rounded-xl bg-slate-900 text-slate-100 text-xs overflow-x-auto">
+              <pre className={`my-3 p-3 rounded-xl ${c.codeBlock} text-xs overflow-x-auto`}>
                 {children}
               </pre>
             ),
@@ -215,7 +262,7 @@ export default function StreamingMarkdown({
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-brand hover:text-brand-hover underline decoration-brand/30 underline-offset-2 transition-colors"
+                className={`${c.link} underline-offset-2 transition-colors`}
               >
                 {children}
               </a>

@@ -203,6 +203,7 @@ export default function AIChatPanel({ roomId }: AIChatPanelProps) {
                     <StreamingMarkdown
                       content={msg.content}
                       isStreaming={isStreaming && index === messages.length - 1}
+                      theme="dark"
                     />
                   ) : (
                     <span className="whitespace-pre-line">{msg.content}</span>
