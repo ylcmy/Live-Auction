@@ -153,3 +153,31 @@ export interface PaginatedData<T> {
   page: number;
   limit: number;
 }
+
+// AI 洞察数据结构
+export interface MerchantInsightData {
+  overview: {
+    totalProducts: number;
+    activeAuctions: number;
+    totalOrders: number;
+    totalRevenue: number;
+  };
+  auctionPerformance: {
+    completedCount: number;
+    soldCount: number;
+    unsoldCount: number;
+    avgPremiumRate: number;
+    avgBidCount: number;
+  };
+  biddingHeat: {
+    hourlyDistribution: Record<string, number>;
+    peakHours: number[];
+    uniqueBidders: number;
+    repeatBidders: number;
+  };
+  revenueAnalysis: {
+    dailyRevenue: Array<{ date: string; amount: number }>;
+    conversionRate: number;
+    topProducts: Array<{ name: string; revenue: number }>;
+  };
+}

@@ -1,4 +1,4 @@
-import { useRef, useEffect, type ComponentPropsWithoutRef } from 'react'
+import { useRef, useEffect, useMemo, type ComponentPropsWithoutRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -73,6 +73,14 @@ export default function StreamingMarkdown({
 }: StreamingMarkdownProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // 预处理：单换行 → 双换行（Markdown 段落分隔）
+  const normalizedContent = useMemo(() => {
+    if (!content) return ''
+    return content
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/([^\n])\n([^\n])/g, '$1\n\n$2')
+  }, [content])
+
   // 自动滚动到底部
   useEffect(() => {
     if (containerRef.current) {
@@ -122,7 +130,7 @@ export default function StreamingMarkdown({
               </h4>
             ),
             p: ({ children }) => (
-              <p className="text-sm leading-relaxed text-slate-600 my-2">{children}</p>
+              <p className="text-sm leading-relaxed text-slate-600 my-2 whitespace-pre-line">{children}</p>
             ),
             ul: ({ children }) => (
               <ul className="space-y-1.5 my-3 pl-1">{children}</ul>
@@ -214,7 +222,7 @@ export default function StreamingMarkdown({
             ),
           }}
         >
-          {content}
+          {normalizedContent}
         </ReactMarkdown>
         {isStreaming && (
           <span

@@ -29,6 +29,36 @@ export async function aiRoutes(app: FastifyInstance) {
     })
   })
 
+  // 结构化数据接口：返回商家运营原始数据供前端绘制图表
+  app.get('/api/ai/insight/data', {
+    preHandler: [requireRole('merchant'), insightLimiter],
+  }, async (req, reply) => {
+    const merchantId = req.auth!.userId
+
+    try {
+      const data = await insightService.collectMerchantData(merchantId)
+      return reply.send({
+        code: 0,
+        message: 'ok',
+        data,
+        timestamp: Date.now(),
+      })
+    } catch (err) {
+      if (err instanceof AppError) {
+        return reply.code(err.statusCode).send({
+          code: err.statusCode,
+          message: err.message,
+          timestamp: Date.now(),
+        })
+      }
+      return reply.code(500).send({
+        code: 500,
+        message: '数据采集失败',
+        timestamp: Date.now(),
+      })
+    }
+  })
+
   // SSE: 商家数据洞察
   app.get('/api/ai/insight', {
     preHandler: [requireRole('merchant'), insightLimiter],

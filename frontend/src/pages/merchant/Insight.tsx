@@ -1,20 +1,25 @@
 import { useState, useRef, useCallback } from 'react'
 import { useToast } from '@/design-system/hooks/use-toast'
-import StreamingMarkdown from '@/components/ai/StreamingMarkdown'
+import InsightReport from '@/components/ai/InsightReport'
 import AILoadingSkeleton from '@/components/ai/AILoadingSkeleton'
 import { streamAIGetResponse } from '@/lib/ai-client'
-import { RefreshCw, Sparkles, AlertCircle, FileText, TrendingUp, Lightbulb } from 'lucide-react'
+import api from '@/services/api'
+import { RefreshCw, Sparkles, AlertCircle, TrendingUp, Lightbulb, BarChart3 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import type { ApiResponse, MerchantInsightData } from '@/types/api'
 
 export default function Insight() {
-  const [content, setContent] = useState('')
+  const [insightData, setInsightData] = useState<MerchantInsightData | null>(null)
+  const [aiText, setAiText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingData, setIsLoadingData] = useState(false)
+  const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasContent, setHasContent] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
 
+  // 加载结构化数据 + AI 文本
   const generateInsight = useCallback(async () => {
     if (abortRef.current) {
       abortRef.current.abort()
@@ -23,47 +28,67 @@ export default function Insight() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    setContent('')
+    setInsightData(null)
+    setAiText('')
     setIsStreaming(true)
-    setIsLoading(true)
+    setIsLoadingData(true)
+    setIsLoadingAI(true)
     setError(null)
     setHasContent(false)
 
     try {
-      for await (const chunk of streamAIGetResponse(
-        '/api/ai/insight',
-        controller.signal
-      )) {
-        if (chunk.error) {
-          throw new Error(chunk.content || 'AI 服务暂时不可用')
+      // 1. 并行请求：结构化数据 + AI 流式文本
+      const dataPromise = api
+        .get<ApiResponse<MerchantInsightData>>('/ai/insight/data')
+        .then((res) => {
+          if (res.code === 0 && res.data) {
+            setInsightData(res.data)
+            setIsLoadingData(false)
+          } else {
+            throw new Error(res.message || '数据获取失败')
+          }
+        })
+        .catch((err) => {
+          throw new Error(err.message || '数据获取失败')
+        })
+
+      // 2. AI 流式文本
+      const aiTextPromise = (async () => {
+        for await (const chunk of streamAIGetResponse('/api/ai/insight', controller.signal)) {
+          if (chunk.error) {
+            throw new Error(chunk.content || 'AI 服务暂时不可用')
+          }
+          if (chunk.content) {
+            setAiText((prev) => prev + chunk.content)
+            setHasContent(true)
+            setIsLoadingAI(false)
+          }
+          if (chunk.done) {
+            break
+          }
         }
-        if (chunk.content) {
-          setContent((prev) => prev + chunk.content)
-          setHasContent(true)
-          setIsLoading(false)
-        }
-        if (chunk.done) {
-          break
-        }
-      }
+      })()
+
+      await Promise.all([dataPromise, aiTextPromise])
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       const message = (err as Error).message || 'AI 暂时不可用'
       setError(message)
       toast({
-        title: 'AI 服务提示',
-        description: 'AI 暂时不可用，已为您展示基础统计数据',
+        title: '提示',
+        description: message,
         variant: 'destructive',
       })
     } finally {
       setIsStreaming(false)
-      setIsLoading(false)
+      setIsLoadingData(false)
+      setIsLoadingAI(false)
       abortRef.current = null
     }
   }, [toast])
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-4xl">
+    <div className="container mx-auto px-4 py-6 max-w-6xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -73,7 +98,7 @@ export default function Insight() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">AI 数据洞察</h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              基于您的运营数据生成智能分析报告
+              数据可视化图表 + AI 深度分析
             </p>
           </div>
         </div>
@@ -91,7 +116,7 @@ export default function Insight() {
       <div className="min-h-[400px]">
         <AnimatePresence mode="wait">
           {/* Empty state */}
-          {!hasContent && !isLoading && !error && (
+          {!hasContent && !isLoadingData && !isLoadingAI && !error && (
             <motion.div
               key="empty"
               initial={{ opacity: 0, y: 12 }}
@@ -103,22 +128,22 @@ export default function Insight() {
               <div className="relative mb-6">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/20 to-accent/20 blur-3xl rounded-full" />
                 <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center shadow-glow-brand-lg">
-                  <Sparkles className="h-9 w-9 text-white" />
+                  <BarChart3 className="h-9 w-9 text-white" />
                 </div>
               </div>
               <h2 className="text-lg font-semibold text-slate-900 mb-2">
-                一键生成 AI 洞察报告
+                一键生成数据洞察报告
               </h2>
               <p className="text-sm text-slate-500 text-center max-w-md mb-6 leading-relaxed">
-                AI 将分析您的商品、竞拍、订单数据，生成运营趋势、热销品类、转化漏斗等深度洞察
+                自动采集运营数据，生成可视化图表和 AI 深度分析报告
               </p>
 
               {/* Feature highlights */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mb-8">
                 {[
-                  { icon: TrendingUp, title: '趋势分析', desc: '收入与流量走势' },
-                  { icon: FileText, title: '报告导出', desc: '结构化 Markdown' },
-                  { icon: Lightbulb, title: '智能建议', desc: '优化运营策略' },
+                  { icon: TrendingUp, title: '趋势图表', desc: '收入走势可视化' },
+                  { icon: BarChart3, title: '多维分析', desc: '成交/热度/排行' },
+                  { icon: Lightbulb, title: '智能建议', desc: 'AI 优化策略' },
                 ].map((f) => (
                   <div
                     key={f.title}
@@ -141,8 +166,8 @@ export default function Insight() {
             </motion.div>
           )}
 
-          {/* Loading skeleton */}
-          {isLoading && (
+          {/* Loading state */}
+          {(isLoadingData || isLoadingAI) && !hasContent && (
             <motion.div
               key="loading"
               initial={{ opacity: 0 }}
@@ -178,29 +203,32 @@ export default function Insight() {
             </motion.div>
           )}
 
-          {/* Content */}
-          {hasContent && (
+          {/* Report content */}
+          {hasContent && insightData && (
             <motion.div
-              key="content"
+              key="report"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="relative"
             >
-              {/* Streaming indicator bar */}
+              {/* Streaming indicator */}
               {isStreaming && (
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <span className="flex h-2 w-2 relative">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
                   </span>
-                  <span className="text-xs text-slate-500 font-medium">AI 正在生成报告...</span>
+                  <span className="text-xs text-slate-500 font-medium">
+                    {isLoadingData ? '正在采集数据...' : 'AI 正在生成分析...'}
+                  </span>
                 </div>
               )}
 
-              <div className="border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
-                <StreamingMarkdown content={content} isStreaming={isStreaming} />
-              </div>
+              <InsightReport
+                data={insightData}
+                aiText={aiText}
+                isStreaming={isStreaming}
+              />
             </motion.div>
           )}
         </AnimatePresence>
