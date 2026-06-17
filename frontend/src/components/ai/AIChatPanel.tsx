@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useToast } from '@/design-system/hooks/use-toast'
 import { streamAIResponse } from '@/lib/ai-client'
+import StreamingMarkdown from '@/components/ai/StreamingMarkdown'
 import { Send, Bot, User, Loader2, Sparkles, ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -197,7 +198,16 @@ export default function AIChatPanel({ roomId }: AIChatPanelProps) {
                     : 'bg-white/8 text-slate-100 border border-white/10 backdrop-blur-sm rounded-tl-md'
                 }`}
               >
-                {msg.content || (
+                {msg.content ? (
+                  msg.role === 'assistant' ? (
+                    <StreamingMarkdown
+                      content={msg.content}
+                      isStreaming={isStreaming && index === messages.length - 1}
+                    />
+                  ) : (
+                    <span className="whitespace-pre-line">{msg.content}</span>
+                  )
+                ) : (
                   <span className="inline-flex items-center gap-1.5 text-slate-400">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     <span className="text-xs">思考中...</span>
