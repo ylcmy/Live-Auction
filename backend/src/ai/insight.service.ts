@@ -12,7 +12,7 @@ const CACHE_PREFIX = 'ai:insight:'
 const CACHE_TTL = 1800 // 30 分钟
 
 export const insightService = {
-  async collectMerchantData(merchantId: number): Promise<MerchantInsightData> {
+  async collectMerchantData(merchantId: number, days: number = 30): Promise<MerchantInsightData> {
     const [
       productOverview,
       productStatus,
@@ -25,12 +25,12 @@ export const insightService = {
     ] = await Promise.all([
       insightRepo.getProductOverview(merchantId),
       insightRepo.getProductStatusDistribution(merchantId),
-      insightRepo.getAuctionPerformance(merchantId),
-      insightRepo.getBiddingHeat(merchantId),
-      insightRepo.getDailyRevenue(merchantId, 30),
-      insightRepo.getRevenueOverview(merchantId),
-      insightRepo.getTopProducts(merchantId, 5),
-      insightRepo.getConversionRate(merchantId),
+      insightRepo.getAuctionPerformance(merchantId, days),
+      insightRepo.getBiddingHeat(merchantId, days),
+      insightRepo.getDailyRevenue(merchantId, days),
+      insightRepo.getRevenueOverview(merchantId, days),
+      insightRepo.getTopProducts(merchantId, 5, days),
+      insightRepo.getConversionRate(merchantId, days),
     ])
 
     // activeAuctions = listed + active product count
@@ -89,9 +89,9 @@ export const insightService = {
     }
   },
 
-  async *generateInsightStream(merchantId: number): AsyncGenerator<AIStreamChunk> {
+  async *generateInsightStream(merchantId: number, days: number = 30): AsyncGenerator<AIStreamChunk> {
     // 尝试从缓存读取
-    const cacheKey = `${CACHE_PREFIX}${merchantId}`
+    const cacheKey = `${CACHE_PREFIX}${merchantId}:${days}`
     if (isRedisAvailable()) {
       try {
         const cached = await cache.get(cacheKey)
@@ -106,7 +106,7 @@ export const insightService = {
     }
 
     // 采集数据
-    const data = await this.collectMerchantData(merchantId)
+    const data = await this.collectMerchantData(merchantId, days)
     const dataJson = JSON.stringify(data, null, 2)
 
     // 构建 prompt

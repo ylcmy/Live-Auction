@@ -33,6 +33,15 @@ interface InsightReportProps {
   isStreaming: boolean
 }
 
+interface InsightChartsProps {
+  data: MerchantInsightData
+}
+
+interface AIInsightTextProps {
+  aiText: string
+  isStreaming: boolean
+}
+
 // 配色
 const CHART_COLORS = {
   brand: '#FE2C55',
@@ -164,7 +173,7 @@ function renderHighlightedText(text: string): React.ReactNode[] {
   })
 }
 
-export default function InsightReport({ data, aiText, isStreaming }: InsightReportProps) {
+export function InsightCharts({ data }: InsightChartsProps) {
   // 1. KPI 数据
   const soldRate = data.auctionPerformance.completedCount > 0
     ? data.auctionPerformance.soldCount / data.auctionPerformance.completedCount
@@ -211,17 +220,6 @@ export default function InsightReport({ data, aiText, isStreaming }: InsightRepo
     [data.revenueAnalysis.topProducts],
   )
 
-  // 6. AI 文本分段
-  const aiSections = useMemo(() => {
-    if (!aiText) return []
-    // 按【】标题分段
-    const sections = aiText
-      .split(/(?=【[^】]+】)/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    return sections
-  }, [aiText])
-
   return (
     <div className="space-y-5">
       {/* ====== KPI 卡片区 ====== */}
@@ -260,7 +258,7 @@ export default function InsightReport({ data, aiText, isStreaming }: InsightRepo
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* 每日收入趋势 */}
         <ChartCard
-          title="近 30 天收入趋势"
+          title="收入趋势"
           subtitle="每日成交金额走势"
           height={300}
         >
@@ -410,61 +408,81 @@ export default function InsightReport({ data, aiText, isStreaming }: InsightRepo
           color={CHART_COLORS.brand}
         />
       </div>
+    </div>
+  )
+}
 
-      {/* ====== AI 文字洞察区 ====== */}
-      {aiText && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-white" />
-            </div>
-            <h3 className="text-sm font-semibold text-slate-900">AI 深度洞察</h3>
-            {isStreaming && (
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
-              </span>
-            )}
-          </div>
+export function AIInsightText({ aiText, isStreaming }: AIInsightTextProps) {
+  const aiSections = useMemo(() => {
+    if (!aiText) return []
+    const sections = aiText
+      .split(/(?=【[^】]+】)/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return sections
+  }, [aiText])
 
-          <div className="space-y-4">
-            {aiSections.map((section, idx) => {
-              const titleMatch = section.match(/【([^】]+)】/)
-              const title = titleMatch?.[1] ?? ''
-              const body = titleMatch ? section.slice(titleMatch[0].length).trim() : section
+  if (!aiText) return null
 
-              // 为不同段落选图标
-              const sectionIcons: Record<string, typeof Clock> = {
-                '运营概览': TrendingUp,
-                '拍卖表现解读': Gavel,
-                '竞价热度洞察': Clock,
-                '收入与转化分析': DollarSign,
-                '行动建议': Target,
-              }
-              const SectionIcon = sectionIcons[title] ?? TrendingUp
-
-              return (
-                <div key={idx} className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5">
-                    <SectionIcon className="h-3.5 w-3.5 text-slate-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {title && (
-                      <p className="text-xs font-semibold text-slate-900 mb-1">{title}</p>
-                    )}
-                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                      {renderHighlightedText(body)}
-                      {isStreaming && idx === aiSections.length - 1 && (
-                        <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand rounded-sm animate-pulse align-middle" />
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center">
+          <TrendingUp className="h-4 w-4 text-white" />
         </div>
-      )}
+        <h3 className="text-sm font-semibold text-slate-900">AI 深度洞察</h3>
+        {isStreaming && (
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {aiSections.map((section, idx) => {
+          const titleMatch = section.match(/【([^】]+)】/)
+          const title = titleMatch?.[1] ?? ''
+          const body = titleMatch ? section.slice(titleMatch[0].length).trim() : section
+
+          const sectionIcons: Record<string, typeof Clock> = {
+            '运营概览': TrendingUp,
+            '拍卖表现解读': Gavel,
+            '竞价热度洞察': Clock,
+            '收入与转化分析': DollarSign,
+            '行动建议': Target,
+          }
+          const SectionIcon = sectionIcons[title] ?? TrendingUp
+
+          return (
+            <div key={idx} className="flex gap-3">
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5">
+                <SectionIcon className="h-3.5 w-3.5 text-slate-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                {title && (
+                  <p className="text-xs font-semibold text-slate-900 mb-1">{title}</p>
+                )}
+                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
+                  {renderHighlightedText(body)}
+                  {isStreaming && idx === aiSections.length - 1 && (
+                    <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-brand rounded-sm animate-pulse align-middle" />
+                  )}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export default function InsightReport({ data, aiText, isStreaming }: InsightReportProps) {
+  return (
+    <div className="space-y-5">
+      <InsightCharts data={data} />
+      <AIInsightText aiText={aiText} isStreaming={isStreaming} />
     </div>
   )
 }

@@ -34,6 +34,7 @@ export const insightRepo = {
    */
   async getAuctionPerformance(
     merchantId: number,
+    days: number = 30,
   ): Promise<{
     completed_count: number;
     sold_count: number;
@@ -46,6 +47,7 @@ export const insightRepo = {
       .join('auction_rules as r', 'r.product_id', 'p.id')
       .where('p.merchant_id', merchantId)
       .whereIn('s.status', ['ended', 'unsold'])
+      .where('s.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select(
         db.raw('COUNT(*) as completed_count'),
         db.raw("SUM(CASE WHEN s.status = 'ended' AND s.winner_id IS NOT NULL THEN 1 ELSE 0 END) as sold_count"),
@@ -77,6 +79,7 @@ export const insightRepo = {
    */
   async getBiddingHeat(
     merchantId: number,
+    days: number = 30,
   ): Promise<{
     hourly_distribution: { hour: number; bid_count: number }[];
     top_3_hours: { hour: number; bid_count: number }[];
@@ -88,6 +91,7 @@ export const insightRepo = {
       .join('auction_sessions as s', 's.id', 'br.session_id')
       .join('products as p', 'p.id', 's.product_id')
       .where('p.merchant_id', merchantId)
+      .where('br.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select(db.raw('HOUR(br.created_at) as hour'))
       .count('* as bid_count')
       .groupBy(db.raw('HOUR(br.created_at)'))
@@ -105,6 +109,7 @@ export const insightRepo = {
       .join('auction_sessions as s', 's.id', 'br.session_id')
       .join('products as p', 'p.id', 's.product_id')
       .where('p.merchant_id', merchantId)
+      .where('br.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select(
         db.raw('COUNT(DISTINCT br.user_id) as unique_bidders'),
         db.raw(`
@@ -157,10 +162,12 @@ export const insightRepo = {
    */
   async getRevenueOverview(
     merchantId: number,
+    days: number = 30,
   ): Promise<{ total_orders: number; total_revenue: number; paid_orders: number }> {
     const row = await db('orders as o')
       .join('products as p', 'p.id', 'o.product_id')
       .where('p.merchant_id', merchantId)
+      .where('o.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select(
         db.raw('COUNT(*) as total_orders'),
         db.raw('SUM(o.final_price) as total_revenue'),
@@ -181,11 +188,13 @@ export const insightRepo = {
   async getTopProducts(
     merchantId: number,
     limit: number,
+    days: number = 30,
   ): Promise<{ name: string; revenue: number }[]> {
     const rows = await db('orders as o')
       .join('products as p', 'p.id', 'o.product_id')
       .where('p.merchant_id', merchantId)
       .whereIn('o.status', ['paid', 'completed'])
+      .where('o.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select('p.name')
       .sum('o.final_price as revenue')
       .groupBy('p.id', 'p.name')
@@ -203,12 +212,14 @@ export const insightRepo = {
    */
   async getConversionRate(
     merchantId: number,
+    days: number = 30,
   ): Promise<{ total_ended: number; with_order: number }> {
     const row = await db('auction_sessions as s')
       .join('products as p', 'p.id', 's.product_id')
       .leftJoin('orders as o', 'o.session_id', 's.id')
       .where('p.merchant_id', merchantId)
       .whereIn('s.status', ['ended', 'unsold'])
+      .where('s.created_at', '>=', db.raw('DATE_SUB(CURDATE(), INTERVAL ? DAY)', [days]))
       .select(
         db.raw('COUNT(*) as total_ended'),
         db.raw('COUNT(o.id) as with_order'),

@@ -34,9 +34,10 @@ export async function aiRoutes(app: FastifyInstance) {
     preHandler: [requireRole('merchant'), insightLimiter],
   }, async (req, reply) => {
     const merchantId = req.auth!.userId
+    const days = Math.min(Math.max(Number((req.query as { days?: string }).days) || 30, 1), 365)
 
     try {
-      const data = await insightService.collectMerchantData(merchantId)
+      const data = await insightService.collectMerchantData(merchantId, days)
       return reply.send({
         code: 0,
         message: 'ok',
@@ -64,6 +65,7 @@ export async function aiRoutes(app: FastifyInstance) {
     preHandler: [requireRole('merchant'), insightLimiter],
   }, async (req, reply) => {
     const merchantId = req.auth!.userId
+    const days = Math.min(Math.max(Number((req.query as { days?: string }).days) || 30, 1), 365)
 
     req.raw.on('close', () => {
       // SSE 连接断开，流式生成器会被 GC 回收
@@ -72,7 +74,7 @@ export async function aiRoutes(app: FastifyInstance) {
     setupSSEHeaders(reply)
 
     try {
-      for await (const chunk of insightService.generateInsightStream(merchantId)) {
+      for await (const chunk of insightService.generateInsightStream(merchantId, days)) {
         if (chunk.content) {
           sendSSEData(reply, JSON.stringify({ content: chunk.content }))
         }
